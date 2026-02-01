@@ -1,0 +1,80 @@
+import { StateStore } from '../../domain/ports/StateStore.js';
+import { ChatState, createDefaultChatState, createDefaultUserSettings } from '../../domain/models.js';
+import { logger } from '../../shared/logger.js';
+import { promises as fs } from 'node:fs';
+import { resolve } from 'node:path';
+
+export function createJsonStateStore(dataDir?: string): StateStore {
+  const dir = dataDir || resolve(process.cwd(), 'data');
+  const filepath = resolve(dir, 'state.json');
+  const locks = new Map<number, Promise<void>>();
+
+  async function ensureFile(): Promise<void> {
+    try {
+      await fs.access(filepath);
+    } catch {
+      await fs.mkdir(dir, { recursive: true });
+      await atomicWrite({});
+    }
+  }
+
+  async function atomicWrite(data: Record<string, ChatState>): Promise<void> {
+    const random = Math.random().toString(36).substring(7);
+    const tmpPath = `${filepath}.tmp.${random}`;
+    await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.rename(tmpPath, filepath);
+  }
+
+  async function readState(): Promise<Record<string, ChatState>> {
+    await ensureFile();
+    try {
+      const content = await fs.readFile(filepath, 'utf-8');
+      return JSON.parse(content);
+    } catch (error) {
+      logger.warn('state', `Failed to parse state file: ${error}`);
+      return {};
+    }
+  }
+
+  function migrateState(raw: Partial<ChatState>): ChatState {
+    const defaults = createDefaultChatState()
+    return {
+      ...defaults,
+      ...raw,
+      settings: raw.settings ? { ...createDefaultUserSettings(), ...raw.settings } : defaults.settings,
+      awaitingInput: raw.awaitingInput ?? null,
+    }
+  }
+
+  async function getChatState(chatId: number): Promise<ChatState> {
+    const state = await readState();
+    const raw = state[String(chatId)]
+    return raw ? migrateState(raw) : createDefaultChatState();
+  }
+
+  async function saveChatState(chatId: number, chatState: ChatState): Promise<void> {
+    const state = await readState();
+    state[String(chatId)] = chatState;
+    await atomicWrite(state);
+    logger.debug('state', `Saved state for chat ${chatId}`);
+  }
+
+  async function withChatLock<T>(chatId: number, fn: () => Promise<T>): Promise<T> {
+    const previous = locks.get(chatId) || Promise.resolve();
+
+    const current = (async () => {
+      await previous;
+      return await fn();
+    })();
+
+    locks.set(chatId, current.then(() => undefined, () => undefined));
+
+    return current;
+  }
+
+  return {
+    getChatState,
+    saveChatState,
+    withChatLock,
+  };
+}
