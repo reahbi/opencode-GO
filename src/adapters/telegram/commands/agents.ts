@@ -10,14 +10,14 @@ export function agentsCommand(state: StateStore, openCode: OpenCodePort) {
 
     const chatState = await state.getChatState(chatId)
     if (!chatState.activeProjectDirectory) {
-      await ctx.reply('No active project. Set DEFAULT_PROJECT in .env.')
+      await ctx.reply('활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
       return
     }
 
     try {
       const agents = await openCode.listAgents(chatState.activeProjectDirectory)
       if (agents.length === 0) {
-        await ctx.reply('No agents available.')
+        await ctx.reply('사용 가능한 에이전트가 없습니다.')
         return
       }
 
@@ -30,9 +30,9 @@ export function agentsCommand(state: StateStore, openCode: OpenCodePort) {
         keyboard.text(label, `agent:${agent.name}`).row()
       }
 
-      const lines = [`<b>Select Agent</b>`]
+      const lines = [`<b>에이전트 선택</b>`]
       if (current) {
-        lines.push(`Current: <code>${current}</code>`)
+        lines.push(`현재: <code>${current}</code>`)
       }
       lines.push('')
       for (const agent of agents) {
@@ -44,7 +44,7 @@ export function agentsCommand(state: StateStore, openCode: OpenCodePort) {
       await ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: keyboard })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
-      await ctx.reply(`Failed to list agents: ${message}`)
+      await ctx.reply(`에이전트 목록 조회 실패: ${message}`)
     }
   }
 }
