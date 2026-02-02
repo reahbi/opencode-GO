@@ -1,4 +1,4 @@
-import type { SessionRef, AgentInfo } from '../models.js'
+import type { SessionRef, AgentInfo, HistoryMessage } from '../models.js'
 import type { AgentOutput } from '../events.js'
 import type { EventHandler } from '../events.js'
 
@@ -21,6 +21,7 @@ export interface OpenCodePort {
     model?: { providerID: string; modelID: string },
   ): Promise<void>
   abortSession(sessionId: string, directory: string): Promise<void>
+  getSessionMessages(sessionId: string, directory: string): Promise<HistoryMessage[]>
   listAgents(directory: string): Promise<AgentInfo[]>
   listModels(directory: string): Promise<ModelInfo[]>
   streamEvents(directory: string, handler: EventHandler, signal: AbortSignal): Promise<void>

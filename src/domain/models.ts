@@ -36,6 +36,11 @@ export interface PendingInteraction {
   requestId: string
   type: 'permission' | 'question'
   expiresAt: number
+  messageHandle?: string
+  questions?: Array<{ text: string; options: string[] }>
+  collectedAnswers?: (string[] | null)[]
+  currentQuestionIndex?: number
+  phase?: 'answering' | 'confirm'
 }
 
 export interface UserSettings {
@@ -43,6 +48,8 @@ export interface UserSettings {
   summaryModel: { providerID: string; modelID: string } | null
   summaryThreshold: number
   outputMode: 'formatted' | 'raw'
+  historyFormat: 'md' | 'html'
+  historyLimit: number | null
 }
 
 export interface ChatState {
@@ -52,7 +59,8 @@ export interface ChatState {
   lastPrompt: string | null
   pendingInteractions: PendingInteraction[]
   settings: UserSettings
-  awaitingInput: 'threshold' | null
+  awaitingInput: 'threshold' | 'question' | 'histlimit' | null
+  awaitingInteractionId: string | null
 }
 
 export function createDefaultUserSettings(): UserSettings {
@@ -61,6 +69,8 @@ export function createDefaultUserSettings(): UserSettings {
     summaryModel: null,
     summaryThreshold: 6000,
     outputMode: 'formatted',
+    historyFormat: 'html',
+    historyLimit: null,
   }
 }
 
@@ -73,5 +83,19 @@ export function createDefaultChatState(): ChatState {
     pendingInteractions: [],
     settings: createDefaultUserSettings(),
     awaitingInput: null,
+    awaitingInteractionId: null,
   }
+}
+
+/** A single message part for session history export */
+export type HistoryPart =
+  | { type: 'text'; text: string }
+  | { type: 'tool'; tool: string; title: string; status: string }
+  | { type: 'subtask'; description: string; agent: string }
+
+/** A message in session history */
+export interface HistoryMessage {
+  role: 'user' | 'assistant'
+  createdAt: number
+  parts: HistoryPart[]
 }
