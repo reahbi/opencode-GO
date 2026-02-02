@@ -1,6 +1,7 @@
 import { formatMarkdownV2 } from '../../shared/formatResponse.js'
+import { LIMITS } from './limits.js'
 
-const TELEGRAM_SAFE_LIMIT = 3800
+const TELEGRAM_SAFE_LIMIT = LIMITS.MAX_MESSAGE_LENGTH
 const BLOCK_SEP = '\n\n'
 
 export type DeliveryStrategy = 'inline' | 'chunk' | 'file'
@@ -115,10 +116,23 @@ function packMessages(blocks: FormattedBlock[]): string[] | null {
     messages.push(current)
   }
 
+  // Check chunk count against MAX_MESSAGE_CHUNKS
+  if (messages.length > LIMITS.MAX_MESSAGE_CHUNKS) {
+    return null
+  }
+
   return messages
 }
 
 export function routeDelivery(content: string): DeliveryPlan {
+  // Check total content length against FILE_FALLBACK_THRESHOLD
+  if (content.length > LIMITS.FILE_FALLBACK_THRESHOLD) {
+    return {
+      strategy: 'file',
+      fileContent: content,
+    }
+  }
+
   const blocks = tokenizeBlocks(content)
   const formatted = formatBlocks(blocks)
   const messages = packMessages(formatted)

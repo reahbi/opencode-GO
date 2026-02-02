@@ -2,6 +2,15 @@ const MAX_EXTRACT_LENGTH = 3500
 const FILE_PATH_PATTERN = /`([^\s`]*\/[^\s`]+\.[a-zA-Z]+)`/g
 const HEADING_PATTERN = /^#{1,3}\s+(.+)$/
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 export function structuralExtract(markdown: string): string {
   const lines = markdown.split('\n')
   const headings: string[] = []
@@ -40,13 +49,13 @@ export function structuralExtract(markdown: string): string {
   const parts: string[] = []
 
   if (headings.length > 0) {
-    parts.push(headings.map((h) => `**${h}**`).join('\n'))
+    parts.push(headings.map((h) => `<b>${escapeHtml(h)}</b>`).join('\n'))
   }
 
   if (filePaths.size > 0) {
     const fileList = Array.from(filePaths)
       .slice(0, 20)
-      .map((f) => `\`${f}\``)
+      .map((f) => `<code>${escapeHtml(f)}</code>`)
       .join(', ')
     parts.push(`Changed files: ${fileList}`)
   }

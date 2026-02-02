@@ -1,6 +1,7 @@
 import { StateStore } from '../../domain/ports/StateStore.js';
 import { ChatState, createDefaultChatState, createDefaultUserSettings } from '../../domain/models.js';
 import { logger } from '../../shared/logger.js';
+import { LIMITS } from '../../app/policies/limits.js';
 import { promises as fs } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -38,12 +39,16 @@ export function createJsonStateStore(dataDir?: string): StateStore {
 
   function migrateState(raw: Partial<ChatState>): ChatState {
     const defaults = createDefaultChatState()
-    return {
+    const state: ChatState = {
       ...defaults,
       ...raw,
       settings: raw.settings ? { ...createDefaultUserSettings(), ...raw.settings } : defaults.settings,
       awaitingInput: raw.awaitingInput ?? null,
     }
+    if (state.settings.summaryThreshold < LIMITS.SUMMARY_MIN_TRIGGER) {
+      state.settings.summaryThreshold = LIMITS.SUMMARY_MIN_TRIGGER
+    }
+    return state
   }
 
   async function getChatState(chatId: number): Promise<ChatState> {

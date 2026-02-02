@@ -1,19 +1,20 @@
 import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { OpenCodeEvent } from '../../domain/events.js'
 import { logger } from '../../shared/logger.js'
+import { LIMITS } from '../../app/policies/limits.js'
 
 const SUMMARY_TIMEOUT_MS = 60_000
 const SUMMARY_SESSION_TITLE = '_summary'
 const MAX_INPUT_CHARS = 30_000
 
-function buildSummaryPrompt(content: string, threshold: number): string {
+function buildSummaryPrompt(content: string): string {
   const truncated =
     content.length > MAX_INPUT_CHARS
       ? content.slice(0, MAX_INPUT_CHARS) + '\n\n[... truncated]'
       : content
 
   return `You are a senior engineer checking work on your phone via Telegram.
-Rewrite this AI response into a mobile-friendly summary using Telegram HTML.
+Rewrite this AI response into a compact, mobile-friendly summary using Telegram HTML.
 
 Allowed HTML tags ONLY: <b>, <i>, <code>, <pre>, <a href="">, <s>, <u>, <blockquote>
 Telegram has NO heading or list tags. Use these conventions:
@@ -22,20 +23,31 @@ Telegram has NO heading or list tags. Use these conventions:
 - File paths: wrap in <code>path/to/file</code>
 - Code snippets: wrap in <code>inline</code> or <pre>block</pre>
 
-Structure:
+Adaptive structure — include only sections that are relevant:
+
+<b>Outcome</b>
+• ALWAYS include. One line: ✅ OK | ⚠️ NEEDS INPUT | ❌ FAILED + short reason
+
+<b>Key Points</b>
+• ALWAYS include. 2-5 bullets of what was done and why
+
 <b>Files</b>
-• list modified files
+• Include ONLY if files were modified. Top 10 files max, if more add "(+N more)"
 
-<b>Summary</b>
-• 2-5 bullets of what was done and why
+<b>Commands</b>
+• Include ONLY if there are commands to run or verify
 
-<b>Next</b>
-• commands to run or things to verify
+<b>Errors</b>
+• Include ONLY if errors or warnings occurred
+
+<b>Questions</b>
+• Include ONLY if the response asks the user something
 
 Rules:
-- Maximum ${threshold} characters total
+- Maximum ${LIMITS.SUMMARY_OUTPUT_TARGET} characters total
 - Same language as the original response
-- No filler phrases
+- No filler phrases — every word must earn its place
+- Avoid long URLs; prefer short link text, omit querystrings
 - Do NOT use markdown syntax (no **, no \`\`\`, no #)
 - Output ONLY the HTML summary, nothing else
 
@@ -48,14 +60,13 @@ export interface SummaryService {
     directory: string,
     content: string,
     model: { providerID: string; modelID: string },
-    threshold: number,
   ): Promise<string>
 }
 
 export function createSummaryService(openCode: OpenCodePort): SummaryService {
   return {
-    async summarize(directory, content, model, threshold) {
-      const prompt = buildSummaryPrompt(content, threshold)
+    async summarize(directory, content, model) {
+      const prompt = buildSummaryPrompt(content)
 
       const session = await openCode.createSession(directory, SUMMARY_SESSION_TITLE)
       const sessionId = session.id
@@ -133,8 +144,8 @@ export function createSummaryService(openCode: OpenCodePort): SummaryService {
           throw new Error('Summary produced no output')
         }
 
-        if (summaryText.length > threshold + 200) {
-          summaryText = summaryText.slice(0, threshold) + '\n\n<i>... (truncated)</i>'
+        if (summaryText.length > LIMITS.SUMMARY_HTML_HARD_CAP) {
+          summaryText = summaryText.slice(0, LIMITS.SUMMARY_HTML_HARD_CAP) + '\n\n<i>... (truncated)</i>'
         }
 
         logger.info('summary', `Summary generated: ${summaryText.length} chars`)
