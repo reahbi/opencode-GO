@@ -10,6 +10,8 @@ function settingsText(s: UserSettings): string {
     ? `${s.summaryModel.modelID} (${s.summaryModel.providerID})`
     : 'not selected'
   const threshold = s.summaryThreshold.toLocaleString()
+  const histFmt = s.historyFormat === 'html' ? 'HTML ✅' : 'Markdown'
+  const histLimit = s.historyLimit ? `Last ${s.historyLimit} messages` : 'All messages'
 
   return [
     '<b>⚙️ Settings</b>',
@@ -18,6 +20,10 @@ function settingsText(s: UserSettings): string {
     `📊 AI Summary: ${summary}`,
     `🤖 Model: ${model}`,
     `📏 Trigger: ${threshold}+ chars`,
+    '',
+    '<b>📜 Session History Export</b>',
+    `   File format: ${histFmt}`,
+    `   Included: ${histLimit}`,
   ].join('\n')
 }
 
@@ -28,6 +34,9 @@ function settingsKeyboard(): InlineKeyboard {
     .row()
     .text('🤖 Select Model', 'settings:model')
     .text('📏 Set Threshold', 'settings:threshold')
+    .row()
+    .text('📜 History Format', 'settings:histformat')
+    .text('📜 History Limit', 'settings:histlimit')
 }
 
 export function settingsCommand(state: StateStore) {
