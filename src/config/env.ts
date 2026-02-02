@@ -1,6 +1,8 @@
 import { DEFAULT_SERVER_URL } from '../shared/constants.js'
 import { basename, resolve } from 'node:path'
 
+export type BotRole = 'writer' | 'reader' | 'standalone'
+
 export interface EnvConfig {
   botToken: string
   allowedUserIds: number[]
@@ -10,6 +12,9 @@ export interface EnvConfig {
   defaultProject: string
   instanceName: string
   stateDir: string
+  botRole: BotRole
+  groupChatEnabled: boolean
+  coordinationDir: string
 }
 
 export function loadEnvConfig(): EnvConfig {
@@ -45,6 +50,15 @@ export function loadEnvConfig(): EnvConfig {
   const instanceName = process.env.INSTANCE_NAME || basename(defaultProject)
   const stateDir = process.env.STATE_DIR || resolve(process.cwd(), 'data')
 
+  const rawRole = (process.env.BOT_ROLE ?? 'standalone').toLowerCase()
+  const botRole: BotRole = rawRole === 'writer' || rawRole === 'reader' ? rawRole : 'standalone'
+
+  const groupChatEnabled = ['1', 'true', 'yes'].includes(
+    (process.env.GROUP_CHAT_ENABLED ?? '').toLowerCase(),
+  )
+
+  const coordinationDir = process.env.COORDINATION_DIR || ''
+
   return {
     botToken,
     allowedUserIds,
@@ -54,5 +68,8 @@ export function loadEnvConfig(): EnvConfig {
     defaultProject,
     instanceName,
     stateDir,
+    botRole,
+    groupChatEnabled,
+    coordinationDir,
   }
 }

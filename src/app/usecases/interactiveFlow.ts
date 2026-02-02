@@ -11,6 +11,7 @@ interface InteractiveFlowDeps {
   openCode: OpenCodePort
   state: StateStore
   output: ChatOutputPort
+  botRole?: 'writer' | 'reader' | 'standalone'
 }
 
 function escapeHtml(text: string): string {
@@ -157,6 +158,18 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
   async function handlePermissionEvent(chatId: number, event: PermissionAsked): Promise<void> {
     try {
+      if (deps.botRole === 'reader') {
+        const chatState = await deps.state.getChatState(chatId)
+        const directory = chatState.activeProjectDirectory
+        if (!directory) {
+          logger.warn('interactive', `Reader bot permission auto-reject skipped (no directory, requestId=${event.requestId})`)
+          return
+        }
+        await deps.openCode.replyPermission(event.requestId, directory, 'reject')
+        await deps.output.sendText(chatId, '🔒 Reader 봇: 권한 요청이 자동 거부되었습니다 (읽기 전용)')
+        return
+      }
+
       const interactionId = randomUUID()
       const interaction: PendingInteraction = {
         interactionId,

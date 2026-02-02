@@ -41,6 +41,7 @@ export interface PendingInteraction {
   collectedAnswers?: (string[] | null)[]
   currentQuestionIndex?: number
   phase?: 'answering' | 'confirm'
+  creatorUserId?: number
 }
 
 export interface UserSettings {

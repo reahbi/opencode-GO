@@ -3,7 +3,7 @@ import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { UserSettings } from '../../../domain/models.js'
 
-function settingsText(s: UserSettings): string {
+function settingsText(s: UserSettings, instanceName?: string): string {
   const format = s.outputMode === 'formatted' ? 'Formatted ✅' : 'Raw'
   const summary = s.summaryMode ? 'ON ✅' : 'OFF'
   const model = s.summaryModel
@@ -13,8 +13,9 @@ function settingsText(s: UserSettings): string {
   const histFmt = s.historyFormat === 'html' ? 'HTML ✅' : 'Markdown'
   const histLimit = s.historyLimit ? `Last ${s.historyLimit} messages` : 'All messages'
 
+  const header = instanceName ? `<b>⚙️ Settings</b> <i>(${instanceName})</i>` : '<b>⚙️ Settings</b>'
   return [
-    '<b>⚙️ Settings</b>',
+    header,
     '',
     `📝 Output: ${format}`,
     `📊 AI Summary: ${summary}`,
@@ -39,12 +40,13 @@ function settingsKeyboard(): InlineKeyboard {
     .text('📜 History Limit', 'settings:histlimit')
 }
 
-export function settingsCommand(state: StateStore) {
+export function settingsCommand(state: StateStore, instanceName?: string) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
     const chatState = await state.getChatState(chatId)
-    await ctx.reply(settingsText(chatState.settings), {
+    await ctx.reply(settingsText(chatState.settings, isGroup ? instanceName : undefined), {
       parse_mode: 'HTML',
       reply_markup: settingsKeyboard(),
     })

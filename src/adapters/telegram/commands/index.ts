@@ -14,15 +14,25 @@ import { startCommand } from './start.js'
 import { statusCommand } from './status.js'
 import { agentsCommand } from './agents.js'
 import { settingsCommand, settingsText, settingsKeyboard } from './settings.js'
+import { debateCommand } from './debate.js'
+import { reviewCommand } from './review.js'
 import { createSessionCommands } from '../../../app/usecases/sessionCommands.js'
 import { createPromptFlow } from '../../../app/usecases/promptFlow.js'
 import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
+import { createDebateFlow } from '../../../app/usecases/debateFlow.js'
+import { createSessionWatcher } from '../../../app/usecases/sessionWatcher.js'
 import { createSummaryService } from '../../opencode/summaryService.js'
 import { parseCallback } from '../ui/callbacks.js'
 import type { ModelInfo } from '../../../domain/ports/OpenCodePort.js'
 import { escapeHtml } from '../../../shared/formatResponse.js'
 import { logger } from '../../../shared/logger.js'
 import { LIMITS } from '../../../app/policies/limits.js'
+
+function stripBotMention(text: string, botUsername: string): string {
+  if (!botUsername) return text
+  const pattern = new RegExp(`@${botUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'gi')
+  return text.replace(pattern, '').trim()
+}
 
 const EXCLUDE_MODEL = /embed|tts|audio|image|live/i
 const OLD_MODEL = /1\.5-|20240|3-opus|3-sonnet-2024/i
@@ -46,6 +56,9 @@ interface RegisterCommandsDeps {
   output: ChatOutputPort
   queue: ChatQueue
   instanceName?: string
+  botUsername?: string
+  coordination?: import('../../../domain/ports/CoordinationPort.js').CoordinationPort
+  botRole?: 'writer' | 'reader' | 'standalone'
 }
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
@@ -53,27 +66,53 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   const summary = createSummaryService(openCode)
   const sessionCommands = createSessionCommands({ openCode, state, output })
-  const interactiveFlow = createInteractiveFlow({ openCode, state, output })
-  const promptFlow = createPromptFlow({
-    openCode,
-    state,
-    output,
-    summary,
+  const interactiveFlow = createInteractiveFlow({ openCode, state, output, botRole: deps.botRole })
+  const watcher = createSessionWatcher({
+    openCode, state, output, summary,
     onPermissionAsked: (cid, e) => interactiveFlow.handlePermissionEvent(cid, e),
     onQuestionAsked: (cid, e) => interactiveFlow.handleQuestionEvent(cid, e),
   })
+  const promptFlow = createPromptFlow({
+    openCode, state, output, watcher,
+    botRole: deps.botRole,
+  })
 
-  // Register commands
-  bot.command('new', newCommand(sessionCommands))
+  const debateFlow = deps.coordination && deps.botRole !== 'standalone'
+    ? createDebateFlow({
+        openCode, state, output,
+        coordination: deps.coordination,
+        botRole: deps.botRole ?? 'standalone',
+        instanceName: deps.instanceName ?? '',
+      })
+    : null
+
+  bot.command('new', async (ctx) => {
+    await newCommand(sessionCommands)(ctx)
+    const chatId = ctx.chat?.id
+    if (chatId) await watcher.watch(chatId)
+  })
   bot.command('list', listCommand(sessionCommands))
-  bot.command('resume', resumeCommand(sessionCommands))
-  bot.command('abort', abortCommand(sessionCommands))
+  bot.command('resume', async (ctx) => {
+    await resumeCommand(sessionCommands)(ctx)
+    const chatId = ctx.chat?.id
+    if (chatId) await watcher.watch(chatId)
+  })
+  bot.command('abort', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (chatId) watcher.stop(chatId)
+    await abortCommand(sessionCommands)(ctx)
+  })
   bot.command('history', historyCommand(sessionCommands, output))
   bot.command('help', helpCommand(deps.instanceName))
   bot.command('start', startCommand(state, openCode, deps.instanceName))
   bot.command('status', statusCommand(state, openCode, deps.instanceName))
   bot.command('agents', agentsCommand(state, openCode))
-  bot.command('settings', settingsCommand(state))
+  bot.command('settings', settingsCommand(state, deps.instanceName))
+
+  if (debateFlow) {
+    bot.command('debate', debateCommand(debateFlow))
+    bot.command('review', reviewCommand(debateFlow))
+  }
 
   // Handle callback queries (permission/question buttons)
   bot.on('callback_query:data', async (ctx) => {
@@ -85,6 +124,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       logger.warn('bot', `Callback without chat: ${data}`)
       return
     }
+
+    const cbChatType = ctx.chat?.type ?? ctx.callbackQuery.message?.chat.type
+    const groupInstanceName = (cbChatType === 'group' || cbChatType === 'supergroup') ? deps.instanceName : undefined
 
     logger.info('bot', `Callback received: ${data}`)
     const parsed = parseCallback(data)
@@ -124,12 +166,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'format':
             chatState.settings.outputMode = chatState.settings.outputMode === 'formatted' ? 'raw' : 'formatted'
             await state.saveChatState(chatId, chatState)
-            await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
+            await ctx.editMessageText(settingsText(chatState.settings, groupInstanceName), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
             break
           case 'summary':
             chatState.settings.summaryMode = !chatState.settings.summaryMode
             await state.saveChatState(chatId, chatState)
-            await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
+            await ctx.editMessageText(settingsText(chatState.settings, groupInstanceName), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
             break
           case 'threshold':
             chatState.awaitingInput = 'threshold'
@@ -157,7 +199,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'histformat':
             chatState.settings.historyFormat = chatState.settings.historyFormat === 'html' ? 'md' : 'html'
             await state.saveChatState(chatId, chatState)
-            await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
+            await ctx.editMessageText(settingsText(chatState.settings, groupInstanceName), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
             break
           case 'histlimit':
             chatState.awaitingInput = 'histlimit'
@@ -178,7 +220,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             )
             break
           case 'back':
-            await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
+            await ctx.editMessageText(settingsText(chatState.settings, groupInstanceName), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
             break
         }
         break
@@ -208,6 +250,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
               parse_mode: 'HTML',
               reply_markup: histKb,
             })
+            await watcher.watch(chatId)
           } else {
             await ctx.editMessageText('Session not found.', { parse_mode: 'HTML' })
           }
@@ -243,7 +286,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           }
           await state.saveChatState(chatId, chatState)
         }
-        await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
+        await ctx.editMessageText(settingsText(chatState.settings, groupInstanceName), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
         break
       }
       default:
@@ -298,9 +341,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       return
     }
 
-    // Fire-and-forget: DO NOT await — Grammy processes updates sequentially,
-    // so awaiting a long SSE stream blocks all subsequent updates (callback_query etc.)
-    void queue.enqueue(chatId, () => promptFlow.handleUserMessage(chatId, text))
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const cleanedText = isGroup ? stripBotMention(text, deps.botUsername ?? '') : text
+
+    void queue.enqueue(chatId, () => promptFlow.handleUserMessage(chatId, cleanedText))
       .catch(err => logger.error('bot', `Prompt job failed: ${err instanceof Error ? err.message : err}`))
   })
 }

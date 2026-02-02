@@ -7,6 +7,10 @@ const PREFIXES = {
   queue: '[QUEUE]',
   interactive: '[INTERACTIVE]',
   summary: '[SUMMARY]',
+  watcher: '[WATCHER]',
+  coordination: '[COORDINATION]',
+  group: '[GROUP]',
+  debate: '[DEBATE]',
 } as const
 
 type LogContext = keyof typeof PREFIXES

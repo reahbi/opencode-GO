@@ -31,4 +31,21 @@ export const LIMITS = {
 
   /** Minimum trigger threshold users can set (must be > SUMMARY_OUTPUT_TARGET) */
   SUMMARY_MIN_TRIGGER: 2000,
+
+  // ── Group / Coordination ────────────────────────────────
+
+  /** Maximum rounds in a single debate session */
+  MAX_DEBATE_ROUNDS: 6,
+
+  /** Polling interval for coordination file during active debate (ms) */
+  COORDINATION_POLL_INTERVAL_MS: 2000,
+
+  /** Maximum wait time for a debate response from the other bot (ms) */
+  DEBATE_RESPONSE_TIMEOUT_MS: 5 * 60 * 1000,
+
+  /** Coordination event TTL — ignore events older than this (ms) */
+  COORDINATION_EVENT_TTL_MS: 10 * 60 * 1000,
+
+  /** Maximum size of a single coordination JSONL file before daily rotation (bytes) */
+  COORDINATION_MAX_FILE_SIZE: 10 * 1024 * 1024,
 } as const
