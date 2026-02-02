@@ -1,4 +1,5 @@
 import { DEFAULT_SERVER_URL } from '../shared/constants.js'
+import { basename, resolve } from 'node:path'
 
 export interface EnvConfig {
   botToken: string
@@ -7,6 +8,8 @@ export interface EnvConfig {
   openCodeServerUsername: string
   openCodeServerPassword: string | null
   defaultProject: string
+  instanceName: string
+  stateDir: string
 }
 
 export function loadEnvConfig(): EnvConfig {
@@ -39,6 +42,9 @@ export function loadEnvConfig(): EnvConfig {
     throw new Error('DEFAULT_PROJECT is required. Set it in .env file.')
   }
 
+  const instanceName = process.env.INSTANCE_NAME || basename(defaultProject)
+  const stateDir = process.env.STATE_DIR || resolve(process.cwd(), 'data')
+
   return {
     botToken,
     allowedUserIds,
@@ -46,5 +52,7 @@ export function loadEnvConfig(): EnvConfig {
     openCodeServerUsername,
     openCodeServerPassword,
     defaultProject,
+    instanceName,
+    stateDir,
   }
 }

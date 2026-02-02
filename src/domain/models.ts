@@ -59,7 +59,7 @@ export function createDefaultUserSettings(): UserSettings {
   return {
     summaryMode: false,
     summaryModel: null,
-    summaryThreshold: 4000,
+    summaryThreshold: 6000,
     outputMode: 'formatted',
   }
 }

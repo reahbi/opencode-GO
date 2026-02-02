@@ -11,8 +11,14 @@ const PREFIXES = {
 
 type LogContext = keyof typeof PREFIXES
 
+let instancePrefix = ''
+
+export function setInstancePrefix(name: string): void {
+  instancePrefix = name ? `[${name}] ` : ''
+}
+
 function formatMessage(context: LogContext, message: string): string {
-  return `${PREFIXES[context]} ${message}`
+  return `${instancePrefix}${PREFIXES[context]} ${message}`
 }
 
 export const logger = {

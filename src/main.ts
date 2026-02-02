@@ -5,18 +5,22 @@ import { createOpenCodeAdapter } from './adapters/opencode/opencodeAdapter.js'
 import { createJsonStateStore } from './adapters/persistence/jsonStateStore.js'
 import { createChatQueue } from './app/queue/chatQueue.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
-import { logger } from './shared/logger.js'
+import { logger, setInstancePrefix } from './shared/logger.js'
 
 async function main() {
-  logger.info('bot', 'Starting OpenCaddy v2.1...')
-
   const config = loadEnvConfig()
+
+  if (process.env.INSTANCE_NAME) {
+    setInstancePrefix(config.instanceName)
+  }
+
+  logger.info('bot', `Starting OpenCaddy v2.1 [${config.instanceName}]...`)
 
   // Create adapters
   const bot = createBot(config.botToken)
   const output = createChatOutputAdapter(bot)
   const openCode = createOpenCodeAdapter(config.openCodeServerUrl, config.openCodeServerUsername, config.openCodeServerPassword)
-  const state = createJsonStateStore()
+  const state = createJsonStateStore(config.stateDir)
   const queue = createChatQueue()
 
   // Auth middleware
@@ -36,7 +40,7 @@ async function main() {
   })
 
   // Register commands and handlers
-  registerCommands({ bot, openCode, state, output, queue })
+  registerCommands({ bot, openCode, state, output, queue, instanceName: config.instanceName })
 
   // Error handler
   bot.catch((err) => {
@@ -45,6 +49,8 @@ async function main() {
 
   // Initialize default project for all chats
   // (Handled lazily — each chat gets default project on first getChatState if null)
+  logger.info('bot', `Instance: ${config.instanceName}`)
+  logger.info('bot', `State dir: ${config.stateDir}`)
   logger.info('bot', `Default project: ${config.defaultProject}`)
   logger.info('bot', `Allowed users: ${config.allowedUserIds.length > 0 ? config.allowedUserIds.join(', ') : 'all'}`)
 

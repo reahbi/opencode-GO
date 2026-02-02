@@ -22,4 +22,13 @@ export const LIMITS = {
 
   /** Server restart backoff base (ms) */
   SERVER_RESTART_BACKOFF_MS: 2000,
+
+  /** Target character count for summary output (instructed to the model) */
+  SUMMARY_OUTPUT_TARGET: 2000,
+
+  /** Hard cap for summary HTML output — must stay under Telegram's 4096 limit with tag overhead */
+  SUMMARY_HTML_HARD_CAP: 3200,
+
+  /** Minimum trigger threshold users can set (must be > SUMMARY_OUTPUT_TARGET) */
+  SUMMARY_MIN_TRIGGER: 2000,
 } as const
