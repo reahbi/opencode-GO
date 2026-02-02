@@ -15,17 +15,15 @@ src/
 │   ├── models.ts              #   SessionRef, ChatState, UserSettings, PendingInteraction
 │   ├── events.ts              #   OpenCodeEvent discriminated union (7 event types)
 │   ├── errors.ts              #   AppError hierarchy (8 error classes with codes)
-│   ├── statusDisplay.ts       #   ToolCall, SessionStatus, DisplayState types
 │   └── ports/
 │       ├── OpenCodePort.ts    #   Session CRUD, prompts, SSE, permission/question reply
-│       ├── ChatOutputPort.ts  #   sendText, editText, sendFile, sendInteraction
+│       ├── ChatOutputPort.ts  #   sendText, editText, sendFile, sendInteraction, editInteraction
 │       └── StateStore.ts      #   getChatState, saveChatState, withChatLock
 ├── app/                       # Usecases — imports domain/ ONLY
 │   ├── usecases/
 │   │   ├── promptFlow.ts      #   Text msg → SSE stream → throttled edits → delivery
-│   │   ├── sessionCommands.ts #   /new /list /resume /abort
-│   │   ├── interactiveFlow.ts #   permission.asked / question.asked round-trip
-│   │   └── statusDisplay.ts   #   Real-time SSE aggregation + throttled UI updates
+│   │   ├── sessionCommands.ts #   /new /list /resume /abort + exportSessionHistory
+│   │   └── interactiveFlow.ts #   permission.asked / question.asked round-trip
 │   ├── queue/
 │   │   └── chatQueue.ts       #   Per-chat promise-chain serialization
 │   └── policies/
@@ -39,14 +37,16 @@ src/
 │   │   │   ├── index.ts       #   Command router + callback query dispatcher + text handler
 │   │   │   ├── new.ts         #   /new [title]
 │   │   │   ├── resume.ts      #   /resume [number]
-│   │   │   ├── list.ts        #   /list
+│   │   │   ├── list.ts        #   /list (paginated with inline keyboard)
 │   │   │   ├── abort.ts       #   /abort
-│   │   │   ├── help.ts        #   /help, /start
+│   │   │   ├── history.ts     #   /history — export session history as file
+│   │   │   ├── help.ts        #   /help
+│   │   │   ├── start.ts       #   /start — onboarding + status overview
 │   │   │   ├── status.ts      #   /status
 │   │   │   ├── agents.ts      #   /agents — list + inline keyboard to switch
-│   │   │   └── settings.ts    #   /settings — summary mode, threshold, output format
+│   │   │   └── settings.ts    #   /settings — summary mode, threshold, output format, history
 │   │   └── ui/
-│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, sm:)
+│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, sm:, listpage:, listsel:, hist:)
 │   │       └── keyboards.ts   #   InlineKeyboard builders for permissions/questions
 │   ├── opencode/
 │   │   ├── opencodeAdapter.ts #   OpenCodePort impl via SDK v2 client
@@ -54,6 +54,9 @@ src/
 │   │   └── summaryService.ts  #   Creates temp session, prompts lightweight model, deletes
 │   └── persistence/
 │       └── jsonStateStore.ts  #   Atomic write (tmp+rename), in-process lock per chatId
+├── cli/                       # CLI tools (not part of bot runtime)
+│   ├── setup.ts               #   Interactive setup wizard (bun run setup)
+│   └── doctor.ts              #   Configuration diagnostics (bun run doctor)
 ├── config/
 │   ├── env.ts                 #   Validates & returns EnvConfig (throws on missing required vars)
 │   └── projects.ts            #   Reads data/projects.json, 1-based indexing
@@ -93,6 +96,7 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | Response formatting | `shared/formatResponse.ts` + `app/policies/deliveryRouter.ts` | Block tokenizer preserves code fences |
 | Summary feature | `adapters/opencode/summaryService.ts` | Creates ephemeral session, prompts, deletes |
 | Agent/model selection | `adapters/telegram/commands/index.ts` (callback handler) | `agent:` and `sm:` callback prefixes |
+| Session history export | `app/usecases/sessionCommands.ts` + `adapters/telegram/commands/history.ts` | Exports as .md or .html file |
 
 ## CODE MAP
 
@@ -113,6 +117,8 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | `routeDelivery` | function | `app/policies/deliveryRouter.ts` | Decides inline/chunk/file strategy |
 | `StatusDisplayManager` | class | `app/usecases/statusDisplay.ts` | Real-time SSE aggregation with throttle |
 | `loadEnvConfig` | function | `config/env.ts` | Parses + validates env vars at startup |
+| `historyCommand` | factory | `adapters/telegram/commands/history.ts` | Export session history as file |
+| `startCommand` | factory | `adapters/telegram/commands/start.ts` | Onboarding + status overview |
 
 ## CONVENTIONS
 

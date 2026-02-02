@@ -6,12 +6,12 @@ AI 에이전트(OpenCode, Claude Code 등)에 다음을 붙여넣으세요:
 
 ```
 OpenCaddy를 설치하고 설정해줘:
-https://raw.githubusercontent.com/your-repo/opencode-telegram/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
 ```
 
 또는 직접 설치:
 ```bash
-git clone https://github.com/your-repo/opencode-telegram.git
+git clone https://github.com/reahbi/opencode-telegram.git
 cd opencode-telegram
 bun install
 bun run setup
@@ -26,7 +26,7 @@ The user needs to provide **4 values**. Ask them **one at a time**, explain each
 ### Step 0: Clone & Install
 
 ```bash
-git clone https://github.com/your-repo/opencode-telegram.git
+git clone https://github.com/reahbi/opencode-telegram.git
 cd opencode-telegram
 ```
 
