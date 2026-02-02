@@ -2,7 +2,7 @@ import { createOpencodeClient } from '@opencode-ai/sdk/v2/client'
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client'
 
 import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
-import type { SessionRef } from '../../domain/models.js'
+import type { SessionRef, HistoryMessage, HistoryPart } from '../../domain/models.js'
 import type { AgentOutput } from '../../domain/events.js'
 import { OpenCodeApiError, OpenCodeConnectionError, SessionNotFoundError } from '../../domain/errors.js'
 import { logger } from '../../shared/logger.js'
@@ -196,6 +196,45 @@ export function createOpenCodeAdapter(serverUrl: string, username: string, passw
         unwrap(result, 'session.abort', serverUrl, sessionId)
       } catch (error) {
         logger.error('opencode', `session.abort failed: ${getErrorMessage(error)}`)
+        if (isDomainError(error)) throw error
+        throw new OpenCodeConnectionError(serverUrl, error instanceof Error ? error : undefined)
+      }
+    },
+
+    async getSessionMessages(sessionId, directory) {
+      try {
+        const result = await client.session.messages({ sessionID: sessionId, directory })
+        const data = unwrap(result, 'session.messages', serverUrl, sessionId)
+        if (!Array.isArray(data)) {
+          throw new OpenCodeApiError('session.messages', 500, 'Invalid messages response')
+        }
+        return data.map((msg: { info: unknown; parts: unknown[] }) => {
+          const info = msg.info as RecordLike
+          const role = info.role === 'user' ? 'user' as const : 'assistant' as const
+          const time = isRecord(info.time) ? info.time : null
+          const createdAt = time && typeof time.created === 'number' ? time.created : Date.now()
+
+          const parts: HistoryPart[] = []
+          for (const part of msg.parts) {
+            if (!isRecord(part)) continue
+            const partType = getString(part.type)
+            if (partType === 'text' && typeof part.text === 'string' && part.text.trim()) {
+              parts.push({ type: 'text', text: part.text })
+            } else if (partType === 'tool' && typeof part.tool === 'string') {
+              const state = isRecord(part.state) ? part.state : null
+              const status = state && typeof state.status === 'string' ? state.status : 'unknown'
+              const title = state && typeof state.title === 'string' ? state.title : part.tool
+              parts.push({ type: 'tool', tool: part.tool, title: String(title), status })
+            } else if (partType === 'subtask' && typeof part.description === 'string') {
+              const agent = typeof part.agent === 'string' ? part.agent : 'unknown'
+              parts.push({ type: 'subtask', description: part.description, agent })
+            }
+          }
+
+          return { role, createdAt, parts } satisfies HistoryMessage
+        })
+      } catch (error) {
+        logger.error('opencode', `session.messages failed: ${getErrorMessage(error)}`)
         if (isDomainError(error)) throw error
         throw new OpenCodeConnectionError(serverUrl, error instanceof Error ? error : undefined)
       }

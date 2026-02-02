@@ -1,5 +1,5 @@
 import { StateStore } from '../../domain/ports/StateStore.js';
-import { ChatState, createDefaultChatState, createDefaultUserSettings } from '../../domain/models.js';
+import { ChatState, PendingInteraction, createDefaultChatState, createDefaultUserSettings } from '../../domain/models.js';
 import { logger } from '../../shared/logger.js';
 import { LIMITS } from '../../app/policies/limits.js';
 import { promises as fs } from 'node:fs';
@@ -37,6 +37,22 @@ export function createJsonStateStore(dataDir?: string): StateStore {
     }
   }
 
+  function migratePendingInteraction(raw: Record<string, unknown>): PendingInteraction {
+    const pi = raw as Partial<PendingInteraction>
+    return {
+      interactionId: pi.interactionId ?? '',
+      sessionId: pi.sessionId ?? '',
+      requestId: pi.requestId ?? '',
+      type: pi.type ?? 'question',
+      expiresAt: pi.expiresAt ?? 0,
+      messageHandle: pi.messageHandle,
+      questions: pi.questions,
+      collectedAnswers: pi.collectedAnswers,
+      currentQuestionIndex: pi.currentQuestionIndex,
+      phase: pi.phase,
+    }
+  }
+
   function migrateState(raw: Partial<ChatState>): ChatState {
     const defaults = createDefaultChatState()
     const state: ChatState = {
@@ -44,9 +60,15 @@ export function createJsonStateStore(dataDir?: string): StateStore {
       ...raw,
       settings: raw.settings ? { ...createDefaultUserSettings(), ...raw.settings } : defaults.settings,
       awaitingInput: raw.awaitingInput ?? null,
+      awaitingInteractionId: raw.awaitingInteractionId ?? null,
     }
     if (state.settings.summaryThreshold < LIMITS.SUMMARY_MIN_TRIGGER) {
       state.settings.summaryThreshold = LIMITS.SUMMARY_MIN_TRIGGER
+    }
+    if (state.pendingInteractions) {
+      state.pendingInteractions = state.pendingInteractions.map(
+        pi => migratePendingInteraction(pi as unknown as Record<string, unknown>)
+      )
     }
     return state
   }
