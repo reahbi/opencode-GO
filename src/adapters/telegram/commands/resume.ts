@@ -1,7 +1,9 @@
+import { InlineKeyboard } from 'grammy'
 import type { Context } from 'grammy'
 
 type SessionCommands = {
   resumeSession(chatId: number, sessionIndex: number): Promise<void>
+  resumeSessionForHistory(chatId: number, sessionIndex: number): Promise<{ sessionId: string; title: string } | null>
 }
 
 export function resumeCommand(sessionCommands: SessionCommands) {
@@ -14,6 +16,17 @@ export function resumeCommand(sessionCommands: SessionCommands) {
       await ctx.reply('Usage: /resume [number]\nUse /list to see available sessions.')
       return
     }
-    await sessionCommands.resumeSession(chatId, index)
+    const result = await sessionCommands.resumeSessionForHistory(chatId, index)
+    if (!result) return
+
+    const kb = new InlineKeyboard().text('📜 대화내역 받기', `hist:${result.sessionId}`)
+    await ctx.reply(`✅ 세션 재개됨: <b>${escapeHtml(result.title)}</b>`, {
+      parse_mode: 'HTML',
+      reply_markup: kb,
+    })
   }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

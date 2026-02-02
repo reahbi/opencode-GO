@@ -70,6 +70,21 @@ export function createChatOutputAdapter(bot: BotInstance): ChatOutputPort {
       return String(msg.message_id)
     },
 
+    async editInteraction(chatId: number, handle: OutputHandle, text: string, buttons: Button[]): Promise<void> {
+      const messageId = parseInt(handle, 10)
+      const keyboard = new InlineKeyboard()
+      for (const btn of buttons) {
+        keyboard.text(btn.label, btn.callbackData).row()
+      }
+      try {
+        await bot.api.editMessageText(chatId, messageId, text, { parse_mode: 'HTML', reply_markup: keyboard })
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : ''
+        if (errMsg.includes('message is not modified')) return
+        throw err
+      }
+    },
+
     async sendTypingAction(chatId: number): Promise<void> {
       await bot.api.sendChatAction(chatId, 'typing')
     }

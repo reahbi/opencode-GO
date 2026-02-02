@@ -8,6 +8,7 @@ import { newCommand } from './new.js'
 import { listCommand, buildSessionListText, buildSessionListKeyboard } from './list.js'
 import { resumeCommand } from './resume.js'
 import { abortCommand } from './abort.js'
+import { historyCommand } from './history.js'
 import { helpCommand } from './help.js'
 import { startCommand } from './start.js'
 import { statusCommand } from './status.js'
@@ -67,6 +68,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   bot.command('list', listCommand(sessionCommands))
   bot.command('resume', resumeCommand(sessionCommands))
   bot.command('abort', abortCommand(sessionCommands))
+  bot.command('history', historyCommand(sessionCommands, output))
   bot.command('help', helpCommand(deps.instanceName))
   bot.command('start', startCommand(state, openCode, deps.instanceName))
   bot.command('status', statusCommand(state, openCode, deps.instanceName))
@@ -75,19 +77,39 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   // Handle callback queries (permission/question buttons)
   bot.on('callback_query:data', async (ctx) => {
-    const chatId = ctx.chat?.id
-    if (!chatId) return
     const data = ctx.callbackQuery.data
-    const parsed = parseCallback(data)
+    const chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id
+    await ctx.answerCallbackQuery().catch(() => {})
 
-    await ctx.answerCallbackQuery()
+    if (!chatId) {
+      logger.warn('bot', `Callback without chat: ${data}`)
+      return
+    }
+
+    logger.info('bot', `Callback received: ${data}`)
+    const parsed = parseCallback(data)
 
     switch (parsed.type) {
       case 'permission':
         await interactiveFlow.handlePermissionCallback(chatId, parsed.interactionId, parsed.response)
         break
-      case 'question':
-        await interactiveFlow.handleQuestionCallback(chatId, parsed.interactionId, parsed.answerIndex)
+      case 'question_answer':
+        await interactiveFlow.handleQuestionAnswer(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex)
+        break
+      case 'question_skip':
+        await interactiveFlow.handleQuestionSkip(chatId, parsed.interactionId, parsed.questionIndex)
+        break
+      case 'question_type':
+        await interactiveFlow.handleQuestionType(chatId, parsed.interactionId, parsed.questionIndex)
+        break
+      case 'question_back':
+        await interactiveFlow.handleQuestionBack(chatId, parsed.interactionId, parsed.questionIndex)
+        break
+      case 'question_confirm':
+        await interactiveFlow.handleQuestionConfirm(chatId, parsed.interactionId)
+        break
+      case 'question_reset':
+        await interactiveFlow.handleQuestionReset(chatId, parsed.interactionId)
         break
       case 'agent': {
         const chatState = await state.getChatState(chatId)
@@ -132,6 +154,29 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             }
             break
           }
+          case 'histformat':
+            chatState.settings.historyFormat = chatState.settings.historyFormat === 'html' ? 'md' : 'html'
+            await state.saveChatState(chatId, chatState)
+            await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
+            break
+          case 'histlimit':
+            chatState.awaitingInput = 'histlimit'
+            await state.saveChatState(chatId, chatState)
+            await ctx.editMessageText(
+              [
+                '📜 <b>History Export — Message Limit</b>',
+                '',
+                'How many messages to include when exporting session history?',
+                '',
+                `Current: <b>${chatState.settings.historyLimit ? `Last ${chatState.settings.historyLimit} messages` : 'All messages (full history)'}</b>`,
+                '',
+                'Reply with:',
+                '  • A number (e.g. <code>20</code>, <code>50</code>) — export only the most recent N messages',
+                '  • <code>0</code> or <code>all</code> — export the entire conversation',
+              ].join('\n'),
+              { parse_mode: 'HTML' }
+            )
+            break
           case 'back':
             await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
             break
@@ -158,12 +203,33 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         try {
           const title = await sessionCommands.resumeSessionById(chatId, parsed.sessionId)
           if (title) {
-            await ctx.editMessageText(`✅ Resumed: <b>${escapeHtml(title)}</b>`, { parse_mode: 'HTML' })
+            const histKb = new InlineKeyboard().text('📜 대화내역 받기', `hist:${parsed.sessionId}`)
+            await ctx.editMessageText(`✅ Resumed: <b>${escapeHtml(title)}</b>`, {
+              parse_mode: 'HTML',
+              reply_markup: histKb,
+            })
           } else {
             await ctx.editMessageText('Session not found.', { parse_mode: 'HTML' })
           }
         } catch {
           await ctx.editMessageText('Failed to resume session.', { parse_mode: 'HTML' })
+        }
+        break
+      }
+      case 'history': {
+        try {
+          await ctx.editMessageText('📝 대화내역을 생성 중...')
+          const histResult = await sessionCommands.exportSessionHistory(chatId, parsed.sessionId)
+          if (!histResult) {
+            await output.sendText(chatId, '대화내역이 없거나 세션을 찾을 수 없습니다.')
+            break
+          }
+          const buf = Buffer.from(histResult.content, 'utf-8')
+          const safeTitle = histResult.title.replace(/[^a-zA-Z0-9가-힣_-]/g, '_').slice(0, 40)
+          const ext = histResult.format
+          await output.sendFile(chatId, buf, `${safeTitle}.${ext}`, `📜 ${histResult.title}`)
+        } catch {
+          await output.sendText(chatId, '대화내역 생성에 실패했습니다.')
         }
         break
       }
@@ -192,6 +258,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     if (text.startsWith('/')) return
 
     const chatState = await state.getChatState(chatId)
+    if (chatState.awaitingInput === 'question') {
+      chatState.awaitingInput = null
+      await state.saveChatState(chatId, chatState)
+      await interactiveFlow.handleFreeTextAnswer(chatId, text)
+      return
+    }
     if (chatState.awaitingInput === 'threshold') {
       chatState.awaitingInput = null
       const num = parseInt(text.trim(), 10)
@@ -205,11 +277,30 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       await output.sendText(chatId, `✅ Summary threshold set to ${num.toLocaleString()} chars.`)
       return
     }
-
-    try {
-      await queue.enqueue(chatId, () => promptFlow.handleUserMessage(chatId, text))
-    } catch (err) {
-      logger.error('bot', `Unhandled message error: ${err instanceof Error ? err.message : err}`)
+    if (chatState.awaitingInput === 'histlimit') {
+      chatState.awaitingInput = null
+      const trimmed = text.trim().toLowerCase()
+      if (trimmed === 'all' || trimmed === '0') {
+        chatState.settings.historyLimit = null
+        await state.saveChatState(chatId, chatState)
+        await output.sendText(chatId, '✅ History export: all messages (full history)')
+        return
+      }
+      const num = parseInt(trimmed, 10)
+      if (!Number.isFinite(num) || num < 1 || num > 10000) {
+        await state.saveChatState(chatId, chatState)
+        await output.sendText(chatId, 'Invalid value. Enter a number between 1 and 10,000, or type <code>all</code> / <code>0</code>.', 'HTML')
+        return
+      }
+      chatState.settings.historyLimit = num
+      await state.saveChatState(chatId, chatState)
+      await output.sendText(chatId, `✅ History export: last ${num} messages only`)
+      return
     }
+
+    // Fire-and-forget: DO NOT await — Grammy processes updates sequentially,
+    // so awaiting a long SSE stream blocks all subsequent updates (callback_query etc.)
+    void queue.enqueue(chatId, () => promptFlow.handleUserMessage(chatId, text))
+      .catch(err => logger.error('bot', `Prompt job failed: ${err instanceof Error ? err.message : err}`))
   })
 }

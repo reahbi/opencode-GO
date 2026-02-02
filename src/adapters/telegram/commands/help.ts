@@ -18,6 +18,7 @@ export function helpCommand(instanceName?: string) {
 
 <b>General</b>
 /status — Current status
+/settings — Bot settings
 /help — This message
 
 Send any text to chat with OpenCode.`
