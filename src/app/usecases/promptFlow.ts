@@ -2,7 +2,7 @@ import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { OutputHandle, UserSettings } from '../../domain/models.js'
-import type { OpenCodeEvent } from '../../domain/events.js'
+import type { OpenCodeEvent, PermissionAsked, QuestionAsked } from '../../domain/events.js'
 import type { SummaryService } from '../../adapters/opencode/summaryService.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/formatResponse.js'
@@ -14,6 +14,8 @@ interface PromptFlowDeps {
   state: StateStore
   output: ChatOutputPort
   summary: SummaryService
+  onPermissionAsked?: (chatId: number, event: PermissionAsked) => Promise<void>
+  onQuestionAsked?: (chatId: number, event: QuestionAsked) => Promise<void>
 }
 
 const SSE_TIMEOUT_MS = 24 * 60 * 60 * 1000
@@ -50,7 +52,7 @@ export function createPromptFlow(deps: PromptFlowDeps) {
         break
       }
       case 'file': {
-        const preview = escapeHtml(structuralExtract(content).slice(0, 2000))
+        const preview = structuralExtract(content).slice(0, 2000)
         await deps.output.editText(
           chatId, handle,
           preview + '\n\n<i>... (full response attached)</i>',
@@ -78,7 +80,7 @@ export function createPromptFlow(deps: PromptFlowDeps) {
       logger.warn('session', `Delivery failed (${err instanceof Error ? err.message.slice(0, 80) : 'unknown'}), forcing file delivery`)
     }
 
-    const preview = escapeHtml(structuralExtract(content).slice(0, 2000))
+    const preview = structuralExtract(content).slice(0, 2000)
     await deps.output.editText(chatId, handle, preview + '\n\n<i>... (full response attached)</i>', 'HTML')
     await deps.output.sendFile(chatId, Buffer.from(content, 'utf-8'), 'response.md', 'Full response attached.')
   }
@@ -90,13 +92,24 @@ export function createPromptFlow(deps: PromptFlowDeps) {
     settings: UserSettings,
     directory: string,
   ): Promise<void> {
+    if (settings.outputMode === 'raw') {
+      const escaped = escapeHtml(content)
+      if (escaped.length <= 3500) {
+        await deps.output.editText(chatId, handle, escaped, 'HTML')
+      } else {
+        const preview = escaped.slice(0, 2000) + '\n\n<i>... (full response attached)</i>'
+        await deps.output.editText(chatId, handle, preview, 'HTML')
+        await deps.output.sendFile(chatId, Buffer.from(content, 'utf-8'), 'response.md', 'Full response attached.')
+      }
+      return
+    }
+
     if (settings.summaryMode && settings.summaryModel && content.length > settings.summaryThreshold) {
       try {
         const rawSummary = await deps.summary.summarize(
           directory,
           content,
           settings.summaryModel,
-          settings.summaryThreshold,
         )
         const safeSummary = sanitizeTelegramHtml(rawSummary)
         try {
@@ -125,11 +138,11 @@ export function createPromptFlow(deps: PromptFlowDeps) {
   async function handleUserMessage(chatId: number, text: string): Promise<void> {
     const state = await deps.state.getChatState(chatId)
     if (!state.activeProjectDirectory) {
-      await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
+      await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
       return
     }
     if (!state.activeSessionId) {
-      await deps.output.sendText(chatId, 'No active session. Use /new to start one.')
+      await deps.output.sendText(chatId, '활성 세션이 없습니다. /new 로 새 세션을 시작하세요.')
       return
     }
 
@@ -201,6 +214,24 @@ export function createPromptFlow(deps: PromptFlowDeps) {
           logger.debug('session', `Received session.error for ${sessionId}: ${event.data.error}`)
           lastContent = `Error: ${event.data.error}`
           abortController.abort()
+          break
+        }
+        case 'permission.asked': {
+          if (event.data.sessionId !== sessionId) return
+          try {
+            await deps.onPermissionAsked?.(chatId, event.data)
+          } catch (e) {
+            logger.error('session', `Permission handler error: ${e}`)
+          }
+          break
+        }
+        case 'question.asked': {
+          if (event.data.sessionId !== sessionId) return
+          try {
+            await deps.onQuestionAsked?.(chatId, event.data)
+          } catch (e) {
+            logger.error('session', `Question handler error: ${e}`)
+          }
           break
         }
         default:

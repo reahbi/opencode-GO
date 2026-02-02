@@ -77,23 +77,24 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handlePermissionCallback(
-    chatId: number,
-    interactionId: string,
-    response: 'once' | 'always' | 'reject'
-  ): Promise<void> {
-    try {
-      const chatState = await deps.state.getChatState(chatId)
+   async function handlePermissionCallback(
+     chatId: number,
+     interactionId: string,
+     response: 'once' | 'always' | 'reject'
+   ): Promise<void> {
+     try {
+       await cleanupExpired(chatId)
+       const chatState = await deps.state.getChatState(chatId)
       const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
 
       if (!interaction || Date.now() > interaction.expiresAt) {
-        await deps.output.sendText(chatId, 'This interaction has expired.')
+        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
         return
       }
 
       const directory = chatState.activeProjectDirectory
       if (!directory) {
-        await deps.output.sendText(chatId, '❌ No active project directory')
+        await deps.output.sendText(chatId, '❌ 활성 프로젝트 디렉토리가 없습니다')
         return
       }
 
@@ -111,23 +112,24 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleQuestionCallback(
-    chatId: number,
-    interactionId: string,
-    answerIndex: number | null
-  ): Promise<void> {
-    try {
-      const chatState = await deps.state.getChatState(chatId)
+   async function handleQuestionCallback(
+     chatId: number,
+     interactionId: string,
+     answerIndex: number | null
+   ): Promise<void> {
+     try {
+       await cleanupExpired(chatId)
+       const chatState = await deps.state.getChatState(chatId)
       const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
 
       if (!interaction || Date.now() > interaction.expiresAt) {
-        await deps.output.sendText(chatId, 'This interaction has expired.')
+        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
         return
       }
 
       const directory = chatState.activeProjectDirectory
       if (!directory) {
-        await deps.output.sendText(chatId, '❌ No active project directory')
+        await deps.output.sendText(chatId, '❌ 활성 프로젝트 디렉토리가 없습니다')
         return
       }
 

@@ -4,6 +4,8 @@ export type ParsedCallback =
   | { type: 'agent'; agentName: string }
   | { type: 'settings'; action: string; value?: string }
   | { type: 'selectmodel'; value: string }
+  | { type: 'listpage'; page: number }
+  | { type: 'listsel'; sessionId: string }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -39,6 +41,18 @@ export function parseCallback(data: string): ParsedCallback {
     const value = parts.slice(2).join(':') || undefined
     if (!action) return { type: 'unknown', raw: data }
     return { type: 'settings', action, value }
+  }
+
+  if (data.startsWith('lp:')) {
+    const page = parseInt(data.slice(3), 10)
+    if (!Number.isFinite(page) || page < 1) return { type: 'unknown', raw: data }
+    return { type: 'listpage', page }
+  }
+
+  if (data.startsWith('ls:')) {
+    const sessionId = data.slice(3)
+    if (!sessionId) return { type: 'unknown', raw: data }
+    return { type: 'listsel', sessionId }
   }
 
   if (data.startsWith('q:')) {

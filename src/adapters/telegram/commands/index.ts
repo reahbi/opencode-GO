@@ -5,10 +5,11 @@ import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
 import type { ChatQueue } from '../../../app/queue/chatQueue.js'
 import { newCommand } from './new.js'
-import { listCommand } from './list.js'
+import { listCommand, buildSessionListText, buildSessionListKeyboard } from './list.js'
 import { resumeCommand } from './resume.js'
 import { abortCommand } from './abort.js'
 import { helpCommand } from './help.js'
+import { startCommand } from './start.js'
 import { statusCommand } from './status.js'
 import { agentsCommand } from './agents.js'
 import { settingsCommand, settingsText, settingsKeyboard } from './settings.js'
@@ -18,7 +19,9 @@ import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
 import { createSummaryService } from '../../opencode/summaryService.js'
 import { parseCallback } from '../ui/callbacks.js'
 import type { ModelInfo } from '../../../domain/ports/OpenCodePort.js'
+import { escapeHtml } from '../../../shared/formatResponse.js'
 import { logger } from '../../../shared/logger.js'
+import { LIMITS } from '../../../app/policies/limits.js'
 
 const EXCLUDE_MODEL = /embed|tts|audio|image|live/i
 const OLD_MODEL = /1\.5-|20240|3-opus|3-sonnet-2024/i
@@ -41,6 +44,7 @@ interface RegisterCommandsDeps {
   state: StateStore
   output: ChatOutputPort
   queue: ChatQueue
+  instanceName?: string
 }
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
@@ -48,17 +52,24 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   const summary = createSummaryService(openCode)
   const sessionCommands = createSessionCommands({ openCode, state, output })
-  const promptFlow = createPromptFlow({ openCode, state, output, summary })
   const interactiveFlow = createInteractiveFlow({ openCode, state, output })
+  const promptFlow = createPromptFlow({
+    openCode,
+    state,
+    output,
+    summary,
+    onPermissionAsked: (cid, e) => interactiveFlow.handlePermissionEvent(cid, e),
+    onQuestionAsked: (cid, e) => interactiveFlow.handleQuestionEvent(cid, e),
+  })
 
   // Register commands
   bot.command('new', newCommand(sessionCommands))
   bot.command('list', listCommand(sessionCommands))
   bot.command('resume', resumeCommand(sessionCommands))
   bot.command('abort', abortCommand(sessionCommands))
-  bot.command('help', helpCommand())
-  bot.command('start', helpCommand())
-  bot.command('status', statusCommand(state, openCode))
+  bot.command('help', helpCommand(deps.instanceName))
+  bot.command('start', startCommand(state, openCode, deps.instanceName))
+  bot.command('status', statusCommand(state, openCode, deps.instanceName))
   bot.command('agents', agentsCommand(state, openCode))
   bot.command('settings', settingsCommand(state))
 
@@ -73,14 +84,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
     switch (parsed.type) {
       case 'permission':
-        await queue.enqueue(chatId, () =>
-          interactiveFlow.handlePermissionCallback(chatId, parsed.interactionId, parsed.response)
-        )
+        await interactiveFlow.handlePermissionCallback(chatId, parsed.interactionId, parsed.response)
         break
       case 'question':
-        await queue.enqueue(chatId, () =>
-          interactiveFlow.handleQuestionCallback(chatId, parsed.interactionId, parsed.answerIndex)
-        )
+        await interactiveFlow.handleQuestionCallback(chatId, parsed.interactionId, parsed.answerIndex)
         break
       case 'agent': {
         const chatState = await state.getChatState(chatId)
@@ -106,7 +113,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             chatState.awaitingInput = 'threshold'
             await state.saveChatState(chatId, chatState)
             await ctx.editMessageText(
-              `📏 Enter summary threshold in characters.\nResponses longer than this will be summarized.\n\nCurrent: ${chatState.settings.summaryThreshold.toLocaleString()} chars\nExamples: 2000, 4000, 8000, 15000`,
+              `📏 Enter summary trigger threshold in characters.\nResponses longer than this will be summarized.\n(Summary output is always compact ~${LIMITS.SUMMARY_OUTPUT_TARGET} chars)\n\nCurrent: ${chatState.settings.summaryThreshold.toLocaleString()} chars\nExamples: 3000, 6000, 10000`,
               { parse_mode: 'HTML' }
             )
             break
@@ -128,6 +135,35 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'back':
             await ctx.editMessageText(settingsText(chatState.settings), { parse_mode: 'HTML', reply_markup: settingsKeyboard() })
             break
+        }
+        break
+      }
+      case 'listpage': {
+        try {
+          const pageData = await sessionCommands.getSessionPage(chatId, parsed.page)
+          if (!pageData || pageData.items.length === 0) {
+            await ctx.editMessageText('No sessions found.', { parse_mode: 'HTML' })
+          } else {
+            await ctx.editMessageText(buildSessionListText(pageData), {
+              parse_mode: 'HTML',
+              reply_markup: buildSessionListKeyboard(pageData),
+            })
+          }
+        } catch {
+          await ctx.editMessageText('Failed to load sessions.', { parse_mode: 'HTML' })
+        }
+        break
+      }
+      case 'listsel': {
+        try {
+          const title = await sessionCommands.resumeSessionById(chatId, parsed.sessionId)
+          if (title) {
+            await ctx.editMessageText(`✅ Resumed: <b>${escapeHtml(title)}</b>`, { parse_mode: 'HTML' })
+          } else {
+            await ctx.editMessageText('Session not found.', { parse_mode: 'HTML' })
+          }
+        } catch {
+          await ctx.editMessageText('Failed to resume session.', { parse_mode: 'HTML' })
         }
         break
       }
@@ -159,9 +195,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     if (chatState.awaitingInput === 'threshold') {
       chatState.awaitingInput = null
       const num = parseInt(text.trim(), 10)
-      if (!Number.isFinite(num) || num < 500 || num > 50000) {
+      if (!Number.isFinite(num) || num < LIMITS.SUMMARY_MIN_TRIGGER || num > 50000) {
         await state.saveChatState(chatId, chatState)
-        await output.sendText(chatId, 'Invalid value. Enter a number between 500 and 50000, or send /settings to go back.')
+        await output.sendText(chatId, `Invalid value. Enter a number between ${LIMITS.SUMMARY_MIN_TRIGGER.toLocaleString()} and 50,000, or send /settings to go back.`)
         return
       }
       chatState.settings.summaryThreshold = num

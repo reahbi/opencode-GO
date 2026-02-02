@@ -1,6 +1,11 @@
 import type { Context } from 'grammy'
 
-const HELP_TEXT = `<b>OpenCaddy Commands</b>
+export function helpCommand(instanceName?: string) {
+  const header = instanceName
+    ? `<b>OpenCaddy — ${instanceName}</b>`
+    : `<b>OpenCaddy Commands</b>`
+
+  const helpText = `${header}
 
 <b>Session</b>
 /new [title] — Start new session
@@ -17,8 +22,7 @@ const HELP_TEXT = `<b>OpenCaddy Commands</b>
 
 Send any text to chat with OpenCode.`
 
-export function helpCommand() {
   return async (ctx: Context) => {
-    await ctx.reply(HELP_TEXT, { parse_mode: 'HTML' })
+    await ctx.reply(helpText, { parse_mode: 'HTML' })
   }
 }

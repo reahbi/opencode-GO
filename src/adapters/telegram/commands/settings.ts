@@ -17,7 +17,7 @@ function settingsText(s: UserSettings): string {
     `📝 Output: ${format}`,
     `📊 AI Summary: ${summary}`,
     `🤖 Model: ${model}`,
-    `📏 Threshold: ${threshold} chars`,
+    `📏 Trigger: ${threshold}+ chars`,
   ].join('\n')
 }
 
