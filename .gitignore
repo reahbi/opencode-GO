@@ -2,6 +2,11 @@ node_modules/
 .env
 data/projects.json
 data/state.json
+data/instances/
 dist/
 *.log
 .DS_Store
+ecosystem.config.cjs
+
+# Sisyphus planning artifacts
+.sisyphus/
