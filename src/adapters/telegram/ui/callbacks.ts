@@ -1,11 +1,17 @@
 export type ParsedCallback =
   | { type: 'permission'; interactionId: string; response: 'once' | 'always' | 'reject' }
-  | { type: 'question'; interactionId: string; answerIndex: number | null }
+  | { type: 'question_answer'; interactionId: string; questionIndex: number; answerIndex: number }
+  | { type: 'question_skip'; interactionId: string; questionIndex: number }
+  | { type: 'question_type'; interactionId: string; questionIndex: number }
+  | { type: 'question_back'; interactionId: string; questionIndex: number }
+  | { type: 'question_confirm'; interactionId: string }
+  | { type: 'question_reset'; interactionId: string }
   | { type: 'agent'; agentName: string }
   | { type: 'settings'; action: string; value?: string }
   | { type: 'selectmodel'; value: string }
   | { type: 'listpage'; page: number }
   | { type: 'listsel'; sessionId: string }
+  | { type: 'history'; sessionId: string }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -55,21 +61,57 @@ export function parseCallback(data: string): ParsedCallback {
     return { type: 'listsel', sessionId }
   }
 
+  if (data.startsWith('hist:')) {
+    const sessionId = data.slice(5)
+    if (!sessionId) return { type: 'unknown', raw: data }
+    return { type: 'history', sessionId }
+  }
+
+  // Question callbacks: q:{interactionId}:{action}
+  // Formats:
+  //   q:{id}:{qIdx}:{answerIdx}  — select option answer
+  //   q:{id}:{qIdx}:skip         — skip question
+  //   q:{id}:{qIdx}:type         — type custom answer
+  //   q:{id}:{qIdx}:back         — go to previous question
+  //   q:{id}:ok                  — confirm/submit all
+  //   q:{id}:redo                — reset all answers
   if (data.startsWith('q:')) {
     const parts = data.split(':')
     const interactionId = parts[1]
-    const answerPart = parts[2]
-    if (!interactionId || answerPart === undefined) {
+    if (!interactionId) return { type: 'unknown', raw: data }
+
+    if (parts[2] === 'ok' && parts.length === 3) {
+      return { type: 'question_confirm', interactionId }
+    }
+
+    if (parts[2] === 'redo' && parts.length === 3) {
+      return { type: 'question_reset', interactionId }
+    }
+
+    const questionIndex = parseInt(parts[2], 10)
+    if (!Number.isFinite(questionIndex) || questionIndex < 0) {
       return { type: 'unknown', raw: data }
     }
-    if (answerPart === 'skip') {
-      return { type: 'question', interactionId, answerIndex: null }
+
+    const action = parts[3]
+    if (action === undefined) return { type: 'unknown', raw: data }
+
+    if (action === 'skip') {
+      return { type: 'question_skip', interactionId, questionIndex }
     }
-    const answerIndex = parseInt(answerPart, 10)
-    if (!Number.isFinite(answerIndex) || answerIndex < 0) {
-      return { type: 'unknown', raw: data }
+    if (action === 'type') {
+      return { type: 'question_type', interactionId, questionIndex }
     }
-    return { type: 'question', interactionId, answerIndex }
+    if (action === 'back') {
+      return { type: 'question_back', interactionId, questionIndex }
+    }
+
+    const answerIndex = parseInt(action, 10)
+    if (Number.isFinite(answerIndex) && answerIndex >= 0) {
+      return { type: 'question_answer', interactionId, questionIndex, answerIndex }
+    }
+
+    return { type: 'unknown', raw: data }
   }
 
   return { type: 'unknown', raw: data }

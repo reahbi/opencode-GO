@@ -23,14 +23,4 @@ export function buildPermissionKeyboard(interactionId: string): InlineKeyboard {
     .text('Deny', `perm:${interactionId}:reject`)
 }
 
-export function buildQuestionKeyboard(interactionId: string, options: string[]): InlineKeyboard {
-  const keyboard = new InlineKeyboard()
-  
-  for (let i = 0; i < options.length; i++) {
-    keyboard.text(options[i], `q:${interactionId}:${i}`).row()
-  }
-  
-  keyboard.text('Skip', `q:${interactionId}:skip`)
-  
-  return keyboard
-}
+
