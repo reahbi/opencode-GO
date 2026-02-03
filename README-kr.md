@@ -319,6 +319,11 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `/resume [번호]` | 세션 재개 |
 | `/abort` | 현재 작업 중단 |
 | `/history` | 세션 대화 이력 내보내기 |
+| `/queue [메시지]` | AI 작업 중일 때 메시지 큐에 추가 |
+| `/clearqueue` | 큐 비우기 |
+| `/showqueue` | 큐 상태 보기 |
+| `/undo` | 마지막 AI 응답 되돌리기 |
+| `/redo` | 되돌린 응답 다시 적용 |
 | `/status` | 현재 상태 확인 |
 | `/agents` | AI 에이전트/모델 선택 |
 | `/settings` | 요약 모드, Review Mode, 출력 형식 등 설정 |

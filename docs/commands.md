@@ -42,6 +42,31 @@ This document provides detailed information on all available commands and how to
 - **Description**: Exports the current active session's conversation history as `.md` or `.html` file. Configure export format and message limit in `/settings`.
 - **Usage**: `/history`
 
+## Queue & Undo Commands
+
+### /queue [message]
+- **Description**: Queues a message to be sent after the AI finishes its current task. Useful when the AI is busy processing.
+- **Usage**: `/queue [message]`
+- **Example**: `/queue Also fix the unit tests`
+
+### /clearqueue
+- **Description**: Clears all queued messages for the current chat.
+- **Usage**: `/clearqueue`
+
+### /showqueue
+- **Description**: Shows the current queue status and pending messages.
+- **Usage**: `/showqueue`
+
+### /undo
+- **Description**: Reverts the last AI response. The AI's changes to files will be undone.
+- **Usage**: `/undo`
+- **Note**: Only the most recent response can be undone. Use `/redo` to restore.
+
+### /redo
+- **Description**: Restores the previously undone AI response.
+- **Usage**: `/redo`
+- **Note**: Only available after using `/undo`.
+
 ### /help
 - **Description**: Shows the complete list of available commands with brief descriptions.
 - **Usage**: `/help`

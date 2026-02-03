@@ -318,6 +318,11 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute pat
 | `/resume [number]` | Resume a session |
 | `/abort` | Stop current operation |
 | `/history` | Export session history |
+| `/queue [msg]` | Queue message while AI is busy |
+| `/clearqueue` | Clear queued messages |
+| `/showqueue` | Show queue status |
+| `/undo` | Undo last AI response |
+| `/redo` | Redo undone response |
 | `/status` | Check current status |
 | `/agents` | Select AI agent/model |
 | `/settings` | Summary mode, Review Mode, output format, etc. |
