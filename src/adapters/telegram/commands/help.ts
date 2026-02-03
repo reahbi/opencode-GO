@@ -2,8 +2,8 @@ import type { Context } from 'grammy'
 
 export function helpCommand(instanceName?: string) {
   const header = instanceName
-    ? `<b>OpenCaddy — ${instanceName}</b>`
-    : `<b>OpenCaddy Commands</b>`
+    ? `<b>OpenCode-Go — ${instanceName}</b>`
+    : `<b>OpenCode-Go Commands</b>`
 
   const helpText = `${header}
 
@@ -17,6 +17,10 @@ export function helpCommand(instanceName?: string) {
 <b>Agent</b>
 /agents — Select AI agent
 
+<b>Settings</b>
+/settings — Bot settings (summary, output, etc.)
+/groupsettings — Group settings (debate rounds, bots)
+
 <b>Multi-Bot</b>
 /debate [topic] — Start debate between bots
 /review [target] — Request code review
@@ -25,8 +29,8 @@ export function helpCommand(instanceName?: string) {
 /cancel — Cancel addbot wizard
 
 <b>General</b>
+/start — Welcome & status overview
 /status — Current status
-/settings — Bot settings
 /help — This message
 
 Send any text to chat with OpenCode.`

@@ -14,16 +14,16 @@ export function historyCommand(sessionCommands: SessionCommands, output: ChatOut
     const chatId = ctx.chat?.id
     if (!chatId) return
 
-    await output.sendText(chatId, '📝 대화내역을 생성 중...')
+    await output.sendText(chatId, '📝 Generating history...')
 
     const result = await sessionCommands.exportSessionHistory(chatId)
     if (!result) {
-      await output.sendText(chatId, '대화내역이 없거나 활성 세션이 없습니다.')
+      await output.sendText(chatId, 'No history or no active session.')
       return
     }
 
     const buf = Buffer.from(result.content, 'utf-8')
-    const safeTitle = result.title.replace(/[^a-zA-Z0-9가-힣_-]/g, '_').slice(0, 40)
+    const safeTitle = result.title.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
     const ext = result.format
     await output.sendFile(chatId, buf, `${safeTitle}.${ext}`, `📜 ${result.title}`)
   }

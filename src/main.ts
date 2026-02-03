@@ -21,7 +21,7 @@ async function main() {
     setInstancePrefix(config.instanceName)
   }
 
-  logger.info('bot', `Starting OpenCaddy v2.1 [${config.instanceName}]...`)
+  logger.info('bot', `Starting OpenCode-Go v2.1 [${config.instanceName}]...`)
 
   const bot = createBot(config.botToken)
   const output = createChatOutputAdapter(bot)
@@ -173,21 +173,22 @@ async function main() {
   process.on('SIGTERM', () => void shutdown('SIGTERM'))
 
   await bot.api.setMyCommands([
-    { command: 'new', description: '새 AI 세션 생성' },
-    { command: 'list', description: '세션 목록 보기' },
-    { command: 'resume', description: '세션 재개' },
-    { command: 'abort', description: '현재 작업 중단' },
-    { command: 'history', description: '세션 대화 이력 내보내기' },
-    { command: 'status', description: '현재 상태 확인' },
-    { command: 'agents', description: 'AI 에이전트/모델 선택' },
-    { command: 'settings', description: '요약, 출력 형식 등 설정' },
-    { command: 'groupsettings', description: '그룹 공유 설정 (토론, 봇 현황)' },
-    { command: 'help', description: '도움말' },
+    { command: 'new', description: 'Create new AI session' },
+    { command: 'list', description: 'View session list' },
+    { command: 'resume', description: 'Resume session' },
+    { command: 'abort', description: 'Abort current task' },
+    { command: 'history', description: 'Export session history' },
+    { command: 'status', description: 'Check current status' },
+    { command: 'agents', description: 'Select AI agent/model' },
+    { command: 'settings', description: 'Summary, output format, etc.' },
+    { command: 'groupsettings', description: 'Group settings (debate, bots)' },
+    { command: 'bots', description: 'List registered bots' },
+    { command: 'help', description: 'Help' },
   ])
 
   await bot.start({
     drop_pending_updates: true,
-    onStart: () => logger.info('bot', `OpenCaddy is running! (@${botUsername})`),
+    onStart: () => logger.info('bot', `OpenCode-Go is running! (@${botUsername})`),
   })
 }
 

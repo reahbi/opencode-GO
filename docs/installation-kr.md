@@ -2,14 +2,14 @@
 
 ## For Humans
 
-Paste this into your AI agent (OpenCode, Claude Code, etc.):
+AI 에이전트(OpenCode, Claude Code 등)에 다음을 붙여넣으세요:
 
 ```
-Install and configure OpenCode-Go:
+OpenCode-Go를 설치하고 설정해줘:
 https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
 ```
 
-Or install manually:
+또는 직접 설치:
 ```bash
 git clone https://github.com/reahbi/opencode-telegram.git
 cd opencode-telegram
@@ -36,7 +36,7 @@ bun --version
 ```
 
 If Bun is not installed, tell the user:
-> Bun is required. To install: Run `curl -fsSL https://bun.sh/install | bash` and restart your terminal.
+> Bun이 필요합니다. 설치하려면: `curl -fsSL https://bun.sh/install | bash` 실행 후 터미널을 재시작하세요.
 
 Then install dependencies:
 ```bash
@@ -46,26 +46,26 @@ bun install
 ### Step 1: Ask for BOT_TOKEN
 
 Ask the user:
-> Do you have a Telegram bot token?
+> Telegram 봇 토큰이 있나요?
 >
-> A bot token looks like `123456:ABC-DEF...`.
-> You can get one by creating a bot with @BotFather.
+> 봇 토큰은 `123456:ABC-DEF...` 형태의 문자열입니다.
+> @BotFather에서 봇을 만들면 발급받을 수 있어요.
 >
-> - If you have one, please share it
-> - If not, just say "no"
+> - 있으면 토큰을 알려주세요
+> - 없으면 "없어"라고 하세요
 
 **If user doesn't have one**, guide them:
-> Search for @BotFather in Telegram and start a conversation.
-> 1. Send `/newbot`
-> 2. Enter a bot name (e.g., My OpenCode-Go)
-> 3. Enter a bot username (e.g., my_opencode_go_bot) — must end with `_bot`
-> 4. Copy the token you receive and share it here
+> 텔레그램에서 @BotFather 를 검색해서 대화를 시작하세요.
+> 1. `/newbot` 전송
+> 2. 봇 이름 입력 (예: My OpenCode-Go)
+> 3. 봇 유저네임 입력 (예: my_opencode_go_bot) — 반드시 `_bot`으로 끝나야 합니다
+> 4. 생성 완료 후 토큰을 복사해서 알려주세요
 
 **When user provides the token**, verify it:
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getMe"
 ```
-- If response contains `"ok":true`, tell the user: `✓ Bot verified: @<username>`
+- If response contains `"ok":true`, tell the user: `✓ 봇 확인됨: @<username>`
 - If verification fails, tell the user the token seems invalid and ask them to check again.
 
 Store the token value as `BOT_TOKEN`.
@@ -73,17 +73,17 @@ Store the token value as `BOT_TOKEN`.
 ### Step 2: Ask for ALLOWED_USER_IDS
 
 Ask the user:
-> Do you know your Telegram User ID?
+> 본인의 Telegram User ID를 알고 계신가요?
 >
-> It's a numeric ID (e.g., `7702469661`).
-> This is used to restrict who can use the bot.
+> 숫자로 된 고유 ID입니다 (예: `7702469661`).
+> 봇을 사용할 수 있는 사람을 제한하는 데 사용됩니다.
 >
-> - If you know it, please share it
-> - If not, just say "no"
+> - 알면 알려주세요
+> - 모르면 "몰라"라고 하세요
 
 **If user doesn't know**, guide them:
-> Send any message to @userinfobot in Telegram — it will reply with your numeric ID.
-> Let me know once you have it.
+> 텔레그램에서 @userinfobot 에게 아무 메시지나 보내면 숫자 ID를 알려줍니다.
+> 확인 후 알려주세요.
 
 **When user provides the ID**, validate it is a number. If user provides multiple IDs separated by commas, that's fine too.
 
@@ -92,17 +92,17 @@ Store the value as `ALLOWED_USER_IDS`.
 ### Step 3: Ask about server password
 
 Ask the user:
-> Would you like to set a password for the OpenCode server?
+> OpenCode 서버에 비밀번호를 설정하시겠어요?
 >
-> A password prevents unauthorized access to your server.
-> If you're only using it locally, you can skip this.
+> 비밀번호를 설정하면 외부에서 서버에 접근하는 걸 막을 수 있습니다.
+> 로컬에서만 쓴다면 없어도 괜찮습니다.
 >
-> - To set one: Enter your desired password
-> - To skip: Say "no" or "skip"
+> - 설정하려면: 원하는 비밀번호를 입력하세요
+> - 필요 없으면: "없어" 또는 "스킵"
 
 **If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD` and tell the user:
-> ✓ Password will be set.
-> You'll need to use the same password when starting `opencode serve`:
+> ✓ 비밀번호가 설정됩니다.
+> `opencode serve` 시작 시에도 같은 비밀번호를 사용해야 합니다:
 > ```
 > OPENCODE_SERVER_PASSWORD=<password> opencode serve
 > ```
@@ -134,17 +134,17 @@ curl -s http://127.0.0.1:4096/project
 
 The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first). Present the list to the user:
 
-> Here are the projects used with OpenCode:
+> OpenCode에서 사용한 프로젝트 목록입니다:
 >
 > 1. /home/user/my-app
 > 2. /home/user/another-project
 >
-> Select a number or enter a different path directly.
+> 번호로 선택하거나 다른 경로를 직접 입력하세요.
 
 **If server was unreachable** — ask directly:
-> What's the path to the project OpenCode should work on?
+> OpenCode가 작업할 프로젝트의 경로를 알려주세요.
 >
-> Please enter an absolute path (e.g., `/home/user/my-project`).
+> 절대 경로로 입력해주세요 (예: `/home/user/my-project`).
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
@@ -181,15 +181,15 @@ bun run start
 
 If the bot starts successfully (you'll see `OpenCode-Go is running!` in the output), tell the user:
 
-> ✓ OpenCode-Go is running!
+> ✓ OpenCode-Go가 실행 중입니다!
 >
-> Send `/start` to your bot on Telegram.
-> If the bot responds with status information, installation is complete.
+> 텔레그램에서 봇에게 `/start` 를 보내보세요.
+> 봇이 상태 정보와 함께 응답하면 설치가 완료된 것입니다.
 >
-> Usage:
-> - `/new` — Start a new AI session
-> - Send a message — it goes straight to the AI
-> - `/help` — View all commands
+> 사용법:
+> - `/new` — 새 AI 세션 시작
+> - 메시지를 보내면 AI에게 전달됩니다
+> - `/help` — 전체 명령어 보기
 
 ### Troubleshooting
 

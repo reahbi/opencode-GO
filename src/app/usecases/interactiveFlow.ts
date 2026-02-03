@@ -5,6 +5,7 @@ import type { Button, PendingInteraction } from '../../domain/models.js'
 import type { PermissionAsked, QuestionAsked } from '../../domain/events.js'
 import { LIMITS } from '../policies/limits.js'
 import { logger } from '../../shared/logger.js'
+import { escapeHtml } from '../../shared/formatResponse.js'
 import { randomUUID } from 'node:crypto'
 
 interface InteractiveFlowDeps {
@@ -12,10 +13,6 @@ interface InteractiveFlowDeps {
   state: StateStore
   output: ChatOutputPort
   botRole?: 'writer' | 'reader' | 'standalone'
-}
-
-export function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 export function answerLabel(answer: string[] | null): string {
@@ -129,7 +126,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
   ): Promise<void> {
     const directory = chatState.activeProjectDirectory
     if (!directory) {
-      await deps.output.sendText(chatId, '❌ 활성 프로젝트 디렉토리가 없습니다')
+      await deps.output.sendText(chatId, '❌ No active project directory')
       return
     }
 
@@ -147,7 +144,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
     if (interaction.messageHandle) {
       const total = interaction.questions?.length ?? 1
-      const summary = total > 1 ? `✅ ${total}개 질문 답변 완료` : '✅ 답변 완료'
+      const summary = total > 1 ? `✅ ${total} questions answered` : '✅ Answer submitted'
       try {
         await deps.output.editInteraction(chatId, interaction.messageHandle, summary, [])
       } catch {
@@ -166,7 +163,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
           return
         }
         await deps.openCode.replyPermission(event.requestId, directory, 'reject')
-        await deps.output.sendText(chatId, '🔒 Reader 봇: 권한 요청이 자동 거부되었습니다 (읽기 전용)')
+        await deps.output.sendText(chatId, '🔒 Reader bot: Permission auto-rejected (read-only)')
         return
       }
 
@@ -177,6 +174,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         requestId: event.requestId,
         type: 'permission',
         expiresAt: Date.now() + LIMITS.INTERACTION_TTL_MS,
+        creatorUserId: actorUserId,
       }
 
       const chatState = await deps.state.getChatState(chatId)
@@ -222,6 +220,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         collectedAnswers,
         currentQuestionIndex: 0,
         phase: 'answering',
+        creatorUserId: actorUserId,
       }
 
       const chatState = await deps.state.getChatState(chatId)
@@ -245,29 +244,35 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     response: 'once' | 'always' | 'reject'
   ): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
 
-      if (!interaction || Date.now() > interaction.expiresAt) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction || now > interaction.expiresAt) {
+          await deps.state.saveChatState(chatId, chatState)
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      const directory = chatState.activeProjectDirectory
-      if (!directory) {
-        await deps.output.sendText(chatId, '❌ 활성 프로젝트 디렉토리가 없습니다')
-        return
-      }
+        const directory = chatState.activeProjectDirectory
+        if (!directory) {
+          await deps.state.saveChatState(chatId, chatState)
+          await deps.output.sendText(chatId, '❌ No active project directory')
+          return
+        }
 
-      await deps.openCode.replyPermission(interaction.requestId, directory, response)
+        await deps.openCode.replyPermission(interaction.requestId, directory, response)
 
-      chatState.pendingInteractions = chatState.pendingInteractions.filter(
-        i => i.interactionId !== interactionId
-      )
-      await deps.state.saveChatState(chatId, chatState)
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(
+          i => i.interactionId !== interactionId
+        )
+        await deps.state.saveChatState(chatId, chatState)
 
-      await deps.output.sendText(chatId, `✅ Permission: ${response}`)
+        await deps.output.sendText(chatId, `✅ Permission: ${response}`)
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle permission callback', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to process permission response')
@@ -288,28 +293,32 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     answerIndex: number,
   ): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = findInteraction(chatState, interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
 
-      if (!interaction) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      refreshTTL(interaction)
-      const questions = interaction.questions ?? []
-      const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
-      const currentQ = questions[questionIndex]
-      if (!currentQ) return
+        refreshTTL(interaction)
+        const questions = interaction.questions ?? []
+        const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
+        const currentQ = questions[questionIndex]
+        if (!currentQ) return
 
-      const label = currentQ.options?.[answerIndex] ?? String(answerIndex)
-      answers[questionIndex] = [label]
-      interaction.collectedAnswers = answers
+        const label = currentQ.options?.[answerIndex] ?? String(answerIndex)
+        answers[questionIndex] = [label]
+        interaction.collectedAnswers = answers
 
-      logger.info('interactive', `Q${questionIndex + 1}/${questions.length} answered: "${label}"`)
+        logger.info('interactive', `Q${questionIndex + 1}/${questions.length} answered: "${label}"`)
 
-      await advanceToNext(chatId, interaction, chatState)
+        await advanceToNext(chatId, interaction, chatState)
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question answer', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to process answer')
@@ -322,24 +331,28 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     questionIndex: number,
   ): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = findInteraction(chatState, interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
 
-      if (!interaction) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      refreshTTL(interaction)
-      const questions = interaction.questions ?? []
-      const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
-      answers[questionIndex] = []
-      interaction.collectedAnswers = answers
+        refreshTTL(interaction)
+        const questions = interaction.questions ?? []
+        const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
+        answers[questionIndex] = []
+        interaction.collectedAnswers = answers
 
-      logger.info('interactive', `Q${questionIndex + 1}/${questions.length} skipped`)
+        logger.info('interactive', `Q${questionIndex + 1}/${questions.length} skipped`)
 
-      await advanceToNext(chatId, interaction, chatState)
+        await advanceToNext(chatId, interaction, chatState)
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question skip', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to process skip')
@@ -352,23 +365,27 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     questionIndex: number,
   ): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = findInteraction(chatState, interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
 
-      if (!interaction) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      refreshTTL(interaction)
-      const prevIdx = Math.max(0, questionIndex - 1)
-      interaction.currentQuestionIndex = prevIdx
-      interaction.phase = 'answering'
+        refreshTTL(interaction)
+        const prevIdx = Math.max(0, questionIndex - 1)
+        interaction.currentQuestionIndex = prevIdx
+        interaction.phase = 'answering'
 
-      await deps.state.saveChatState(chatId, chatState)
-      await editOrSendQuestion(chatId, interaction)
-      await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState)
+        await editOrSendQuestion(chatId, interaction)
+        await deps.state.saveChatState(chatId, chatState)
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question back', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to go back')
@@ -381,21 +398,25 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     questionIndex: number,
   ): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = findInteraction(chatState, interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
 
-      if (!interaction) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      refreshTTL(interaction)
-      interaction.currentQuestionIndex = questionIndex
-      chatState.awaitingInput = 'question'
-      chatState.awaitingInteractionId = interactionId
-      await deps.state.saveChatState(chatId, chatState)
-      await deps.output.sendText(chatId, '✏️ Type your answer and send it as a message:')
+        refreshTTL(interaction)
+        interaction.currentQuestionIndex = questionIndex
+        chatState.awaitingInput = 'question'
+        chatState.awaitingInteractionId = interactionId
+        await deps.state.saveChatState(chatId, chatState)
+        await deps.output.sendText(chatId, '✏️ Type your answer and send it as a message:')
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question type', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to process type request')
@@ -404,17 +425,21 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
   async function handleQuestionConfirm(chatId: number, interactionId: string): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = findInteraction(chatState, interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
 
-      if (!interaction) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      refreshTTL(interaction)
-      await submitAllAnswers(chatId, interaction, chatState)
+        refreshTTL(interaction)
+        await submitAllAnswers(chatId, interaction, chatState)
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question confirm', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to submit answers')
@@ -423,26 +448,30 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
   async function handleQuestionReset(chatId: number, interactionId: string): Promise<void> {
     try {
-      await cleanupExpired(chatId)
-      const chatState = await deps.state.getChatState(chatId)
-      const interaction = findInteraction(chatState, interactionId)
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
 
-      if (!interaction) {
-        await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-        return
-      }
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
 
-      refreshTTL(interaction)
-      const questions = interaction.questions ?? []
-      interaction.collectedAnswers = new Array(questions.length).fill(null)
-      interaction.currentQuestionIndex = 0
-      interaction.phase = 'answering'
+        refreshTTL(interaction)
+        const questions = interaction.questions ?? []
+        interaction.collectedAnswers = new Array(questions.length).fill(null)
+        interaction.currentQuestionIndex = 0
+        interaction.phase = 'answering'
 
-      await deps.state.saveChatState(chatId, chatState)
-      await editOrSendQuestion(chatId, interaction)
-      await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState)
+        await editOrSendQuestion(chatId, interaction)
+        await deps.state.saveChatState(chatId, chatState)
 
-      logger.info('interactive', `Reset all answers for interaction ${interactionId}`)
+        logger.info('interactive', `Reset all answers for interaction ${interactionId}`)
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question reset', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to reset answers')
@@ -479,49 +508,56 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
   }
 
   async function handleFreeTextAnswer(chatId: number, text: string): Promise<void> {
-    const chatState = await deps.state.getChatState(chatId)
-    const interactionId = chatState.awaitingInteractionId
-    if (!interactionId) {
-      await deps.output.sendText(chatId, '❌ No pending question')
-      return
-    }
+    await deps.state.withChatLock(chatId, async () => {
+      const chatState = await deps.state.getChatState(chatId)
+      const interactionId = chatState.awaitingInteractionId
+      if (!interactionId) {
+        await deps.output.sendText(chatId, '❌ No pending question')
+        return
+      }
 
-    chatState.awaitingInput = null
-    chatState.awaitingInteractionId = null
+      chatState.awaitingInput = null
+      chatState.awaitingInteractionId = null
 
-    const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
-    if (!interaction || Date.now() > interaction.expiresAt) {
-      await deps.state.saveChatState(chatId, chatState)
-      await deps.output.sendText(chatId, '이 상호작용은 만료되었습니다.')
-      return
-    }
+      const now = Date.now()
+      chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+      
+      const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
+      if (!interaction || now > interaction.expiresAt) {
+        await deps.state.saveChatState(chatId, chatState)
+        await deps.output.sendText(chatId, 'This interaction has expired.')
+        return
+      }
 
-    refreshTTL(interaction)
-    const questions = interaction.questions ?? []
-    const currentIdx = interaction.currentQuestionIndex ?? 0
-    const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
+      refreshTTL(interaction)
+      const questions = interaction.questions ?? []
+      const currentIdx = interaction.currentQuestionIndex ?? 0
+      const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
 
-    answers[currentIdx] = [text]
-    interaction.collectedAnswers = answers
-    logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text: "${text}"`)
+      answers[currentIdx] = [text]
+      interaction.collectedAnswers = answers
+      logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text: "${text}"`)
 
-    await advanceToNext(chatId, interaction, chatState)
+      await advanceToNext(chatId, interaction, chatState)
+    })
   }
 
   async function cleanupExpired(chatId: number): Promise<void> {
     try {
-      const chatState = await deps.state.getChatState(chatId)
-      const now = Date.now()
-      const originalCount = chatState.pendingInteractions.length
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        const originalCount = chatState.pendingInteractions.length
 
-      chatState.pendingInteractions = chatState.pendingInteractions.filter(
-        i => now <= i.expiresAt
-      )
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(
+          i => now <= i.expiresAt
+        )
 
-      if (chatState.pendingInteractions.length < originalCount) {
-        logger.info('interactive', `cleanupExpired removed ${originalCount - chatState.pendingInteractions.length} for chat ${chatId}`)
-        await deps.state.saveChatState(chatId, chatState)
-      }
+        if (chatState.pendingInteractions.length < originalCount) {
+          logger.info('interactive', `cleanupExpired removed ${originalCount - chatState.pendingInteractions.length} for chat ${chatId}`)
+          await deps.state.saveChatState(chatId, chatState)
+        }
+      })
     } catch (error) {
       logger.error('interactive', 'Failed to cleanup expired interactions', { chatId, error })
     }

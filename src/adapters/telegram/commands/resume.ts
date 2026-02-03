@@ -19,8 +19,8 @@ export function resumeCommand(sessionCommands: SessionCommands) {
     const result = await sessionCommands.resumeSessionForHistory(chatId, index)
     if (!result) return
 
-    const kb = new InlineKeyboard().text('📜 대화내역 받기', `hist:${result.sessionId}`)
-    await ctx.reply(`✅ 세션 재개됨: <b>${escapeHtml(result.title)}</b>`, {
+    const kb = new InlineKeyboard().text('📜 Get History', `hist:${result.sessionId}`)
+    await ctx.reply(`✅ Session resumed: <b>${escapeHtml(result.title)}</b>`, {
       parse_mode: 'HTML',
       reply_markup: kb,
     })

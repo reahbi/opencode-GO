@@ -7,7 +7,7 @@ type SessionCommands = {
 }
 
 export function buildSessionListText(data: SessionPageData): string {
-  if (data.items.length === 0) return '세션이 없습니다.'
+  if (data.items.length === 0) return 'No sessions.'
   return `📋 <b>Sessions</b> (${data.totalSessions} total, page ${data.page}/${data.totalPages})`
 }
 
@@ -41,11 +41,11 @@ export function listCommand(sessionCommands: SessionCommands) {
 
     const data = await sessionCommands.getSessionPage(chatId, 1)
     if (!data) {
-      await ctx.reply('활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+      await ctx.reply('No active project. Set DEFAULT_PROJECT in .env.')
       return
     }
     if (data.items.length === 0) {
-      await ctx.reply('세션이 없습니다.')
+      await ctx.reply('No sessions.')
       return
     }
 

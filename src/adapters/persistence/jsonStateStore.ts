@@ -32,7 +32,16 @@ export function createJsonStateStore(dataDir?: string): StateStore {
       const content = await fs.readFile(filepath, 'utf-8');
       return JSON.parse(content);
     } catch (error) {
-      logger.warn('state', `Failed to parse state file: ${error}`);
+      logger.error('state', `Failed to parse state file: ${error}`);
+      const timestamp = Date.now();
+      const corruptPath = `${filepath}.corrupt.${timestamp}`;
+      try {
+        await fs.rename(filepath, corruptPath);
+        logger.warn('state', `Corrupt state file backed up to ${corruptPath}`);
+      } catch (backupError) {
+        logger.error('state', `Failed to backup corrupt state file: ${backupError}`);
+      }
+      await atomicWrite({});
       return {};
     }
   }

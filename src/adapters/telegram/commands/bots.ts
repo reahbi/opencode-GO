@@ -10,7 +10,7 @@ export function botsCommand(registry: BotRegistryPort) {
   return async (ctx: Context) => {
     const bots = await registry.list()
     if (bots.length === 0) {
-      await ctx.reply('등록된 봇이 없습니다.')
+      await ctx.reply('No registered bots.')
       return
     }
 

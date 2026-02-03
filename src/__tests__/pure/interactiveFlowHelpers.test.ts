@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'bun:test'
 import {
-  escapeHtml,
   answerLabel,
   refreshTTL,
   toSubmitAnswers,
 } from '../../app/usecases/interactiveFlow.js'
+import { escapeHtml } from '../../shared/formatResponse.js'
 import { buildPendingInteraction } from '../helpers/builders.js'
 import { LIMITS } from '../../app/policies/limits.js'
 

@@ -3,17 +3,17 @@
 //
 // Usage:
 //   pm2 start ecosystem.config.cjs          # Start all instances
-//   pm2 start ecosystem.config.cjs --only opencaddy-my-project  # Start one instance
+//   pm2 start ecosystem.config.cjs --only opencode-go-my-project  # Start one instance
 //   pm2 logs                                # View logs
 //   pm2 stop ecosystem.config.cjs           # Stop all
 
 module.exports = {
   apps: [
     {
-      name: 'opencaddy-my-project',
+      name: 'opencode-go-my-project',
       script: 'src/main.ts',
       interpreter: 'bun',
-      cwd: '/path/to/opencaddy',
+      cwd: '/path/to/opencode-go',
       env: {
         PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
         BOT_TOKEN: 'your-bot-token-from-botfather',

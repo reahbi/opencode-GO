@@ -17,31 +17,31 @@ export function startCommand(state: StateStore, openCode: OpenCodePort, instance
     }
 
     const header = instanceName
-      ? `<b>OpenCaddy</b> — ${instanceName}`
-      : `<b>OpenCaddy</b>`
+      ? `<b>OpenCode-Go</b> — ${instanceName}`
+      : `<b>OpenCode-Go</b>`
 
     const statusIcon = serverStatus === 'Online' ? '🟢' : '🔴'
     const sessionInfo = chatState.activeSessionId
-      ? `활성 세션 있음 — 메시지를 보내 대화를 계속하세요`
-      : `활성 세션 없음 — /new 로 새 세션을 시작하세요`
+      ? `Active session — send a message to continue`
+      : `No active session — use /new to start one`
 
-    const project = chatState.activeProjectDirectory ?? '설정 안됨'
+    const project = chatState.activeProjectDirectory ?? 'Not set'
 
     const lines = [
       header,
       '',
-      `텔레그램에서 AI 코딩 어시스턴트를 원격으로 조작합니다.`,
+      `Remotely control your AI coding assistant via Telegram.`,
       '',
-      `<b>상태</b>`,
-      `  OpenCode 서버: ${statusIcon} ${serverStatus}`,
-      `  프로젝트: <code>${project}</code>`,
-      `  세션: ${sessionInfo}`,
+      `<b>Status</b>`,
+      `  OpenCode Server: ${statusIcon} ${serverStatus}`,
+      `  Project: <code>${project}</code>`,
+      `  Session: ${sessionInfo}`,
       '',
-      `<b>시작하기</b>`,
-      `/new — 새 세션을 만들어 AI와 대화를 시작하세요`,
-      `/help — 전체 명령어 보기`,
+      `<b>Getting Started</b>`,
+      `/new — Create a new session to start chatting with AI`,
+      `/help — View all commands`,
       '',
-      `문제가 있나요? 터미널에서 <code>bun run doctor</code> 를 실행해보세요.`,
+      `Having issues? Run <code>bun run doctor</code> in terminal.`,
     ]
 
     await ctx.reply(lines.join('\n'), { parse_mode: 'HTML' })

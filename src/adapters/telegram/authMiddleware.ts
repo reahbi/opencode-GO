@@ -14,11 +14,11 @@ export function createAuthMiddleware(allowedUserIds: number[]) {
     const messageText = ctx.message?.text ?? ''
     if (messageText.startsWith('/start')) {
       await ctx.reply(
-        `이 봇은 비공개 봇입니다.\n\n` +
-        `봇 소유자라면:\n` +
-        `1. 아래 Telegram ID를 .env의 ALLOWED_USER_IDS에 추가하세요\n` +
-        `2. 봇을 재시작하세요\n\n` +
-        `당신의 Telegram ID: <code>${userId}</code>`,
+        `This is a private bot.\n\n` +
+        `If you are the owner:\n` +
+        `1. Add the Telegram ID below to ALLOWED_USER_IDS in .env\n` +
+        `2. Restart the bot\n\n` +
+        `Your Telegram ID: <code>${userId}</code>`,
         { parse_mode: 'HTML' },
       )
       return

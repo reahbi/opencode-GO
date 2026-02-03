@@ -1,6 +1,6 @@
-# OPENCADDY KNOWLEDGE BASE
+# OPENCODE-GO KNOWLEDGE BASE
 
-**Generated:** 2026-02-02
+**Generated:** 2026-02-03
 
 ## OVERVIEW
 
@@ -18,12 +18,17 @@ src/
 │   └── ports/
 │       ├── OpenCodePort.ts    #   Session CRUD, prompts, SSE, permission/question reply
 │       ├── ChatOutputPort.ts  #   sendText, editText, sendFile, sendInteraction, editInteraction
-│       └── StateStore.ts      #   getChatState, saveChatState, withChatLock
+│       ├── StateStore.ts      #   getChatState, saveChatState, withChatLock
+│       ├── CoordinationPort.ts #  Bot-to-bot event pub/sub for debate/review
+│       ├── BotRegistryPort.ts #   Bot registration, listing, role lookup
+│       └── GroupSettingsPort.ts # Group-shared settings (debate rounds)
 ├── app/                       # Usecases — imports domain/ ONLY
 │   ├── usecases/
 │   │   ├── promptFlow.ts      #   Text msg → SSE stream → throttled edits → delivery
 │   │   ├── sessionCommands.ts #   /new /list /resume /abort + exportSessionHistory
-│   │   └── interactiveFlow.ts #   permission.asked / question.asked round-trip
+│   │   ├── interactiveFlow.ts #   permission.asked / question.asked round-trip
+│   │   ├── debateFlow.ts      #   /debate /review + bot-to-bot coordination (🧪 testing)
+│   │   └── sessionWatcher.ts  #   SSE watcher + live message updates
 │   ├── queue/
 │   │   └── chatQueue.ts       #   Per-chat promise-chain serialization
 │   └── policies/
@@ -44,16 +49,25 @@ src/
 │   │   │   ├── start.ts       #   /start — onboarding + status overview
 │   │   │   ├── status.ts      #   /status
 │   │   │   ├── agents.ts      #   /agents — list + inline keyboard to switch
-│   │   │   └── settings.ts    #   /settings — summary mode, threshold, output format, history
+│   │   │   ├── settings.ts    #   /settings — summary mode, threshold, output format, history
+│   │   │   ├── groupsettings.ts # /groupsettings — group-shared settings (debate rounds, bot status)
+│   │   │   ├── debate.ts      #   /debate — start bot-to-bot debate (🧪 testing)
+│   │   │   ├── review.ts      #   /review — request code review from peer bot (🧪 testing)
+│   │   │   ├── bots.ts        #   /bots — list registered bots
+│   │   │   └── addbot.ts      #   /addbot — interactive bot setup wizard
 │   │   └── ui/
-│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, sm:, listpage:, listsel:, hist:)
+│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, gs:, sm:, listpage:, listsel:, hist:, dba:, dbr:)
 │   │       └── keyboards.ts   #   InlineKeyboard builders for permissions/questions
 │   ├── opencode/
 │   │   ├── opencodeAdapter.ts #   OpenCodePort impl via SDK v2 client
 │   │   ├── eventMapper.ts     #   SDK SSE events → domain OpenCodeEvent mapping
 │   │   └── summaryService.ts  #   Creates temp session, prompts lightweight model, deletes
-│   └── persistence/
-│       └── jsonStateStore.ts  #   Atomic write (tmp+rename), in-process lock per chatId
+│   ├── persistence/
+│   │   └── jsonStateStore.ts  #   Atomic write (tmp+rename), in-process lock per chatId
+│   └── coordination/
+│       ├── fileCoordinationAdapter.ts # CoordinationPort impl via filesystem
+│       ├── fileRegistryAdapter.ts     # BotRegistryPort impl via registry.json
+│       └── fileGroupSettingsAdapter.ts # GroupSettingsPort impl via group-settings.json
 ├── cli/                       # CLI tools (not part of bot runtime)
 │   ├── setup.ts               #   Interactive setup wizard (bun run setup)
 │   └── doctor.ts              #   Configuration diagnostics (bun run doctor)
@@ -97,6 +111,9 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | Summary feature | `adapters/opencode/summaryService.ts` | Creates ephemeral session, prompts, deletes |
 | Agent/model selection | `adapters/telegram/commands/index.ts` (callback handler) | `agent:` and `sm:` callback prefixes |
 | Session history export | `app/usecases/sessionCommands.ts` + `adapters/telegram/commands/history.ts` | Exports as .md or .html file |
+| Group settings | `adapters/telegram/commands/groupsettings.ts` | `gs:` callback prefix, filters bots by chat membership |
+| Debate/Review (🧪) | `app/usecases/debateFlow.ts` + `adapters/coordination/` | Bot-to-bot coordination via filesystem |
+| Bot registry | `adapters/coordination/fileRegistryAdapter.ts` | Shared registry.json in coordination dir |
 
 ## CODE MAP
 
@@ -119,6 +136,12 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | `loadEnvConfig` | function | `config/env.ts` | Parses + validates env vars at startup |
 | `historyCommand` | factory | `adapters/telegram/commands/history.ts` | Export session history as file |
 | `startCommand` | factory | `adapters/telegram/commands/start.ts` | Onboarding + status overview |
+| `createDebateFlow` | factory | `app/usecases/debateFlow.ts` | Bot-to-bot debate/review coordination |
+| `createFileCoordinationAdapter` | factory | `adapters/coordination/fileCoordinationAdapter.ts` | CoordinationPort impl |
+| `createFileRegistryAdapter` | factory | `adapters/coordination/fileRegistryAdapter.ts` | BotRegistryPort impl |
+| `createFileGroupSettingsAdapter` | factory | `adapters/coordination/fileGroupSettingsAdapter.ts` | GroupSettingsPort impl |
+| `groupSettingsCommand` | factory | `adapters/telegram/commands/groupsettings.ts` | Group-shared settings command |
+| `filterBotsInChat` | function | `adapters/telegram/commands/groupsettings.ts` | Filter bots by Telegram API getChatMember |
 
 ## CONVENTIONS
 
@@ -147,8 +170,10 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 - Permission: `perm:{interactionId}:{once|always|reject}`
 - Question: `q:{interactionId}:{answerIndex|skip}`
 - Agent switch: `agent:{agentName}`
-- Settings: `settings:{action}[:value]`
+- Settings: `settings:{action}[:value]}` (per-bot)
+- Group settings: `gs:{action}[:value]` (shared across bots in group)
 - Model select: `sm:{providerID}/{modelID}`
+- Debate accept/reject: `dba:{debateId}` / `dbr:{debateId}`
 
 ### Logging
 - Context-based prefixes: `logger.info('opencode', 'msg')` → `[OPENCODE] msg`
@@ -208,6 +233,7 @@ src/__tests__/
 │   ├── mockStateStore.ts      # StateStore mock factory
 │   ├── mockCoordinationPort.ts # CoordinationPort mock factory
 │   ├── mockBotRegistryPort.ts # BotRegistryPort mock factory
+│   ├── mockGroupSettingsPort.ts # GroupSettingsPort mock factory
 │   ├── builders.ts            # Test data builders
 │   └── async.ts               # Async test utilities
 ├── pure/                      # Pure function tests (no mocks)
@@ -255,11 +281,18 @@ OPENCODE_SERVER_URL=     # Default: http://127.0.0.1:4096
 OPENCODE_SERVER_USERNAME= # Default: opencode
 OPENCODE_SERVER_PASSWORD= # Omit for no auth
 DEBUG=                   # Any truthy value enables debug logging
+
+# Multi-bot (optional)
+BOT_ROLE=                # standalone | writer | reader
+INSTANCE_NAME=           # Bot identifier for logs/registry
+STATE_DIR=               # Per-bot state directory (must be unique)
+GROUP_CHAT_ENABLED=      # true | false
+COORDINATION_DIR=        # Shared directory for bot coordination
 ```
 
 ## NOTES
 
-- **Tests**: `bun:test` with 210+ tests across 13 files. See `## TESTING` section above.
+- **Tests**: `bun:test` with 280+ tests across 16 files. See `## TESTING` section above.
 - **No CI/CD** — manual deployment. No GitHub Actions, Makefile, or Dockerfile.
 - **No linter/formatter** — relies solely on `tsc --strict` for quality.
 - **SDK version**: Uses `@opencode-ai/sdk/v2/client` exclusively (v1 API was dropped).

@@ -1,64 +1,99 @@
-# 봇 명령어 사용법 (Commands)
+# Bot Commands Usage
 
-이 문서는 텔레그램 봇을 통해 사용할 수 있는 명령어들과 그 상세 사용법을 안내합니다.
+This document provides detailed information on all available commands and how to use them with the Telegram bot.
 
-## 기본 명령어
+## Basic Commands
 
 ### /start
-- **설명**: 봇을 처음 시작하거나 상태를 확인할 때 사용합니다. 온보딩 메시지와 현재 활성 세션 상태를 표시합니다.
-- **사용법**: `/start`
+- **Description**: Use when first starting the bot or checking status. Displays onboarding message and current active session status.
+- **Usage**: `/start`
 
-### /new [제목]
-- **설명**: 새로운 AI 세션을 생성합니다. 제목은 선택 사항입니다.
-- **사용법**: `/new [제목]`
-- **예시**: `/new 로그인 버그 수정`
+### /new [title]
+- **Description**: Creates a new AI session. Title is optional.
+- **Usage**: `/new [title]`
+- **Example**: `/new Fix login bug`
 
 ### /list
-- **설명**: 현재 저장된 모든 세션 목록을 표시합니다. 페이지 네비게이션 버튼을 통해 목록을 탐색할 수 있습니다.
-- **사용법**: `/list`
+- **Description**: Displays all saved sessions. Navigate through the list using pagination buttons.
+- **Usage**: `/list`
 
-### /resume [번호]
-- **설명**: 이전 세션을 다시 불러와 대화를 재개합니다. `/list` 명령어에서 확인한 세션 번호를 사용합니다.
-- **사용법**: `/resume [번호]`
-- **예시**: `/resume 3`
+### /resume [number]
+- **Description**: Resumes a previous session. Use the session number shown in `/list`.
+- **Usage**: `/resume [number]`
+- **Example**: `/resume 3`
 
 ### /abort
-- **설명**: 현재 진행 중인 AI 작업을 즉시 중단합니다.
-- **사용법**: `/abort`
+- **Description**: Immediately stops the current AI operation.
+- **Usage**: `/abort`
 
 ### /status
-- **설명**: 봇의 현재 상태를 표시합니다. OpenCode 서버 연결 상태, 활성 세션 정보, 현재 설정된 프로젝트 경로 등을 확인할 수 있습니다.
-- **사용법**: `/status`
+- **Description**: Shows the bot's current status. Check OpenCode server connection status, active session info, and current project path.
+- **Usage**: `/status`
 
 ### /agents
-- **설명**: 사용 가능한 AI 에이전트 목록을 표시하고 변경할 수 있습니다. 인라인 키보드 버튼을 클릭하여 원하는 에이전트를 선택합니다.
-- **사용법**: `/agents`
+- **Description**: Displays available AI agents and allows switching between them. Click inline keyboard buttons to select your preferred agent.
+- **Usage**: `/agents`
 
 ### /settings
-- **설명**: 봇의 동작 설정을 변경합니다. 요약 모드, 요약 임계값, 출력 형식 등을 조정할 수 있습니다.
-- **사용법**: `/settings`
+- **Description**: Modify bot behavior settings. Adjust summary mode, summary threshold, output format, and more.
+- **Usage**: `/settings`
 
 ### /history
-- **설명**: 현재 활성 세션의 대화 내역을 `.md` 또는 `.html` 파일로 내보냅니다. `/settings`에서 내보내기 형식과 메시지 수를 설정할 수 있습니다.
-- **사용법**: `/history`
+- **Description**: Exports the current active session's conversation history as `.md` or `.html` file. Configure export format and message limit in `/settings`.
+- **Usage**: `/history`
 
 ### /help
-- **설명**: 사용 가능한 전체 명령어 목록과 간단한 도움말을 표시합니다.
-- **사용법**: `/help`
+- **Description**: Shows the complete list of available commands with brief descriptions.
+- **Usage**: `/help`
 
-## 일반 대화 (Prompting)
+## Group Chat Commands
 
-명령어가 아닌 일반 텍스트를 전송하면, 현재 활성 세션의 AI 에이전트에게 프롬프트(Prompt)로 전달됩니다. AI는 해당 요청에 따라 코드를 분석하거나 수정을 제안합니다.
+### /groupsettings
+- **Description**: Manages shared settings for group chats. Configure debate rounds and check the status of bots in the current group.
+- **Usage**: `/groupsettings`
+- **Note**: Only available in group chats. Use `/settings` for personal settings.
+- **Submenus**:
+  - **🎭 Debate Settings**: Set debate rounds (3, 6, 10, unlimited, or custom input)
+  - **🤖 Bot Details**: Check roles, agents, and online status of bots in this chat
 
-## 설정 옵션 상세
+## Multi-Bot Commands (🧪 Testing)
 
-`/settings` 메뉴를 통해 다음 항목들을 관리할 수 있습니다:
+### /debate [rounds] [topic]
+- **Description**: Starts a debate between Writer and Reader bots on the given topic.
+- **Usage**: `/debate [topic]` or `/debate [rounds] [topic]`
+- **Example**: `/debate React vs Vue`, `/debate 10 Should we apply TypeScript strict mode`
+- **Note**: Requires Writer/Reader role bots in the same group.
 
-- **요약 모드 (Summary Mode)**: AI의 응답이 너무 길 경우, 자동으로 내용을 요약하여 표시할지 여부를 설정합니다.
-- **출력 형식 (Output Format)**:
-  - `formatted`: 마크다운(Markdown) 형식을 적용하여 보기 좋게 표시합니다.
-  - `raw`: AI의 응답 원본을 그대로 표시합니다.
-- **요약 임계값 (Summary Threshold)**: 이 길이를 초과하는 응답에 대해 요약 모드가 동작합니다. (기본값: 3000자)
-- **요약 모델 (Summary Model)**: 요약 작업에 사용할 경량 AI 모델을 선택할 수 있습니다.
-- **대화내역 형식 (History Format)**: 내보내기 형식을 `.md`(Markdown) 또는 `.html`(HTML) 중 선택합니다.
-- **대화내역 메시지 수 (History Limit)**: 내보낼 최근 메시지 수를 제한합니다. `0` 또는 `all`은 전체 내보내기입니다.
+### /review [target]
+- **Description**: Requests a code review from the Reader bot.
+- **Usage**: `/review [review target]`
+- **Example**: `/review Security status of auth.ts`
+
+### /bots
+- **Description**: Shows the status of registered bots (online/offline).
+- **Usage**: `/bots`
+
+### /addbot
+- **Description**: Starts the wizard to add a new bot. Only available in DM (direct message).
+- **Usage**: `/addbot`
+
+### /cancel
+- **Description**: Cancels the ongoing wizard (e.g., /addbot).
+- **Usage**: `/cancel`
+
+## Regular Conversation (Prompting)
+
+Sending regular text (not a command) forwards it as a prompt to the current session's AI agent. The AI will analyze code or suggest modifications based on your request.
+
+## Settings Options Details
+
+The following options can be managed through the `/settings` menu:
+
+- **Summary Mode**: When enabled, automatically summarizes long AI responses.
+- **Output Format**:
+  - `formatted`: Applies Markdown formatting for better readability.
+  - `raw`: Displays the AI's raw response as-is.
+- **Summary Threshold**: Responses exceeding this length will trigger summary mode. (Default: 3000 characters)
+- **Summary Model**: Select the lightweight AI model used for summarization.
+- **History Format**: Choose export format between `.md` (Markdown) or `.html` (HTML).
+- **History Limit**: Limit the number of recent messages to export. `0` or `all` exports everything.

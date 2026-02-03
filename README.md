@@ -1,6 +1,6 @@
-# OpenCaddy
+# OpenCode-Go
 
-**폰 하나로 AI 코딩 에이전트를 원격 조종하세요.**
+**Control your AI coding agent remotely — right from your phone.**
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?labelColor=black&style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
@@ -9,102 +9,101 @@
 
 ---
 
-서버에서 돌아가는 [OpenCode](https://github.com/sst/opencode) 코딩 에이전트를 **텔레그램**으로 원격 제어합니다.
-퇴근길 지하철, 카페, 침대 — 어디서든 AI에게 코드를 시키고 결과를 실시간으로 받아보세요.
+Remotely control the [OpenCode](https://github.com/sst/opencode) coding agent running on your server via **Telegram**.
+On your commute, at a cafe, in bed — command your AI to write code and get real-time results from anywhere.
 
 ```
-📱 Telegram (어디서든)
+📱 Telegram (from anywhere)
  ↕  Telegram Bot API
-🤖 OpenCaddy (Bun + TypeScript)   ← 프로세스 2: bun run dev
+🤖 OpenCode-Go (Bun + TypeScript)   ← Process 2: bun run dev
  ↕  SSE Streaming + REST
-💻 OpenCode Server                 ← 프로세스 1: opencode serve
+💻 OpenCode Server                 ← Process 1: opencode serve
  ↕
 🗂️ Your Project
 ```
 
 > [!IMPORTANT]
-> **OpenCaddy는 두 개의 프로세스가 모두 실행되어야 동작합니다.**
-> 1. **OpenCode 서버** — AI 코딩 에이전트 (백엔드)
-> 2. **OpenCaddy 봇** — 텔레그램 인터페이스 (프론트엔드)
+> **OpenCode-Go requires two processes running simultaneously.**
+> 1. **OpenCode Server** — AI coding agent (backend)
+> 2. **OpenCode-Go Bot** — Telegram interface (frontend)
 >
-> 하나만 실행하면 봇이 Offline 상태가 됩니다. 반드시 두 개 모두 시작하세요.
-> 아래 [서버 실행](#서버-실행) 섹션을 참고하세요.
+> Running only one will leave the bot in Offline status. Make sure to start both.
+> See the [Running the Server](#running-the-server) section below.
 
 > [!TIP]
-> **읽기 귀찮으세요?** AI 에이전트에게 이 README 링크를 던져주세요. 설치까지 알아서 해줍니다.
+> **Too lazy to read?** Just paste this README link to your AI agent. It'll handle the installation for you.
 > ```
-> 이 프로젝트를 설치하고 설정해줘:
+> Install and configure this project:
 > https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
 > ```
 
 ---
 
-## 목차
+## Table of Contents
 
-- [서버 실행](#서버-실행)
-- [왜 OpenCaddy인가?](#왜-opencaddy인가)
-- [주요 기능](#주요-기능)
-- [빠른 시작](#빠른-시작)
-- [설치](#설치)
-- [명령어](#명령어)
-- [환경변수](#환경변수)
-- [아키텍처](#아키텍처)
-- [배포](#배포)
-- [문제 해결](#문제-해결)
-- [문서](#문서)
-- [Quick Start (English)](#quick-start-english)
+- [Running the Server](#running-the-server)
+- [Why OpenCode-Go?](#why-opencode-go)
+- [Key Features](#key-features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Commands](#commands)
+- [Environment Variables](#environment-variables)
+- [Architecture](#architecture)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
 - [License](#license)
 
 ---
 
-## 서버 실행
+## Running the Server
 
-> **AI 에이전트에게**: "서버 실행해줘"라는 요청을 받으면 아래 두 프로세스를 **모두** 시작해야 합니다.
+> **For AI agents**: When asked to "start the server", you MUST start BOTH processes below.
 
-OpenCaddy는 **두 개의 독립된 프로세스**로 구성됩니다. 둘 다 실행해야 정상 동작합니다.
+OpenCode-Go consists of **two independent processes**. Both must be running for it to work properly.
 
-### 1단계: OpenCode 서버 시작 (먼저)
+### Step 1: Start OpenCode Server (First)
 
-`.env` 파일에서 `DEFAULT_PROJECT` 경로와 포트를 확인한 뒤, 해당 프로젝트 디렉토리에서 OpenCode 서버를 시작합니다.
+Check the `DEFAULT_PROJECT` path and port in your `.env` file, then start the OpenCode server in that project directory.
 
 ```bash
-# .env의 DEFAULT_PROJECT 디렉토리에서 실행
-# 포트는 .env의 OPENCODE_SERVER_URL에서 확인 (기본값: 4096)
+# Run in the DEFAULT_PROJECT directory from .env
+# Port is defined in OPENCODE_SERVER_URL (default: 4096)
 cd /path/to/your/project
 opencode serve --port 4096
 ```
 
-서버가 정상 시작되면 다음 메시지가 출력됩니다:
+When the server starts successfully, you'll see:
 ```
 opencode server listening on http://127.0.0.1:4096
 ```
 
-### 2단계: OpenCaddy 텔레그램 봇 시작
+### Step 2: Start OpenCode-Go Telegram Bot
 
-OpenCode 서버가 실행된 후, **별도 터미널**에서 텔레그램 봇을 시작합니다.
+After the OpenCode server is running, start the Telegram bot in a **separate terminal**.
 
 ```bash
 cd opencode-telegram
 
-# 개발 모드 (hot reload)
+# Development mode (hot reload)
 bun run dev
 
-# 또는 프로덕션 모드
+# Or production mode
 bun run start
 ```
 
-### 멀티봇 모드 (선택)
+### Multi-Bot Mode (Optional)
 
-Writer/Reader 등 여러 봇을 동시에 운영하려면 `ecosystem.config.cjs`를 만들고 PM2로 시작합니다.
+To run multiple bots (Writer/Reader) simultaneously, create an `ecosystem.config.cjs` and start with PM2.
 
 ```js
 // ecosystem.config.cjs
-const COORDINATION_DIR = '/tmp/opencaddy-coordination'
+const COORDINATION_DIR = '/tmp/opencode-go-coordination'
 
 module.exports = {
   apps: [
     {
-      name: 'opencaddy-writer',
+      name: 'opencode-go-writer',
       script: 'src/main.ts',
       interpreter: 'bun',
       env: {
@@ -119,7 +118,7 @@ module.exports = {
       },
     },
     {
-      name: 'opencaddy-reader',
+      name: 'opencode-go-reader',
       script: 'src/main.ts',
       interpreter: 'bun',
       env: {
@@ -143,184 +142,187 @@ pm2 logs
 ```
 
 > [!TIP]
-> 텔레그램에서 `/addbot` 명령으로도 봇을 추가할 수 있습니다. 마법사가 토큰 검증부터 PM2 설정까지 안내합니다.
+> You can also add bots via the `/addbot` command in Telegram. The wizard guides you through token verification to PM2 setup.
 
-### 실행 확인
+### Verifying the Setup
 
-두 프로세스가 모두 실행 중이면:
-- 봇 로그에 `OpenCaddy is running!` 출력
-- 텔레그램에서 `/start` 전송 시 서버 상태가 🟢 **Online**
-- 멀티봇 모드에서는 `/bots`로 등록된 봇의 온라인 상태를 확인
+When both processes are running:
+- Bot logs show `OpenCode-Go is running!`
+- Sending `/start` in Telegram shows server status as 🟢 **Online**
+- In multi-bot mode, use `/bots` to check all registered bots' online status
 
-서버 상태가 🔴 **Offline**이면 1단계(OpenCode 서버)가 실행되지 않은 것입니다.
+If server status shows 🔴 **Offline**, Step 1 (OpenCode server) is not running.
 
 ---
 
-## 왜 OpenCaddy인가?
+## Why OpenCode-Go?
 
-**문제**: AI 코딩 에이전트(OpenCode)는 강력하지만, 실행 중인 서버 앞에 앉아있어야 합니다.
-이동 중에 떠오른 아이디어? 집에 갈 때까지 참아야 합니다.
+**The Problem**: AI coding agents (like OpenCode) are powerful, but you need to be sitting in front of the server.
+Got an idea while commuting? You'll have to wait until you get home.
 
-**해결**: OpenCaddy가 텔레그램과 OpenCode 사이의 다리가 됩니다.
+**The Solution**: OpenCode-Go bridges Telegram and OpenCode.
 
-| 다른 도구들 | OpenCaddy |
+| Other Tools | OpenCode-Go |
 |---|---|
-| SSH로 서버 접속해서 CLI 조작 | 텔레그램 메시지 하나로 끝 |
-| AI가 권한을 요청하면 터미널로 달려가야 함 | 인라인 버튼 탭 한 번으로 승인 |
-| 긴 응답을 터미널에서 스크롤 | 자동 요약 + 파일 전송으로 모바일 최적화 |
-| 단일 프로젝트만 | PM2로 여러 프로젝트 동시 관리 |
+| SSH into server, navigate CLI | One Telegram message does it all |
+| AI requests permission? Rush to terminal | Tap an inline button to approve |
+| Scroll through long responses in terminal | Auto-summary + file delivery optimized for mobile |
+| Single project only | Manage multiple projects with PM2 |
 
-> 카페에서 "이 파일 리팩토링 해줘" 한 마디 → AI가 알아서 작업 → 권한 요청 버튼 탭 → 완료 통보 — 이게 OpenCaddy입니다.
-
----
-
-## 주요 기능
-
-**실시간 스트리밍** — SSE 기반으로 AI의 응답을 즉시 확인. 폴링이 아닙니다.
-
-**대화형 권한/질문** — AI가 파일 수정 권한을 요청하거나 질문을 던지면, 텔레그램 인라인 키보드로 즉시 응답합니다.
-
-**스마트 딜리버리** — 짧은 응답은 인라인, 긴 응답은 자동 분할, 아주 긴 응답은 `.md` 파일로 전송합니다.
-
-**응답 요약** — 긴 AI 응답을 경량 모델이 자동으로 요약해줍니다. 모바일에서 핵심만 빠르게 파악하세요.
-
-**에이전트 전환** — `/agents` 명령으로 상황에 맞는 AI 모델을 선택합니다.
-
-**멀티 인스턴스** — PM2를 사용해 여러 프로젝트를 각각의 봇으로 동시에 관리합니다.
-
-**그룹 채팅** — 여러 봇을 한 텔레그램 그룹에 넣고 @멘션으로 각각 조종합니다. 권한 버튼은 요청자 본인만 누를 수 있습니다.
-
-**멀티봇 협업** — Writer(코드 작성)와 Reader(코드 리뷰) 역할을 분리해 `/debate`로 토론, `/review`로 코드 리뷰를 요청합니다.
-
-**봇 레지스트리** — `/bots`로 등록된 봇 현황을 확인하고, `/addbot`으로 텔레그램에서 새 봇을 추가합니다.
-
-**Review Mode** — `/settings`에서 탭 한 번으로 읽기 전용 모드를 토글합니다. 서버 재시작 없이 즉시 적용됩니다.
-
-**진단 도구** — `bun run doctor`로 설정 문제를 자동 진단합니다.
+> At a cafe: "Refactor this file" → AI works on it → Tap permission button → Done notification — That's OpenCode-Go.
 
 ---
 
-## 빠른 시작
+## Key Features
 
-### 방법 1: AI에게 맡기기 (권장)
+**Real-time Streaming** — SSE-based instant AI responses. No polling.
 
-AI 에이전트(OpenCode, Claude Code, Cursor 등)에 다음을 붙여넣으세요:
+**Interactive Permissions/Questions** — When AI requests file permissions or asks questions, respond instantly via Telegram inline keyboards.
+
+**Smart Delivery** — Short responses inline, long responses auto-chunked, very long responses sent as `.md` files.
+
+**Response Summary** — Long AI responses are automatically summarized by a lightweight model. Quickly grasp the key points on mobile.
+
+**Agent Switching** — Use `/agents` to select the right AI model for the situation.
+
+**Multi-Instance** — Manage multiple projects as separate bots simultaneously using PM2.
+
+**Group Chat** — Add multiple bots to a Telegram group and control each via @mentions. Permission buttons can only be pressed by the requester.
+
+**Multi-Bot Collaboration (🧪 Testing)** — Separate Writer (code writing) and Reader (code review) roles. Use `/debate` for discussions and `/review` for code reviews.
+
+**Group Shared Settings** — Use `/groupsettings` to view shared settings (debate rounds) and bot status at a glance.
+
+**Bot Registry** — Check registered bot status with `/bots`, add new bots with `/addbot` in Telegram.
+
+**Review Mode** — Toggle read-only mode with a single tap in `/settings`. Applies instantly without server restart.
+
+**Diagnostics** — Run `bun run doctor` to auto-diagnose configuration issues.
+
+---
+
+## Quick Start
+
+### Option 1: Let AI Handle It (Recommended)
+
+Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
 
 ```
-OpenCaddy를 설치하고 설정해줘:
+Install and configure OpenCode-Go:
 https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
 ```
 
-AI가 4가지만 물어보고 나머지는 자동으로 처리합니다.
+The AI will ask 4 questions and handle the rest automatically.
 
-### 방법 2: 직접 설치
+### Option 2: Manual Installation
 
 ```bash
 git clone https://github.com/reahbi/opencode-telegram.git
 cd opencode-telegram
 bun install
-bun run setup    # 대화형 설정 마법사
-bun run start    # 봇 실행
+bun run setup    # Interactive setup wizard
+bun run start    # Start the bot
 ```
 
-### 첫 사용
+### First Use
 
-1. 텔레그램에서 봇에게 `/start` 전송
-2. `/new`로 새 AI 세션 생성
-3. 메시지를 보내면 AI에게 전달됩니다
+1. Send `/start` to your bot on Telegram
+2. Create a new AI session with `/new`
+3. Send a message — it goes straight to the AI
 
 ---
 
-## 설치
+## Installation
 
-### 사전 요구사항
+### Prerequisites
 
-- [Bun](https://bun.sh) v1.0 이상 — [설치 가이드](docs/setup/bun.md)
-- 텔레그램 봇 토큰 — [봇 생성 가이드](docs/setup/telegram.md)
-- OpenCode 서버 실행 — [서버 설정 가이드](docs/setup/opencode.md)
+- [Bun](https://bun.sh) v1.0 or higher — [Installation Guide](docs/setup/bun.md)
+- Telegram bot token — [Bot Creation Guide](docs/setup/telegram.md)
+- OpenCode server running — [Server Setup Guide](docs/setup/opencode.md)
 
-### 수동 설정
+### Manual Setup
 
 ```bash
 cp .env.example .env
 ```
 
-`.env` 파일을 열어 필수 값을 설정하세요:
+Open the `.env` file and set the required values:
 
 ```bash
-BOT_TOKEN=your-bot-token-here          # @BotFather에서 발급
-ALLOWED_USER_IDS=123456789             # 본인의 Telegram User ID
-DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경로 (절대 경로)
+BOT_TOKEN=your-bot-token-here          # From @BotFather
+ALLOWED_USER_IDS=123456789             # Your Telegram User ID
+DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute path)
 ```
 
 > [!TIP]
-> `bun run setup`을 사용하면 대화형으로 설정을 완료할 수 있습니다.
+> Use `bun run setup` to complete the configuration interactively.
 
 > [!WARNING]
-> `bun run doctor`로 설정이 올바른지 반드시 확인하세요.
+> Always verify your configuration with `bun run doctor`.
 
 ---
 
-## 명령어
+## Commands
 
-| 명령어 | 설명 |
+| Command | Description |
 |---|---|
-| `/start` | 온보딩 + 상태 확인 |
-| `/new [제목]` | 새 AI 세션 생성 |
-| `/list` | 세션 목록 보기 |
-| `/resume [번호]` | 세션 재개 |
-| `/abort` | 현재 작업 중단 |
-| `/history` | 세션 대화 이력 내보내기 |
-| `/status` | 현재 상태 확인 |
-| `/agents` | AI 에이전트/모델 선택 |
-| `/settings` | 요약 모드, Review Mode, 출력 형식 등 설정 |
-| `/debate [주제]` | Writer↔Reader 봇 간 토론 시작 |
-| `/review [대상]` | 상대 봇에게 코드 리뷰 요청 |
-| `/bots` | 등록된 봇 현황 (온라인/오프라인) |
-| `/addbot` | 새 봇 추가 마법사 (DM 전용) |
-| `/cancel` | 진행 중인 마법사 취소 |
-| `/help` | 도움말 |
+| `/start` | Onboarding + status check |
+| `/new [title]` | Create new AI session |
+| `/list` | View session list |
+| `/resume [number]` | Resume a session |
+| `/abort` | Stop current operation |
+| `/history` | Export session history |
+| `/status` | Check current status |
+| `/agents` | Select AI agent/model |
+| `/settings` | Summary mode, Review Mode, output format, etc. |
+| `/groupsettings` | Group shared settings (debate rounds, bot status) |
+| `/debate [topic]` | Start Writer↔Reader bot debate (🧪 Testing) |
+| `/review [target]` | Request code review from peer bot (🧪 Testing) |
+| `/bots` | Registered bot status (online/offline) |
+| `/addbot` | New bot setup wizard (DM only) |
+| `/cancel` | Cancel ongoing wizard |
+| `/help` | Help |
 
-일반 텍스트를 보내면 현재 세션의 AI에게 프롬프트로 전달됩니다.
+Regular text messages are sent as prompts to the current session's AI.
 
-자세한 사용법: [명령어 가이드](docs/commands.md)
+Detailed usage: [Commands Guide](docs/commands.md)
 
 ---
 
-## 환경변수
+## Environment Variables
 
-| 변수 | 필수 | 기본값 | 설명 |
+| Variable | Required | Default | Description |
 |---|:---:|---|---|
-| `BOT_TOKEN` | ✅ | — | @BotFather 봇 토큰 |
-| `ALLOWED_USER_IDS` | ✅ | — | 허용 Telegram User ID (쉼표 구분) |
-| `DEFAULT_PROJECT` | ✅ | — | 기본 프로젝트 디렉토리 (절대 경로) |
-| `OPENCODE_SERVER_URL` | | `http://127.0.0.1:4096` | OpenCode 서버 주소 |
-| `OPENCODE_SERVER_USERNAME` | | `opencode` | 서버 인증 사용자명 |
-| `OPENCODE_SERVER_PASSWORD` | | — | 서버 인증 비밀번호 |
-| `INSTANCE_NAME` | | 프로젝트 디렉토리명 | 인스턴스 식별자 (로그/상태 표시) |
-| `STATE_DIR` | | `data/` | 상태 파일 저장 경로 |
-| `BOT_ROLE` | | `standalone` | 봇 역할: `standalone`, `writer`, `reader` |
-| `GROUP_CHAT_ENABLED` | | `false` | 그룹 채팅 지원 (`true`/`false`) |
-| `COORDINATION_DIR` | | — | 봇 간 조정용 공유 디렉토리 (멀티봇 필수) |
-| `DEBUG` | | — | truthy 값 설정 시 디버그 로그 활성화 |
+| `BOT_TOKEN` | ✅ | — | @BotFather bot token |
+| `ALLOWED_USER_IDS` | ✅ | — | Allowed Telegram User IDs (comma-separated) |
+| `DEFAULT_PROJECT` | ✅ | — | Default project directory (absolute path) |
+| `OPENCODE_SERVER_URL` | | `http://127.0.0.1:4096` | OpenCode server URL |
+| `OPENCODE_SERVER_USERNAME` | | `opencode` | Server auth username |
+| `OPENCODE_SERVER_PASSWORD` | | — | Server auth password |
+| `INSTANCE_NAME` | | Project directory name | Instance identifier (logs/status display) |
+| `STATE_DIR` | | `data/` | State file storage path |
+| `BOT_ROLE` | | `standalone` | Bot role: `standalone`, `writer`, `reader` |
+| `GROUP_CHAT_ENABLED` | | `false` | Group chat support (`true`/`false`) |
+| `COORDINATION_DIR` | | — | Shared directory for bot coordination (required for multi-bot) |
+| `DEBUG` | | — | Enable debug logs when set to truthy value |
 
 ---
 
-## 아키텍처
+## Architecture
 
-**Clean Architecture (Hexagonal / Ports & Adapters)** 기반으로 설계되었습니다.
+Built on **Clean Architecture (Hexagonal / Ports & Adapters)**.
 
 ```
 src/
-├── domain/        # 순수 타입 + 포트 — 외부 의존성 ZERO
-├── app/           # 유스케이스 — domain/만 import
-├── adapters/      # 외부 세계 — Telegram, OpenCode SDK, JSON 저장소
-├── config/        # 환경변수 파싱 + 프로젝트 설정
-├── shared/        # 로거, 포매터, 상수
-└── main.ts        # Composition Root (의존성 조립)
+├── domain/        # Pure types + ports — ZERO external dependencies
+├── app/           # Use cases — imports domain/ only
+├── adapters/      # External world — Telegram, OpenCode SDK, JSON storage
+├── config/        # Environment parsing + project settings
+├── shared/        # Logger, formatters, constants
+└── main.ts        # Composition Root (dependency assembly)
 ```
 
-**멀티봇 모드 구조:**
+**Multi-Bot Mode Architecture:**
 
 ```
 📱 Telegram Group
@@ -333,128 +335,73 @@ src/
      └── registry.json (shared) ──┘
 ```
 
-**핵심 의존성 규칙**: `domain/` → 아무것도 import 안 함 | `app/` → `domain/`만 | `adapters/` → `app/` + `domain/`
+**Core Dependency Rule**: `domain/` → imports nothing | `app/` → `domain/` only | `adapters/` → `app/` + `domain/`
 
-**기술 스택**: Bun + TypeScript (strict) + [grammy](https://grammy.dev) + [@opencode-ai/sdk](https://www.npmjs.com/package/@opencode-ai/sdk)
+**Tech Stack**: Bun + TypeScript (strict) + [grammy](https://grammy.dev) + [@opencode-ai/sdk](https://www.npmjs.com/package/@opencode-ai/sdk)
 
-> AI 에이전트가 이 프로젝트를 수정할 때는 [AGENTS.md](AGENTS.md)를 참고하세요.
-> 코드맵, 컨벤션, 안티패턴이 정리되어 있습니다.
+> When AI agents modify this project, refer to [AGENTS.md](AGENTS.md).
+> Contains code map, conventions, and anti-patterns.
 
 ---
 
-## 배포
+## Deployment
 
-PM2를 사용한 프로덕션 배포를 권장합니다.
+We recommend production deployment using PM2.
 
 ```bash
-# PM2로 전체 인스턴스 시작
+# Start all instances with PM2
 bun run start:all
 
-# 로그 확인
+# Check logs
 bun run logs
 
-# 중지
+# Stop
 bun run stop:all
 ```
 
-멀티 인스턴스 설정, 자동 재시작, 부팅 시 자동 실행 등의 자세한 내용은 [배포 가이드](docs/deploy.md)를 참고하세요.
+For multi-instance setup, auto-restart, and boot-time auto-start, see the [Deployment Guide](docs/deploy.md).
 
 ---
 
-## 문제 해결
+## Troubleshooting
 
 ```bash
-bun run doctor    # 6가지 설정 항목을 자동으로 진단합니다
+bun run doctor    # Auto-diagnoses 6 configuration items
 ```
 
-자주 발생하는 문제와 해결법은 [문제 해결 가이드](docs/troubleshooting.md)를 참고하세요.
+For common issues and solutions, see the [Troubleshooting Guide](docs/troubleshooting.md).
 
 ---
 
-## 문서
+## Documentation
 
-| 문서 | 설명 |
+| Document | Description |
 |---|---|
-| [설치 가이드](docs/installation.md) | AI 에이전트 지원 설치 가이드 |
-| [텔레그램 봇 생성](docs/setup/telegram.md) | BotFather 봇 생성 + User ID 확인 |
-| [OpenCode 서버 설정](docs/setup/opencode.md) | 서버 설치, 포트, 인증 설정 |
-| [Bun 설치](docs/setup/bun.md) | Bun 런타임 설치 + PATH 문제 해결 |
-| [명령어 사용법](docs/commands.md) | 전체 명령어 상세 설명 |
-| [PM2 배포](docs/deploy.md) | 프로덕션 배포 + 멀티 인스턴스 |
-| [문제 해결](docs/troubleshooting.md) | 자주 묻는 문제 + `bun run doctor` |
-| [AGENTS.md](AGENTS.md) | AI 에이전트용 프로젝트 지식 베이스 |
+| [Installation Guide](docs/installation.md) | AI agent-assisted installation guide |
+| [Telegram Bot Creation](docs/setup/telegram.md) | BotFather bot creation + User ID lookup |
+| [OpenCode Server Setup](docs/setup/opencode.md) | Server installation, ports, auth settings |
+| [Bun Installation](docs/setup/bun.md) | Bun runtime installation + PATH troubleshooting |
+| [Commands Usage](docs/commands.md) | Full command reference |
+| [PM2 Deployment](docs/deploy.md) | Production deployment + multi-instance |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues + `bun run doctor` |
+| [AGENTS.md](AGENTS.md) | AI agent project knowledge base |
 
 ---
 
-## 개발
+## Development
 
 ```bash
-bun run dev        # 개발 모드 (hot reload)
-bun run typecheck  # 타입 체크
-bun run build      # dist/ 빌드
+bun run dev        # Development mode (hot reload)
+bun run typecheck  # Type check
+bun run build      # Build to dist/
 ```
 
 ---
 
-## Quick Start (English)
+## Disclaimer
 
-OpenCaddy is a Telegram bot that lets you remotely control an [OpenCode](https://github.com/sst/opencode) AI coding agent from your phone.
-
-**Install with AI Agent (Recommended)**
-
-Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
-```
-Install and configure OpenCaddy:
-https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
-```
-
-**Manual Install**
-```bash
-git clone https://github.com/reahbi/opencode-telegram.git
-cd opencode-telegram
-bun install
-bun run setup    # Interactive setup wizard
-```
-
-**Running the Server (Two Processes Required)**
-
-OpenCaddy requires **two processes** running simultaneously:
-
-```bash
-# Terminal 1 — Start OpenCode server first (in your project directory)
-cd /path/to/your/project
-opencode serve --port 4096
-
-# Terminal 2 — Start Telegram bot
-cd opencode-telegram
-bun run dev      # Development (hot reload)
-# or
-bun run start    # Production
-```
-
-> **For AI agents**: When asked to "start the server", you MUST start BOTH processes above. The bot alone will show "Offline" status without the OpenCode server.
-
-**First Use**
-1. Send `/start` to your bot on Telegram — verify server shows 🟢 Online
-2. Send `/new` to create a session
-3. Send a message — it goes straight to the AI
-
-**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode | Multi-agent selection | PM2 multi-instance deployment | Group chat with @mention routing | Multi-bot collaboration (Writer/Reader roles) | `/debate` and `/review` between bots | Bot registry (`/bots`, `/addbot`) | Review Mode toggle in `/settings`
-
-**Multi-Bot Mode (Optional)**
-
-Run multiple bots (Writer + Reader) in a Telegram group using PM2:
-
-```bash
-# Create ecosystem.config.cjs with BOT_ROLE=writer/reader, COORDINATION_DIR, GROUP_CHAT_ENABLED=true
-pm2 start ecosystem.config.cjs
-```
-
-Or add bots interactively via `/addbot` in Telegram DM.
-
-**Troubleshooting**: Run `bun run doctor` to diagnose configuration issues.
-
-See [docs/](docs/) for detailed guides.
+This project is not built by or affiliated with the OpenCode team.
+[OpenCode](https://github.com/sst/opencode) is an open source project by [Anomaly](https://github.com/anomalyco/opencode).
 
 ---
 

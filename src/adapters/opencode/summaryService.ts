@@ -1,7 +1,11 @@
 import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
+import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
 import type { OpenCodeEvent } from '../../domain/events.js'
 import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../../app/policies/limits.js'
+
+export type { SummaryPort }
+export type SummaryService = SummaryPort
 
 const SUMMARY_TIMEOUT_MS = 60_000
 const SUMMARY_SESSION_TITLE = '_summary'
@@ -55,15 +59,7 @@ Rules:
 ${truncated}`
 }
 
-export interface SummaryService {
-  summarize(
-    directory: string,
-    content: string,
-    model: { providerID: string; modelID: string },
-  ): Promise<string>
-}
-
-export function createSummaryService(openCode: OpenCodePort): SummaryService {
+export function createSummaryService(openCode: OpenCodePort): SummaryPort {
   return {
     async summarize(directory, content, model) {
       const prompt = buildSummaryPrompt(content)

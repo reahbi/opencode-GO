@@ -1,94 +1,139 @@
-# 문제 해결 가이드 (Troubleshooting)
+# Troubleshooting Guide
 
-OpenCaddy 사용 중 발생할 수 있는 주요 문제들과 해결 방법을 안내합니다.
+This guide covers common issues you may encounter while using OpenCode-Go and their solutions.
 
-## <a id="env-missing"></a>환경변수 누락
+## <a id="env-missing"></a>Missing Environment Variables
 
-**증상**: 실행 시 `BOT_TOKEN is required. Set it in .env file.` 에러 발생
-**원인**: `.env` 파일이 존재하지 않거나 필수 환경 변수가 설정되지 않음
-**해결**:
+**Symptom**: `BOT_TOKEN is required. Set it in .env file.` error on startup
+**Cause**: `.env` file doesn't exist or required environment variables are not set
+**Solution**:
 ```bash
 cp .env.example .env
 ```
-이후 `.env` 파일을 열어 `BOT_TOKEN`, `ALLOWED_USER_IDS`, `DEFAULT_PROJECT` 등 필수 변수를 설정하십시오.
+Then open the `.env` file and set the required variables: `BOT_TOKEN`, `ALLOWED_USER_IDS`, `DEFAULT_PROJECT`, etc.
 
-## <a id="invalid-user-id"></a>User ID 형식 오류
+## <a id="invalid-user-id"></a>Invalid User ID Format
 
-**증상**: `Invalid user ID: abc123` 에러 발생
-**원인**: `ALLOWED_USER_IDS`에 숫자가 아닌 문자열이나 잘못된 형식이 입력됨
-**해결**:
-@userinfobot을 통해 본인의 숫자형 ID를 다시 확인한 후, `.env` 파일에 숫자만 입력하십시오. 여러 개인 경우 쉼표로 구분합니다.
+**Symptom**: `Invalid user ID: abc123` error
+**Cause**: Non-numeric string or invalid format entered in `ALLOWED_USER_IDS`
+**Solution**:
+Verify your numeric ID through @userinfobot, then enter only numbers in the `.env` file. Separate multiple IDs with commas.
 
-## <a id="server-unreachable"></a>OpenCode 서버 연결 불가
+## <a id="server-unreachable"></a>Cannot Connect to OpenCode Server
 
-**증상**: `Cannot connect to OpenCode at http://...` 에러 발생
-**원인**: OpenCode 서버가 실행 중이 아니거나, URL 설정이 잘못되었거나, 방화벽에 의해 차단됨
-**해결**:
+**Symptom**: `Cannot connect to OpenCode at http://...` error
+**Cause**: OpenCode server is not running, URL is misconfigured, or blocked by firewall
+**Solution**:
 ```bash
-# 서버 실행 확인
+# Verify server is running
 opencode serve
-# 연결 테스트
+# Test connection
 curl http://127.0.0.1:4096/health
 ```
-`.env`의 `OPENCODE_SERVER_URL`이 실제 서버 주소와 일치하는지 확인하십시오.
+Verify that `OPENCODE_SERVER_URL` in `.env` matches the actual server address.
 
-## <a id="token-invalid"></a>봇 토큰 무효
+## <a id="token-invalid"></a>Invalid Bot Token
 
-**증상**: 텔레그램 API로부터 `Unauthorized` 에러 발생
-**원인**: 입력한 봇 토큰이 잘못되었거나, @BotFather에 의해 폐기됨
-**해결**:
-@BotFather에게서 받은 토큰을 정확히 복사하여 `.env`의 `BOT_TOKEN`에 붙여넣으십시오. 필요하다면 새로운 토큰을 발급받으십시오.
+**Symptom**: `Unauthorized` error from Telegram API
+**Cause**: Bot token is incorrect or has been revoked by @BotFather
+**Solution**:
+Copy the exact token from @BotFather and paste it into `BOT_TOKEN` in `.env`. If needed, generate a new token.
 
-## <a id="no-response"></a>봇이 응답하지 않음
+## <a id="no-response"></a>Bot Not Responding
 
-**증상**: 메시지를 보냈으나 봇이 아무런 반응을 보이지 않음
-**원인**: 본인의 텔레그램 ID가 `ALLOWED_USER_IDS`에 포함되지 않음 (보안 정책상 무시됨)
-**해결**:
-본인의 ID를 확인하여 `.env`의 `ALLOWED_USER_IDS`에 추가한 후 봇을 재시작하십시오.
+**Symptom**: Sent a message but bot shows no reaction
+**Cause**: Your Telegram ID is not included in `ALLOWED_USER_IDS` (silently ignored for security)
+**Solution**:
+Verify your ID and add it to `ALLOWED_USER_IDS` in `.env`, then restart the bot.
 
-## <a id="project-not-found"></a>프로젝트 디렉토리 없음
+## <a id="project-not-found"></a>Project Directory Not Found
 
-**증상**: `Project at /path/to/project not found` 에러 발생
-**원인**: `DEFAULT_PROJECT`에 설정된 경로가 존재하지 않거나, 절대 경로가 아닌 상대 경로를 사용함
-**해결**:
+**Symptom**: `Project at /path/to/project not found` error
+**Cause**: Path set in `DEFAULT_PROJECT` doesn't exist, or relative path used instead of absolute
+**Solution**:
 ```bash
 ls -d /absolute/path/to/project
 ```
-경로가 실제로 존재하는지 확인하고, 반드시 절대 경로(Absolute Path)를 사용하십시오.
+Verify the path exists and always use an absolute path.
 
-## <a id="state-corruption"></a>state.json 손상
+## <a id="state-corruption"></a>state.json Corruption
 
-**증상**: `Failed to parse state file` 에러 발생
-**원인**: `data/state.json` 파일이 손상되었거나, 비정상적인 종료로 인해 파일 내용이 깨짐
-**해결**:
+**Symptom**: `Failed to parse state file` error
+**Cause**: `data/state.json` file is corrupted, possibly due to abnormal termination
+**Solution**:
 ```bash
 rm data/state.json
 ```
-해당 파일을 삭제한 후 봇을 다시 시작하면 기본값으로 자동 재생성됩니다.
+Delete the file and restart the bot — it will be auto-regenerated with default values.
 
-## <a id="permission-denied"></a>파일 권한 문제
+## <a id="permission-denied"></a>File Permission Issues
 
-**증상**: `EACCES: permission denied` 에러 발생
-**원인**: `data/` 디렉토리 또는 로그 파일에 대한 쓰기 권한이 없음
-**해결**:
+**Symptom**: `EACCES: permission denied` error
+**Cause**: No write permission for `data/` directory or log files
+**Solution**:
 ```bash
 chmod 755 data/
 ```
-디렉토리의 소유자와 권한을 확인하여 실행 사용자가 파일을 쓸 수 있도록 설정하십시오.
+Check directory ownership and permissions to ensure the running user can write files.
 
-## <a id="bun-not-found"></a>Bun 미설치/PATH 문제
+## <a id="bun-not-found"></a>Bun Not Installed / PATH Issue
 
-**증상**: `bun: command not found` 오류 발생
-**원인**: Bun이 설치되어 있지 않거나, 설치 경로가 시스템 PATH에 포함되어 있지 않음
-**해결**:
-`docs/setup/bun.md` 문서를 참고하여 Bun을 설치하고 PATH 설정을 완료하십시오.
+**Symptom**: `bun: command not found` error
+**Cause**: Bun is not installed, or installation path is not in system PATH
+**Solution**:
+Refer to `docs/setup/bun.md` to install Bun and configure PATH.
 
-## <a id="port-in-use"></a>포트 충돌
+## <a id="port-in-use"></a>Port Conflict
 
-**증상**: `address already in use` 에러 발생 (서버 실행 시)
-**원인**: 이미 다른 프로세스가 동일한 포트(기본 4096)를 사용 중임
-**해결**:
+**Symptom**: `address already in use` error (when starting server)
+**Cause**: Another process is already using the same port (default 4096)
+**Solution**:
 ```bash
 lsof -i :4096
 ```
-해당 포트를 사용하는 프로세스를 종료하거나, 다른 포트를 사용하여 서버를 실행하십시오.
+Either terminate the process using that port or start the server on a different port.
+
+---
+
+## Multi-Bot Related Issues
+
+## <a id="group-no-response"></a>Bot Not Responding in Group Chat
+
+**Symptom**: Bot doesn't respond even when @mentioned in group
+**Cause**: Group chat feature is disabled or BotFather settings are missing
+**Solution**:
+1. Verify `GROUP_CHAT_ENABLED=true` in `.env`
+2. In BotFather: Bot Settings → `Allow Groups?` → `Enabled`
+3. Restart the bot and re-invite it to the group
+
+## <a id="debate-not-working"></a>/debate Command Not Working
+
+**Symptom**: Debate doesn't start after `/debate` command
+**Cause**: Bot role not configured or coordination directory mismatch
+**Solution**:
+1. Verify both bots have `BOT_ROLE` set to `writer` and `reader` respectively
+2. Verify both bots have **exactly the same** `COORDINATION_DIR` path
+3. Check if the other bot is online using `/bots` command
+
+## <a id="coordination-dir"></a>Bot-to-Bot Communication Failure
+
+**Symptom**: Collaboration features like `/debate`, `/review` don't work
+**Cause**: `COORDINATION_DIR` paths differ or directory permission issues
+**Solution**:
+```bash
+# Verify all bots use the same path
+echo $COORDINATION_DIR
+
+    # Check directory permissions
+    ls -la /tmp/opencode-go-coordination/
+```
+
+## <a id="duplicate-groupsettings"></a>Duplicate /groupsettings Responses
+
+**Symptom**: Multiple bots respond simultaneously to `/groupsettings` command
+**Cause**: Bot version mismatch (only some bots updated)
+**Solution**:
+```bash
+pm2 restart all
+```
+Update all bots to the same version and restart.

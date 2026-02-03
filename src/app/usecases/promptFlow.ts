@@ -18,11 +18,11 @@ export function createPromptFlow(deps: PromptFlowDeps) {
   async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean }): Promise<void> {
     const state = await deps.state.getChatState(chatId)
     if (!state.activeProjectDirectory) {
-      await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+      await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
       return
     }
     if (!state.activeSessionId) {
-      await deps.output.sendText(chatId, '활성 세션이 없습니다. /new 로 새 세션을 시작하세요.')
+      await deps.output.sendText(chatId, 'No active session. Use /new to start one.')
       return
     }
 
@@ -46,7 +46,7 @@ export function createPromptFlow(deps: PromptFlowDeps) {
         ? state.settings.reviewMode
         : deps.botRole === 'reader'
       const effectiveText = isReview
-        ? '[REVIEW MODE] 이 세션은 읽기 전용입니다. 파일 수정, 생성, 삭제를 하지 마세요. 코드 리뷰와 분석만 수행하세요.\n\n' + text
+        ? '[REVIEW MODE] This session is read-only. Do not modify, create, or delete files. Only perform code review and analysis.\n\n' + text
         : text
       await deps.openCode.sendPrompt(sessionId, directory, effectiveText, state.activeAgent ?? undefined)
       logger.debug('session', `Prompt sent for session ${sessionId}`)

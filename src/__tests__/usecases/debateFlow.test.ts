@@ -109,7 +109,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('활성 프로젝트가 없습니다'),
+        expect.stringContaining('No active project'),
         'HTML',
       )
       expect(coordination.publish).not.toHaveBeenCalled()
@@ -138,7 +138,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('활성 세션이 없습니다'),
+        expect.stringContaining('No active session'),
         'HTML',
       )
       expect(coordination.publish).not.toHaveBeenCalled()
@@ -168,7 +168,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('단독 모드에서는 /debate'),
+        expect.stringContaining('/debate is not available in standalone mode'),
         'HTML',
       )
       expect(coordination.publish).not.toHaveBeenCalled()
@@ -197,7 +197,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('단독 모드'),
+        expect.stringContaining('standalone mode'),
         'HTML',
       )
       expect(coordination.publish).not.toHaveBeenCalled()
@@ -312,7 +312,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('단독 모드에서는 /review'),
+        expect.stringContaining('/review is not available in standalone mode'),
         'HTML',
       )
       expect(coordination.publish).not.toHaveBeenCalled()
@@ -676,10 +676,10 @@ describe('debateFlow', () => {
       )
       expect(output.sendInteraction).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('토론 종료'),
+        expect.stringContaining('Debate ended'),
         expect.arrayContaining([
-          expect.objectContaining({ label: '✅ 반영하기' }),
-          expect.objectContaining({ label: '❌ 무시하기' }),
+          expect.objectContaining({ label: '✅ Apply' }),
+          expect.objectContaining({ label: '❌ Ignore' }),
         ]),
       )
       expect(openCode.sendPromptAsync).not.toHaveBeenCalled()
@@ -840,7 +840,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('토론 응답 생성 실패'),
+        expect.stringContaining('Failed to generate debate response'),
         'HTML',
       )
       expect(coordination.publish).toHaveBeenCalledWith(
@@ -1024,7 +1024,7 @@ describe('debateFlow', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('토론 응답 생성 실패'),
+        expect.stringContaining('Failed to generate debate response'),
         'HTML',
       )
       expect(coordination.publish).toHaveBeenCalledWith(

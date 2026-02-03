@@ -116,7 +116,7 @@ async function fetchProjects(serverUrl: string, username: string, password: stri
 
 async function selectProjectDir(serverUrl: string, username: string, password: string): Promise<string> {
   const s = spinner();
-  s.start('OpenCode 서버에서 프로젝트 목록을 가져오는 중...');
+  s.start('Fetching project list from OpenCode server...');
 
   let projects: OpenCodeProject[] = [];
   try {
@@ -130,17 +130,17 @@ async function selectProjectDir(serverUrl: string, username: string, password: s
   }
 
   if (projects.length > 0) {
-    s.stop(`${projects.length}개의 프로젝트를 찾았습니다`);
+    s.stop(`Found ${projects.length} project(s)`);
 
     const options = projects.map(p => ({
       value: p.worktree,
       label: p.worktree,
       hint: p.name || undefined,
     }));
-    options.push({ value: '__manual__', label: '직접 입력', hint: '경로를 직접 타이핑합니다' });
+    options.push({ value: '__manual__', label: 'Enter manually', hint: 'Type the path manually' });
 
     const selected = await select({
-      message: '프로젝트 디렉토리를 선택하세요',
+      message: 'Select a project directory',
       options,
     });
     if (isCancel(selected)) { cancel('Setup cancelled.'); process.exit(0); }
@@ -149,12 +149,12 @@ async function selectProjectDir(serverUrl: string, username: string, password: s
       return selected as string;
     }
   } else {
-    s.stop('서버에서 프로젝트 목록을 가져올 수 없습니다 — 직접 입력합니다');
+    s.stop('Could not fetch project list from server — entering manually');
   }
 
   // Fallback: manual text input
   const projectDir = await text({
-    message: '프로젝트 디렉토리 (절대 경로)',
+    message: 'Project directory (absolute path)',
     placeholder: '/home/user/my-project',
     validate: validateProjectDir,
   });
@@ -170,39 +170,39 @@ async function runPreflightChecks(token: string, serverUrl: string, projectDir: 
   const s = spinner();
 
   // Check 1: Telegram Bot API
-  s.start('Telegram 봇 토큰 확인 중...');
+  s.start('Verifying Telegram bot token...');
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
     const data = await res.json() as { ok: boolean; result?: { username?: string } };
     if (data.ok && data.result?.username) {
-      s.stop(`Telegram 봇 확인됨: @${data.result.username}`);
+      s.stop(`Telegram bot verified: @${data.result.username}`);
     } else {
-      s.stop('Telegram 봇 토큰이 유효하지 않습니다 (계속 진행 가능)');
+      s.stop('Telegram bot token is invalid (you can continue)');
     }
   } catch {
-    s.stop('Telegram API에 연결할 수 없습니다 (계속 진행 가능)');
+    s.stop('Cannot connect to Telegram API (you can continue)');
   }
 
   // Check 2: OpenCode Server
-  s.start('OpenCode 서버 연결 확인 중...');
+  s.start('Checking OpenCode server connection...');
   try {
     const res = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
-      s.stop(`OpenCode 서버 연결됨: ${serverUrl}`);
+      s.stop(`OpenCode server connected: ${serverUrl}`);
     } else {
-      s.stop(`OpenCode 서버 응답 오류 (${res.status}) — 나중에 시작해도 됩니다`);
+      s.stop(`OpenCode server response error (${res.status}) — you can start it later`);
     }
   } catch {
-    s.stop('OpenCode 서버에 연결할 수 없습니다 — 나중에 시작해도 됩니다');
+    s.stop('Cannot connect to OpenCode server — you can start it later');
   }
 
   // Check 3: Project Directory
-  s.start('프로젝트 디렉토리 확인 중...');
+  s.start('Checking project directory...');
   try {
     await access(projectDir);
-    s.stop(`프로젝트 디렉토리 확인됨: ${projectDir}`);
+    s.stop(`Project directory verified: ${projectDir}`);
   } catch {
-    s.stop(`프로젝트 디렉토리를 찾을 수 없습니다: ${projectDir} (나중에 생성해도 됩니다)`);
+    s.stop(`Project directory not found: ${projectDir} (you can create it later)`);
   }
 }
 
@@ -212,33 +212,33 @@ async function runPreflightChecks(token: string, serverUrl: string, projectDir: 
 
 async function setupEnv(): Promise<void> {
   const botToken = await text({
-    message: 'Telegram 봇 토큰 (Bot Token)',
+    message: 'Telegram bot token',
     placeholder: '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11',
     validate: validateBotToken,
   });
   if (isCancel(botToken)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const userIds = await text({
-    message: '허용할 Telegram User ID (쉼표로 구분)',
+    message: 'Allowed Telegram User IDs (comma-separated)',
     placeholder: '123456789, 987654321',
     validate: validateUserIds,
   });
   if (isCancel(userIds)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const serverUrl = await text({
-    message: 'OpenCode 서버 URL',
+    message: 'OpenCode server URL',
     initialValue: 'http://127.0.0.1:4096',
   });
   if (isCancel(serverUrl)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const username = await text({
-    message: 'OpenCode 서버 사용자명',
+    message: 'OpenCode server username',
     initialValue: 'opencode',
   });
   if (isCancel(username)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const password = await text({
-    message: 'OpenCode 서버 비밀번호 (없으면 비워두세요)',
+    message: 'OpenCode server password (leave empty if none)',
     initialValue: '',
   });
   if (isCancel(password)) { cancel('Setup cancelled.'); process.exit(0); }
@@ -260,7 +260,7 @@ async function setupEnv(): Promise<void> {
   try {
     await access(envPath);
     const overwrite = await confirm({
-      message: '.env 파일이 이미 존재합니다. 덮어쓰시겠습니까?',
+      message: '.env file already exists. Overwrite?',
       initialValue: false,
     });
     if (isCancel(overwrite) || !overwrite) {
@@ -290,16 +290,16 @@ DEFAULT_PROJECT=${projectDir}
 `;
 
   const s = spinner();
-  s.start('.env 파일 저장 중...');
+  s.start('Saving .env file...');
   await writeFile(envPath, envContent, 'utf-8');
-  s.stop('.env 파일이 생성되었습니다');
+  s.stop('.env file created');
 
-  note(`다음 단계:
-1. bun run start 으로 봇을 시작하세요
-2. 텔레그램에서 봇에게 /start 를 전송하세요
-3. 문제가 있으면 bun run doctor 로 진단하세요`, '완료');
+  note(`Next steps:
+1. Start the bot with bun run start
+2. Send /start to your bot on Telegram
+3. If you have issues, run bun run doctor`, 'Done');
 
-  outro('설정이 완료되었습니다!');
+  outro('Setup complete!');
 }
 
 // ============================================================================
@@ -342,7 +342,7 @@ function generateAppConfig(config: InstanceConfig): PM2AppConfig {
   const currentPath = process.env.PATH || '';
 
   return {
-    name: `opencaddy-${config.name}`,
+    name: `opencode-go-${config.name}`,
     script: 'src/main.ts',
     interpreter: 'bun',
     cwd: projectRoot,
@@ -539,7 +539,7 @@ Server Password:  ${config.password ? '***' : '(none)'}
 
   if (existingConfig) {
     const existingAppIndex = existingConfig.apps.findIndex(
-      (app) => app.name === `opencaddy-${config.name}`
+      (app) => app.name === `opencode-go-${config.name}`
     );
 
     if (existingAppIndex >= 0) {
@@ -589,7 +589,7 @@ Server Password:  ${config.password ? '***' : '(none)'}
    pm2 start ecosystem.config.cjs
 
 3. Or start only this instance:
-   pm2 start ecosystem.config.cjs --only opencaddy-${config.name}
+   pm2 start ecosystem.config.cjs --only opencode-go-${config.name}
 
 4. View logs:
    pm2 logs
@@ -617,13 +617,13 @@ Server Password:  ${config.password ? '***' : '(none)'}
 async function main(): Promise<void> {
   console.clear();
   
-  intro('OpenCaddy Setup');
+  intro('OpenCode-Go Setup');
 
   const mode = await select({
-    message: '설정 모드를 선택하세요',
+    message: 'Select setup mode',
     options: [
-      { value: 'env', label: '간단 설정 (.env 파일 생성)', hint: '처음 사용하는 경우 권장' },
-      { value: 'pm2', label: 'PM2 멀티인스턴스 설정', hint: 'ecosystem.config.cjs 생성' },
+      { value: 'env', label: 'Simple setup (.env file)', hint: 'Recommended for first-time users' },
+      { value: 'pm2', label: 'PM2 multi-instance setup', hint: 'Creates ecosystem.config.cjs' },
     ],
   });
 

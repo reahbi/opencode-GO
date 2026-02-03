@@ -1,48 +1,48 @@
-# Bun 설치 가이드
+# Bun Installation Guide
 
-OpenCaddy는 Bun 런타임을 사용하여 실행됩니다. 이 문서는 Bun을 설치하고 설정하는 방법을 안내합니다.
+OpenCode-Go runs on the Bun runtime. This document guides you through installing and configuring Bun.
 
-## Bun 개요
+## Bun Overview
 
-Bun은 JavaScript 및 TypeScript를 위한 초고속 런타임, 패키지 매니저, 번들러, 그리고 테스트 러너입니다. Node.js의 대안으로 설계되었으며, 성능이 매우 뛰어나고 TypeScript를 기본적으로 지원합니다.
+Bun is an ultra-fast runtime, package manager, bundler, and test runner for JavaScript and TypeScript. Designed as an alternative to Node.js, it offers exceptional performance and native TypeScript support.
 
-## 설치 (Linux 및 macOS)
+## Installation (Linux and macOS)
 
-터미널에서 다음 명령어를 실행하여 Bun을 설치할 수 있습니다:
+Run the following command in your terminal to install Bun:
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
 
-## 설치 (Windows)
+## Installation (Windows)
 
-Windows 환경에서는 WSL(Windows Subsystem for Linux)을 사용하는 것을 강력히 권장합니다. 만약 직접 설치하고자 한다면 PowerShell에서 다음 명령어를 실행하십시오:
+On Windows, we strongly recommend using WSL (Windows Subsystem for Linux). If you prefer a direct installation, run the following command in PowerShell:
 ```powershell
 powershell -c "irm bun.sh/install.ps1 | iex"
 ```
 
-## 설치 확인
+## Verifying Installation
 
-설치가 완료되면 새로운 터미널 창을 열고 다음 명령어를 실행하여 설치를 확인하십시오:
+After installation, open a new terminal window and run the following command to verify:
 ```bash
 bun --version
 ```
-버전 번호가 출력되면 정상적으로 설치된 것입니다.
+If a version number is displayed, the installation was successful.
 
-## PATH 문제 해결
+## Troubleshooting PATH Issues
 
-만약 `bun: command not found` 오류가 발생한다면, Bun 바이너리 디렉토리가 시스템의 PATH 환경 변수에 포함되어 있지 않은 것입니다.
+If you encounter a `bun: command not found` error, the Bun binary directory is not in your system's PATH environment variable.
 
-1. `~/.bun/bin` 디렉토리를 PATH에 추가해야 합니다.
-2. 다음 명령어를 실행하여 설정을 추가하고 적용하십시오:
+1. You need to add `~/.bun/bin` to your PATH.
+2. Run the following commands to add and apply the configuration:
    ```bash
    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
    source ~/.bashrc
    ```
-   - zsh 사용자는 `.bashrc` 대신 `.zshrc` 파일에 추가하십시오.
+   - For zsh users, use `.zshrc` instead of `.bashrc`.
 
-## 업데이트
+## Updating
 
-Bun을 최신 버전으로 업데이트하려면 다음 명령어를 사용하십시오:
+To update Bun to the latest version, use the following command:
 ```bash
 bun upgrade
 ```

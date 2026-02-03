@@ -1,9 +1,9 @@
 import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
+import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
 import type { OutputHandle, UserSettings } from '../../domain/models.js'
 import type { OpenCodeEvent, PermissionAsked, QuestionAsked } from '../../domain/events.js'
-import type { SummaryService } from '../../adapters/opencode/summaryService.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/formatResponse.js'
 import { routeDelivery } from '../policies/deliveryRouter.js'
@@ -19,7 +19,7 @@ interface SessionWatcherDeps {
   openCode: OpenCodePort
   state: StateStore
   output: ChatOutputPort
-  summary: SummaryService
+  summary: SummaryPort
   onPermissionAsked: (chatId: number, event: PermissionAsked, actorUserId?: number) => Promise<void>
   onQuestionAsked: (chatId: number, event: QuestionAsked, actorUserId?: number) => Promise<void>
   isDebateActive?: (chatId: number) => boolean
@@ -360,7 +360,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         if (!entry.busyNotified) {
           entry.busyNotified = true
           logger.info('watcher', `Session ${entry.sessionId} became busy (external)`)
-          await deps.output.sendText(chatId, '🔄 AI가 작업 중입니다...').catch(() => {})
+          await deps.output.sendText(chatId, '🔄 AI is working...').catch(() => {})
         }
         break
       }
@@ -370,7 +370,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         if (suppressDisplay) break
         entry.busyNotified = true
         logger.info('watcher', `Session ${entry.sessionId} retrying (attempt ${event.data.attempt})`)
-        const retryMsg = `⏳ AI가 재시도 중입니다 (${event.data.attempt}회차)\n<i>${escapeHtml(event.data.message)}</i>`
+        const retryMsg = `⏳ AI is retrying (attempt ${event.data.attempt})\n<i>${escapeHtml(event.data.message)}</i>`
         await deps.output.sendText(chatId, retryMsg).catch(() => {})
         break
       }
@@ -415,7 +415,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       if (!content) return
 
       const state = await deps.state.getChatState(chatId)
-      const handle = await deps.output.sendText(chatId, '📋 마지막 응답을 불러오는 중...')
+      const handle = await deps.output.sendText(chatId, '📋 Loading last response...')
       await sendFinalResponse(chatId, handle, content, state.settings, entry.directory)
     } catch (err) {
       logger.warn('watcher', `Failed to deliver last response for chat ${chatId}: ${err instanceof Error ? err.message : 'unknown'}`)
@@ -441,13 +441,13 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         logger.info('watcher', `Session ${entry.sessionId} is busy on watch start`)
         if (!entry.busyNotified) {
           entry.busyNotified = true
-          await deps.output.sendText(chatId, '🔄 AI가 작업 중입니다...').catch(() => {})
+          await deps.output.sendText(chatId, '🔄 AI is working...').catch(() => {})
         }
       } else if (status.type === 'retry') {
         logger.info('watcher', `Session ${entry.sessionId} is retrying on watch start (attempt ${status.attempt})`)
         if (!entry.busyNotified) {
           entry.busyNotified = true
-          const msg = `⏳ AI가 재시도 중입니다 (${status.attempt}회차)\n<i>${escapeHtml(status.message)}</i>`
+          const msg = `⏳ AI is retrying (attempt ${status.attempt})\n<i>${escapeHtml(status.message)}</i>`
           await deps.output.sendText(chatId, msg).catch(() => {})
         }
       }

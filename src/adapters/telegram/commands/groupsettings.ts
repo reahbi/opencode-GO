@@ -26,7 +26,7 @@ export function groupSettingsMainText(gs: GroupSettings, bots: BotRegistryEntry[
 
   return [
     '<b>⚙️ Group Settings</b>',
-    '<i>이 채팅방의 모든 봇에 적용됩니다</i>',
+    '<i>Applies to all bots in this chat</i>',
     '',
     `🎭 Debate: ${rounds} rounds`,
     '',
@@ -36,20 +36,20 @@ export function groupSettingsMainText(gs: GroupSettings, bots: BotRegistryEntry[
 
 export function groupSettingsMainKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text('🎭 Debate 설정', 'gs:sub_debate')
-    .text('🤖 봇 상세', 'gs:sub_bots')
+    .text('🎭 Debate Settings', 'gs:sub_debate')
+    .text('🤖 Bot Details', 'gs:sub_bots')
 }
 
 export function debateSubText(gs: GroupSettings): string {
   const rounds = gs.debateRounds === 0 ? '♾️ Unlimited' : `${gs.debateRounds} rounds`
   return [
     '<b>🎭 Debate Settings</b>',
-    '<i>그룹 공유 설정</i>',
+    '<i>Shared group settings</i>',
     '',
-    `라운드 수: ${rounds}`,
+    `Rounds: ${rounds}`,
     '',
-    '<code>/debate [라운드] 주제</code> 형식으로',
-    '인라인 지정도 가능합니다.',
+    'Use <code>/debate [rounds] topic</code>',
+    'to override inline.',
   ].join('\n')
 }
 
@@ -60,7 +60,7 @@ export function debateSubKeyboard(): InlineKeyboard {
     .text('10', 'gs:dr:10')
     .text('♾️', 'gs:dr:0')
     .row()
-    .text('✏️ 직접 입력', 'gs:debaterounds')
+    .text('✏️ Enter manually', 'gs:debaterounds')
     .row()
     .text('◀️ Back', 'gs:back')
 }
@@ -69,10 +69,10 @@ export function botsSubText(bots: BotRegistryEntry[]): string {
   const now = Date.now()
 
   if (bots.length === 0) {
-    return '<b>🤖 Bots</b>\n\n이 채팅방에 등록된 봇이 없습니다.'
+    return '<b>🤖 Bots</b>\n\nNo bots registered in this chat.'
   }
 
-  const lines = ['<b>🤖 Bots</b>', '<i>이 채팅방의 봇 현황</i>', '']
+  const lines = ['<b>🤖 Bots</b>', '<i>Bot status in this chat</i>', '']
   for (const b of bots) {
     const online = (now - b.lastSeen) < 3 * 60 * 1000 ? '🟢' : '🔴'
     const agent = b.currentAgent || 'default'
@@ -85,7 +85,7 @@ export function botsSubText(bots: BotRegistryEntry[]): string {
     )
   }
 
-  lines.push('에이전트 변경: 해당 봇에 <code>@봇이름 /settings</code>')
+  lines.push('To change agent: <code>@botname /settings</code>')
   return lines.join('\n')
 }
 
@@ -125,7 +125,7 @@ export function groupSettingsCommand(
 
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
     if (!isGroup) {
-      await ctx.reply('그룹 채팅에서만 사용할 수 있습니다.\n개인 설정은 /settings 를 사용하세요.')
+      await ctx.reply('Only available in group chats.\nFor personal settings, use /settings.')
       return
     }
 

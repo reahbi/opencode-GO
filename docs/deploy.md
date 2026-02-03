@@ -1,60 +1,120 @@
-# PM2 배포 가이드 (Deployment)
+# PM2 Deployment Guide
 
-이 문서는 PM2 프로세스 매니저를 사용하여 OpenCaddy를 안정적으로 배포하고 관리하는 방법을 설명합니다.
+This document explains how to reliably deploy and manage OpenCode-Go using the PM2 process manager.
 
-## PM2 개요
+## PM2 Overview
 
-PM2는 Node.js 애플리케이션을 위한 프로덕션 프로세스 매니저입니다. 애플리케이션이 예기치 않게 종료되었을 때 자동으로 재시작해주며, 로그 관리 및 시스템 부팅 시 자동 시작 기능을 제공합니다.
+PM2 is a production process manager for Node.js applications. It automatically restarts your application when it crashes unexpectedly, and provides log management and auto-start on system boot.
 
-## PM2 설치
+## Installing PM2
 
-Bun 전용 PM2 패키지를 설치하거나 기존 PM2를 사용할 수 있습니다:
+You can install the Bun-compatible PM2 package or use the standard PM2:
 ```bash
 bun add -g pm2
-# 또는
+# or
 npm install -g pm2
 ```
 
-## 설정 및 시작
+## Configuration and Startup
 
-1. 프로젝트 초기 설정을 수행합니다:
+1. Run the initial project setup:
    ```bash
    bun run setup
    ```
-   설정 과정에서 PM2 멀티 인스턴스 설정을 선택할 수 있습니다.
-2. 생성된 설정 파일을 사용하여 애플리케이션을 시작합니다:
+   During setup, you can choose to configure PM2 multi-instance settings.
+2. Start the application using the generated configuration file:
    ```bash
    pm2 start ecosystem.config.cjs
    ```
 
-## 주요 명령어
+## Key Commands
 
-배포된 애플리케이션을 관리하기 위해 다음 명령어들을 활용하십시오:
+Use these commands to manage your deployed application:
 
-- **로그 확인**: `pm2 logs`
-- **재시작**: `pm2 restart ecosystem.config.cjs`
-- **중지**: `pm2 stop ecosystem.config.cjs`
-- **프로세스 삭제**: `pm2 delete ecosystem.config.cjs`
+- **View logs**: `pm2 logs`
+- **Restart**: `pm2 restart ecosystem.config.cjs`
+- **Stop**: `pm2 stop ecosystem.config.cjs`
+- **Delete processes**: `pm2 delete ecosystem.config.cjs`
 
-## 시스템 부팅 시 자동 시작 설정
+## Auto-Start on System Boot
 
-서버가 재부팅되었을 때 봇이 자동으로 실행되도록 설정할 수 있습니다:
+Configure the bot to start automatically when the server reboots:
 
-1. 시스템 서비스 등록 명령어를 생성합니다:
+1. Generate the system service registration command:
    ```bash
    pm2 startup
    ```
-   (출력된 명령어를 터미널에 복사하여 실행하십시오.)
-2. 현재 실행 중인 프로세스 목록을 저장합니다:
+   (Copy and run the command output in your terminal.)
+2. Save the current running process list:
    ```bash
    pm2 save
    ```
 
-## 다중 인스턴스 관리
+## Multi-Instance Management
 
-`bun run setup`을 통해 여러 프로젝트를 각각 다른 텔레그램 봇으로 관리할 수 있습니다. 각 인스턴스는 고유한 프로젝트 경로와 봇 토큰을 가질 수 있으며, PM2를 통해 독립적인 프로세스로 실행됩니다.
+Using `bun run setup`, you can manage multiple projects as separate Telegram bots. Each instance can have its own unique project path and bot token, running as independent processes through PM2.
 
-**주의사항**:
-- 각 인스턴스는 반드시 서로 다른 `BOT_TOKEN`을 사용해야 합니다.
-- 데이터 충돌을 방지하기 위해 각 인스턴스마다 별도의 `STATE_DIR`를 설정하는 것이 좋습니다.
-- 인스턴스 이름은 `.env`의 `INSTANCE_NAME` 변수를 통해 구분할 수 있습니다.
+**Important Notes**:
+- Each instance must use a different `BOT_TOKEN`.
+- To prevent data conflicts, set a separate `STATE_DIR` for each instance.
+- Use the `INSTANCE_NAME` variable in `.env` to distinguish between instances.
+
+## Multi-Bot Mode (Writer/Reader)
+
+Additional configuration is required to enable bot collaboration in a group chat.
+
+### Required Environment Variables
+
+| Variable | Description |
+|---|---|
+| `BOT_ROLE` | `writer` or `reader` (collaboration role) |
+| `GROUP_CHAT_ENABLED` | `true` (allow group chat responses) |
+| `COORDINATION_DIR` | Shared directory for bot coordination (same for all bots) |
+| `STATE_DIR` | State directory per bot (different for each bot) |
+
+### ecosystem.config.cjs Example
+
+```javascript
+const COORDINATION_DIR = '/tmp/opencode-go-coordination'
+
+module.exports = {
+  apps: [
+    {
+      name: 'opencode-go-writer',
+      script: 'src/main.ts',
+      interpreter: 'bun',
+      env: {
+        BOT_TOKEN: 'writer-bot-token',
+        ALLOWED_USER_IDS: 'your-user-id',
+        DEFAULT_PROJECT: '/path/to/project',
+        INSTANCE_NAME: 'writer',
+        STATE_DIR: 'data/instances/writer',
+        BOT_ROLE: 'writer',
+        GROUP_CHAT_ENABLED: 'true',
+        COORDINATION_DIR,
+      },
+    },
+    {
+      name: 'opencode-go-reader',
+      script: 'src/main.ts',
+      interpreter: 'bun',
+      env: {
+        BOT_TOKEN: 'reader-bot-token',
+        ALLOWED_USER_IDS: 'your-user-id',
+        DEFAULT_PROJECT: '/path/to/project',
+        INSTANCE_NAME: 'reader',
+        STATE_DIR: 'data/instances/reader',
+        BOT_ROLE: 'reader',
+        GROUP_CHAT_ENABLED: 'true',
+        COORDINATION_DIR,
+      },
+    },
+  ],
+}
+```
+
+### Alternative: /addbot Wizard
+
+You can also add bots via the `/addbot` command in Telegram. The wizard guides you through token verification to PM2 setup.
+
+For more details: [Multi-Bot Guide](multibot.md)

@@ -23,7 +23,7 @@ export function debateCommand(debateFlow: ReturnType<typeof createDebateFlow>, b
 
     const input = ctx.match?.toString().trim()
     if (!input) {
-      await ctx.reply('사용법: /debate [라운드] <주제>')
+      await ctx.reply('Usage: /debate [rounds] <topic>')
       return
     }
 
@@ -39,7 +39,7 @@ export function debateCommand(debateFlow: ReturnType<typeof createDebateFlow>, b
     }
 
     if (!topic) {
-      await ctx.reply('사용법: /debate [라운드] <주제>')
+      await ctx.reply('Usage: /debate [rounds] <topic>')
       return
     }
 

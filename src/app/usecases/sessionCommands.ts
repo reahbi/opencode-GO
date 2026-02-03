@@ -4,6 +4,7 @@ import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { HistoryMessage } from '../../domain/models.js'
 import { AppError } from '../../domain/errors.js'
 import { logger } from '../../shared/logger.js'
+import { escapeHtml } from '../../shared/formatResponse.js'
 
 const SESSIONS_PER_PAGE = 10
 
@@ -25,10 +26,6 @@ interface SessionCommandsDeps {
   openCode: OpenCodePort
   state: StateStore
   output: ChatOutputPort
-}
-
-export function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 export function formatTimestamp(ms: number): string {
@@ -137,7 +134,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       const state = await deps.state.getChatState(chatId)
       
       if (!state.activeProjectDirectory) {
-        await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+        await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return
       }
 
@@ -146,13 +143,13 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       state.activeSessionId = session.id
       await deps.state.saveChatState(chatId, state)
       
-      await deps.output.sendText(chatId, `세션 생성됨: <b>${session.title}</b>\nID: <code>${session.id}</code>`)
+      await deps.output.sendText(chatId, `Session created: <b>${session.title}</b>\nID: <code>${session.id}</code>`)
     } catch (error) {
       if (error instanceof AppError) {
         await deps.output.sendText(chatId, error.message)
       } else {
         logger.error('session', 'createSession failed:', error)
-        await deps.output.sendText(chatId, '오류가 발생했습니다. 다시 시도해 주세요.')
+        await deps.output.sendText(chatId, 'An error occurred. Please try again.')
       }
     }
   }
@@ -161,11 +158,11 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     try {
       const page = await getSessionPage(chatId, 1)
       if (!page) {
-        await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+        await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return
       }
       if (page.items.length === 0) {
-        await deps.output.sendText(chatId, '세션이 없습니다.')
+        await deps.output.sendText(chatId, 'No sessions.')
         return
       }
       const lines = page.items.map((item) => {
@@ -178,7 +175,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
         await deps.output.sendText(chatId, error.message)
       } else {
         logger.error('session', 'listSessions failed:', error)
-        await deps.output.sendText(chatId, '오류가 발생했습니다. 다시 시도해 주세요.')
+        await deps.output.sendText(chatId, 'An error occurred. Please try again.')
       }
     }
   }
@@ -235,7 +232,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       const state = await deps.state.getChatState(chatId)
       
       if (!state.activeProjectDirectory) {
-        await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+        await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return
       }
 
@@ -243,7 +240,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       
       if (sessionIndex < 1 || sessionIndex > sessions.length) {
-        await deps.output.sendText(chatId, `잘못된 세션 번호입니다. 1-${sessions.length} 사이의 번호를 선택하세요.`)
+        await deps.output.sendText(chatId, `Invalid session number. Select between 1-${sessions.length}.`)
         return
       }
 
@@ -251,13 +248,13 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       state.activeSessionId = session.id
       await deps.state.saveChatState(chatId, state)
       
-      await deps.output.sendText(chatId, `세션 재개됨: <b>${escapeHtml(session.title || 'Untitled')}</b>`)
+      await deps.output.sendText(chatId, `Session resumed: <b>${escapeHtml(session.title || 'Untitled')}</b>`)
     } catch (error) {
       if (error instanceof AppError) {
         await deps.output.sendText(chatId, error.message)
       } else {
         logger.error('session', 'resumeSession failed:', error)
-        await deps.output.sendText(chatId, '오류가 발생했습니다. 다시 시도해 주세요.')
+        await deps.output.sendText(chatId, 'An error occurred. Please try again.')
       }
     }
   }
@@ -266,7 +263,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     try {
       const state = await deps.state.getChatState(chatId)
       if (!state.activeProjectDirectory) {
-        await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+        await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return null
       }
 
@@ -274,7 +271,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
       if (sessionIndex < 1 || sessionIndex > sessions.length) {
-        await deps.output.sendText(chatId, `잘못된 세션 번호입니다. 1-${sessions.length} 사이의 번호를 선택하세요.`)
+        await deps.output.sendText(chatId, `Invalid session number. Select between 1-${sessions.length}.`)
         return null
       }
 
@@ -288,7 +285,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
         await deps.output.sendText(chatId, error.message)
       } else {
         logger.error('session', 'resumeSessionForHistory failed:', error)
-        await deps.output.sendText(chatId, '오류가 발생했습니다. 다시 시도해 주세요.')
+        await deps.output.sendText(chatId, 'An error occurred. Please try again.')
       }
       return null
     }
@@ -299,12 +296,12 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       const state = await deps.state.getChatState(chatId)
       
       if (!state.activeProjectDirectory) {
-        await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
+        await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return
       }
 
       if (!state.activeSessionId) {
-        await deps.output.sendText(chatId, '중단할 활성 세션이 없습니다.')
+        await deps.output.sendText(chatId, 'No active session to abort.')
         return
       }
 
@@ -313,13 +310,13 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       state.pendingInteractions = []
       await deps.state.saveChatState(chatId, state)
       
-      await deps.output.sendText(chatId, '세션이 중단되었습니다.')
+      await deps.output.sendText(chatId, 'Session aborted.')
     } catch (error) {
       if (error instanceof AppError) {
         await deps.output.sendText(chatId, error.message)
       } else {
         logger.error('session', 'abortSession failed:', error)
-        await deps.output.sendText(chatId, '오류가 발생했습니다. 다시 시도해 주세요.')
+        await deps.output.sendText(chatId, 'An error occurred. Please try again.')
       }
     }
   }

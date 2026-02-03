@@ -59,7 +59,7 @@ export function agentSubText(
   const lines = [
     '<b>🤖 Agent & Mode</b>',
     '',
-    `에이전트: <code>${currentAgent || 'default'}</code>`,
+    `Agent: <code>${currentAgent || 'default'}</code>`,
     `Review Mode: ${review}`,
     '',
   ]
@@ -99,9 +99,9 @@ export function summarySubText(s: UserSettings): string {
   return [
     '<b>📊 AI Summary</b>',
     '',
-    `상태: ${status}`,
-    `모델: <code>${model}</code>`,
-    `트리거: ${threshold}+ chars`,
+    `Status: ${status}`,
+    `Model: <code>${model}</code>`,
+    `Trigger: ${threshold}+ chars`,
   ].join('\n')
 }
 
@@ -122,7 +122,7 @@ export function outputSubText(s: UserSettings): string {
   return [
     '<b>📝 Output</b>',
     '',
-    `형식: ${format}`,
+    `Format: ${format}`,
   ].join('\n')
 }
 
@@ -141,8 +141,8 @@ export function historySubText(s: UserSettings): string {
   return [
     '<b>📜 History Export</b>',
     '',
-    `파일 형식: ${histFmt}`,
-    `포함 범위: ${histLimit}`,
+    `File format: ${histFmt}`,
+    `Include: ${histLimit}`,
   ].join('\n')
 }
 

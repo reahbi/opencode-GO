@@ -1,37 +1,50 @@
-# 텔레그램 봇 설정 가이드
+# Telegram Bot Setup Guide
 
-이 문서는 OpenCaddy를 제어하기 위한 텔레그램 봇(Telegram Bot)을 생성하고 필요한 정보를 획득하는 방법을 설명합니다.
+This document explains how to create a Telegram bot for controlling OpenCode-Go and obtain the necessary credentials.
 
-## 봇 생성 과정
+## Bot Creation Process
 
-1. 텔레그램 앱에서 @BotFather를 검색하여 대화 세션을 시작합니다.
-2. `/start` 메시지를 전송합니다.
-3. `/newbot` 명령어를 전송하여 새로운 봇 생성을 시작합니다.
-4. 봇의 이름(Name)을 입력합니다. (예: My OpenCaddy)
-5. 봇의 유저네임(Username)을 입력합니다. 이 이름은 반드시 `_bot`으로 끝나야 합니다. (예: my_opencaddy_bot)
-6. 생성이 완료되면 봇 토큰(Bot Token)을 수령합니다.
+1. Search for @BotFather in the Telegram app and start a conversation.
+2. Send the `/start` message.
+3. Send the `/newbot` command to begin creating a new bot.
+4. Enter a name for your bot. (e.g., My OpenCode-Go)
+5. Enter a username for your bot. This must end with `_bot`. (e.g., my_opencode_go_bot)
+6. Upon completion, you'll receive your bot token.
 
-## 봇 토큰(Bot Token) 형식
+## Bot Token Format
 
-봇 토큰은 다음과 같은 형식을 가집니다:
-`123456789:ABCdefGHIjklMNO-pqrSTUvwxyz` (숫자와 영문 숫자의 조합)
+Bot tokens follow this format:
+`123456789:ABCdefGHIjklMNO-pqrSTUvwxyz` (combination of numbers and alphanumeric characters)
 
-**보안 주의사항**: 봇 토큰은 봇의 비밀번호와 같습니다. 이 토큰이 노출되면 누구나 당신의 봇을 제어할 수 있습니다. 절대 타인과 공유하거나 공개된 저장소(GitHub 등)에 커밋하지 마십시오.
+**Security Warning**: Your bot token is like a password for your bot. If exposed, anyone can control your bot. Never share it with others or commit it to public repositories (GitHub, etc.).
 
-## 본인의 텔레그램 유저 ID(Telegram User ID) 확인
+## Finding Your Telegram User ID
 
-OpenCaddy는 승인된 사용자만 접근할 수 있도록 보안 설정이 되어 있습니다. 본인의 유저 ID를 확인하려면 다음 단계를 따르십시오.
+OpenCode-Go is configured to allow only authorized users. To find your User ID, follow these steps:
 
-1. @userinfobot (https://t.me/userinfobot)에게 아무 메시지나 전송합니다.
-2. 봇이 응답으로 보내주는 숫자 값이 본인의 유저 ID(User ID)입니다.
-3. 유저 ID 형식: 숫자만 포함됩니다. (예: `7702469661`)
+1. Send any message to @userinfobot (https://t.me/userinfobot).
+2. The numeric value in the bot's response is your User ID.
+3. User ID format: Numbers only. (e.g., `7702469661`)
 
-## 다중 사용자 허용
+## Allowing Multiple Users
 
-여러 명의 사용자가 봇을 사용할 수 있게 하려면, 환경 변수 `ALLOWED_USER_IDS`에 각 사용자의 ID를 쉼표(,)로 구분하여 입력하십시오.
-예: `123456789,987654321`
+To allow multiple users to use the bot, add each user's ID to the `ALLOWED_USER_IDS` environment variable, separated by commas.
+Example: `123456789,987654321`
 
-## 문제 해결
+## Group Chat Setup (Multi-Bot Mode)
 
-봇에게 메시지를 보냈으나 아무런 응답이 없는 경우, 다음 사항을 확인하십시오:
-- 환경 변수 `ALLOWED_USER_IDS`에 본인의 ID가 정확히 포함되어 있는지 확인하십시오. 보안을 위해 승인되지 않은 사용자의 메시지에는 봇이 응답하지 않고 무시합니다.
+Additional BotFather configuration is required to use group chat in multi-bot mode:
+
+1. Send `/mybots` command to @BotFather
+2. Select the bot to configure
+3. `Bot Settings` → `Allow Groups?` → `Turn groups on`
+4. (Optional) `Group Privacy` → `Turn off` — Allows the bot to see all messages in the group
+
+**Note**: OpenCode-Go only processes @mentioned messages by default, so you don't need to turn off Group Privacy.
+
+## Troubleshooting
+
+If the bot doesn't respond when you send a message, check the following:
+- Verify that your ID is correctly included in the `ALLOWED_USER_IDS` environment variable. For security, the bot silently ignores messages from unauthorized users.
+- For group chats, ensure `GROUP_CHAT_ENABLED=true` is set.
+- Verify that `Allow Groups?` is enabled in BotFather.

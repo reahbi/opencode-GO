@@ -771,7 +771,7 @@ describe('sessionWatcher', () => {
       await watcher.watch(chatId)
 
       await waitFor(() => expect(output.sendText).toHaveBeenCalled())
-      expect(output.sendText).toHaveBeenCalledWith(chatId, '📋 마지막 응답을 불러오는 중...')
+      expect(output.sendText).toHaveBeenCalledWith(chatId, '📋 Loading last response...')
       expect(output.editText).toHaveBeenCalled()
 
       watcher.stop(chatId)
@@ -787,7 +787,7 @@ describe('sessionWatcher', () => {
       await watcher.watch(chatId)
 
       await waitFor(() => expect(output.sendText).toHaveBeenCalled())
-      expect(output.sendText).toHaveBeenCalledWith(chatId, '🔄 AI가 작업 중입니다...')
+      expect(output.sendText).toHaveBeenCalledWith(chatId, '🔄 AI is working...')
 
       watcher.stop(chatId)
     })

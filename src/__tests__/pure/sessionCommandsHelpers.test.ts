@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'bun:test'
 import {
-  escapeHtml,
   formatTimestamp,
   messagesToMarkdown,
   messagesToHtml,
 } from '../../app/usecases/sessionCommands.js'
+import { escapeHtml } from '../../shared/formatResponse.js'
 import { buildHistoryMessage } from '../helpers/builders.js'
 
 describe('sessionCommands helpers', () => {

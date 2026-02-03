@@ -203,7 +203,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     if (!state.activeProjectDirectory) {
       await deps.output.sendText(
         chatId,
-        escapeHtml('활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.'),
+        escapeHtml('No active project. Set DEFAULT_PROJECT in .env.'),
         'HTML',
       )
       return null
@@ -211,7 +211,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     if (!state.activeSessionId) {
       await deps.output.sendText(
         chatId,
-        escapeHtml('활성 세션이 없습니다. /new 로 새 세션을 시작하세요.'),
+        escapeHtml('No active session. Use /new to start one.'),
         'HTML',
       )
       return null
@@ -241,7 +241,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
   async function handleResponseTimeout(session: DebateSession): Promise<void> {
     if (sessions.get(session.chatId) !== session) return
     logger.warn('debate', `Response timeout for chat ${session.chatId}`)
-    await endDebate(session.chatId, session, '응답 시간이 초과되었습니다.')
+    await endDebate(session.chatId, session, 'Response timeout.')
   }
 
   async function publishEvent(
@@ -291,10 +291,10 @@ export function createDebateFlow(deps: DebateFlowDeps) {
 
       await sendWithRetry(() => deps.output.sendInteraction(
         chatId,
-        `🏁 토론 종료: ${escapeHtml(reason)}\n\n<b>${escapeHtml(session.topic)}</b>\n\n결과를 코드에 반영하시겠습니까?`,
+        `🏁 Debate ended: ${escapeHtml(reason)}\n\n<b>${escapeHtml(session.topic)}</b>\n\nApply results to code?`,
         [
-          { label: '✅ 반영하기', callbackData: `dba:${session.debateId}` },
-          { label: '❌ 무시하기', callbackData: `dbr:${session.debateId}` },
+          { label: '✅ Apply', callbackData: `dba:${session.debateId}` },
+          { label: '❌ Ignore', callbackData: `dbr:${session.debateId}` },
         ],
       ))
       return
@@ -314,7 +314,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     if (!targetBot) {
       await deps.output.sendText(
         chatId,
-        escapeHtml('단독 모드에서는 /debate 를 사용할 수 없습니다.'),
+        escapeHtml('/debate is not available in standalone mode.'),
         'HTML',
       )
       return
@@ -366,7 +366,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     if (!targetBot) {
       await deps.output.sendText(
         chatId,
-        escapeHtml('단독 모드에서는 /review 를 사용할 수 없습니다.'),
+        escapeHtml('/review is not available in standalone mode.'),
         'HTML',
       )
       return
@@ -476,7 +476,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       logger.error('debate', `Failed to generate debate response: ${error instanceof Error ? error.message : String(error)}`)
       await deps.output.sendText(
         chatId,
-        escapeHtml(`❌ 토론 응답 생성 실패: ${error instanceof Error ? error.message : String(error)}`),
+        escapeHtml(`❌ Failed to generate debate response: ${error instanceof Error ? error.message : String(error)}`),
         'HTML',
       )
       const targetBot = await getTargetBot()
@@ -514,7 +514,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     ))
 
     if (session.maxRounds > 0 && round >= session.maxRounds) {
-      await endDebate(chatId, session, '최대 라운드에 도달했습니다.')
+      await endDebate(chatId, session, 'Max rounds reached.')
       return
     }
 
@@ -554,7 +554,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       logger.error('debate', `Failed to generate debate response: ${error instanceof Error ? error.message : String(error)}`)
       await deps.output.sendText(
         chatId,
-        escapeHtml(`❌ 토론 응답 생성 실패: ${error instanceof Error ? error.message : String(error)}`),
+        escapeHtml(`❌ Failed to generate debate response: ${error instanceof Error ? error.message : String(error)}`),
         'HTML',
       )
       const targetBot = await getTargetBot()
@@ -608,7 +608,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       logger.error('debate', `Failed to generate review: ${error instanceof Error ? error.message : String(error)}`)
       await deps.output.sendText(
         chatId,
-        escapeHtml(`❌ 리뷰 생성 실패: ${error instanceof Error ? error.message : String(error)}`),
+        escapeHtml(`❌ Failed to generate review: ${error instanceof Error ? error.message : String(error)}`),
         'HTML',
       )
     }
@@ -653,7 +653,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
         if (event.debateId && event.debateId !== session.debateId) return
         const reason = typeof event.payload.reason === 'string'
           ? event.payload.reason
-          : '상대 봇이 종료했습니다.'
+          : 'Opponent ended the debate.'
         await endDebate(chatId, session, reason)
         break
       }
@@ -724,28 +724,28 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     cleanupStaleAcceptances()
     const acceptance = pendingAcceptances.get(debateId)
     if (!acceptance) {
-      await deps.output.sendText(chatId, escapeHtml('토론 데이터가 만료되었습니다.'), 'HTML')
+      await deps.output.sendText(chatId, escapeHtml('Debate data has expired.'), 'HTML')
       return
     }
     pendingAcceptances.delete(debateId)
 
     const history = acceptance.messages.map(m => {
-      const label = m.from === 'self' ? '나' : '상대방'
+      const label = m.from === 'self' ? 'Me' : 'Opponent'
       return `[${label} - Round ${m.round}]\n${m.text}`
     }).join('\n\n')
 
     const prompt = [
-      `다음은 "${acceptance.topic}" 주제에 대한 토론 결과입니다:`,
+      `The following is the debate result for "${acceptance.topic}":`,
       '',
       history,
       '',
-      '위 토론에서 논의된 개선사항과 합의된 내용을 현재 코드베이스에 반영해주세요.',
-      '구체적인 변경사항을 구현하되, 토론에서 동의한 방향으로만 수정하세요.',
+      'Apply the improvements and agreements from this debate to the codebase.',
+      'Implement specific changes only as agreed in the debate.',
     ].join('\n')
 
     await sendWithRetry(() => deps.output.sendText(
       chatId,
-      escapeHtml(`⚡ 토론 결과를 반영합니다: ${acceptance.topic}`),
+      escapeHtml(`⚡ Applying debate results: ${acceptance.topic}`),
       'HTML',
     ))
 
@@ -753,13 +753,13 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       await deps.openCode.sendPromptAsync(acceptance.sessionId, acceptance.directory, prompt)
     } catch (error) {
       logger.error('debate', `Acceptance prompt failed: ${error instanceof Error ? error.message : String(error)}`)
-      await deps.output.sendText(chatId, escapeHtml('❌ 반영 프롬프트 전송 실패'), 'HTML')
+      await deps.output.sendText(chatId, escapeHtml('❌ Failed to send acceptance prompt'), 'HTML')
     }
   }
 
   async function handleRejection(chatId: number, debateId: string): Promise<void> {
     pendingAcceptances.delete(debateId)
-    await deps.output.sendText(chatId, escapeHtml('🗑️ 토론 결과를 무시합니다.'), 'HTML')
+    await deps.output.sendText(chatId, escapeHtml('🗑️ Ignoring debate results.'), 'HTML')
   }
 
   return {

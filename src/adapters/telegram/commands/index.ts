@@ -87,6 +87,24 @@ interface RegisterCommandsDeps {
 export function registerCommands(deps: RegisterCommandsDeps): void {
   const { bot, openCode, state, output, queue } = deps
 
+  // Helper to update agent in registry when agent changes
+  async function updateRegistryAgent(agentName: string | null): Promise<void> {
+    if (!deps.registry || !deps.instanceName) return
+    try {
+      const bots = await deps.registry.list()
+      const current = bots.find(b => b.instanceName === deps.instanceName)
+      if (current) {
+        await deps.registry.register({
+          ...current,
+          currentAgent: agentName ?? undefined,
+          lastSeen: Date.now(),
+        })
+      }
+    } catch (err) {
+      logger.warn('registry', `Failed to update agent in registry: ${err instanceof Error ? err.message : 'unknown'}`)
+    }
+  }
+
   const summary = createSummaryService(openCode)
   const sessionCommands = createSessionCommands({ openCode, state, output })
   const interactiveFlow = createInteractiveFlow({ openCode, state, output, botRole: deps.botRole })
@@ -153,7 +171,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     if (chatState.awaitingInput === 'addbot_token' || chatState.awaitingInput === 'addbot_project') {
       chatState.awaitingInput = null
       await state.saveChatState(chatId, chatState)
-      await ctx.reply('❌ 취소되었습니다.')
+      await ctx.reply('❌ Cancelled.')
     }
   })
 
@@ -179,7 +197,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const chatState = await state.getChatState(chatId)
       const interaction = chatState.pendingInteractions.find(i => i.interactionId === parsed.interactionId)
       if (interaction?.creatorUserId && interaction.creatorUserId !== ctx.callbackQuery.from.id) {
-        await ctx.answerCallbackQuery({ text: '이 요청의 대상자가 아닙니다.', show_alert: true }).catch(() => {})
+        await ctx.answerCallbackQuery({ text: 'You are not the target of this request.', show_alert: true }).catch(() => {})
         return
       }
     }
@@ -210,6 +228,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         const chatState = await state.getChatState(chatId)
         chatState.activeAgent = parsed.agentName
         await state.saveChatState(chatId, chatState)
+        await updateRegistryAgent(parsed.agentName)
         await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b>`, { parse_mode: 'HTML' })
         break
       }
@@ -217,6 +236,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         const chatState = await state.getChatState(chatId)
         chatState.activeAgent = parsed.agentName
         await state.saveChatState(chatId, chatState)
+        await updateRegistryAgent(parsed.agentName)
         try {
           const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
           await ctx.editMessageText(
@@ -239,7 +259,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
                 { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
               )
             } catch {
-              await ctx.editMessageText('에이전트 목록 조회 실패.', { parse_mode: 'HTML' })
+              await ctx.editMessageText('Failed to load agents.', { parse_mode: 'HTML' })
             }
             break
           }
@@ -362,7 +382,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         try {
           const title = await sessionCommands.resumeSessionById(chatId, parsed.sessionId)
           if (title) {
-            const histKb = new InlineKeyboard().text('📜 대화내역 받기', `hist:${parsed.sessionId}`)
+            const histKb = new InlineKeyboard().text('📜 Get History', `hist:${parsed.sessionId}`)
             await ctx.editMessageText(`✅ Resumed: <b>${escapeHtml(title)}</b>`, {
               parse_mode: 'HTML',
               reply_markup: histKb,
@@ -378,18 +398,18 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'history': {
         try {
-          await ctx.editMessageText('📝 대화내역을 생성 중...')
+          await ctx.editMessageText('📝 Generating history...')
           const histResult = await sessionCommands.exportSessionHistory(chatId, parsed.sessionId)
           if (!histResult) {
-            await output.sendText(chatId, '대화내역이 없거나 세션을 찾을 수 없습니다.')
+            await output.sendText(chatId, 'No history or session not found.')
             break
           }
           const buf = Buffer.from(histResult.content, 'utf-8')
-          const safeTitle = histResult.title.replace(/[^a-zA-Z0-9가-힣_-]/g, '_').slice(0, 40)
+          const safeTitle = histResult.title.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)
           const ext = histResult.format
           await output.sendFile(chatId, buf, `${safeTitle}.${ext}`, `📜 ${histResult.title}`)
         } catch {
-          await output.sendText(chatId, '대화내역 생성에 실패했습니다.')
+          await output.sendText(chatId, 'Failed to generate history.')
         }
         break
       }
@@ -448,7 +468,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             gsChatState.awaitingInput = 'debaterounds'
             await state.saveChatState(chatId, gsChatState)
             await ctx.editMessageText(
-              `🎭 토론 라운드 수를 입력하세요.\n\n0 = 무제한\n\n현재: ${gs.debateRounds === 0 ? '♾️ Unlimited' : `${gs.debateRounds} rounds`}`,
+              `🎭 Enter number of debate rounds.\n\n0 = Unlimited\n\nCurrent: ${gs.debateRounds === 0 ? '♾️ Unlimited' : `${gs.debateRounds} rounds`}`,
               { parse_mode: 'HTML' },
             )
             break
@@ -530,7 +550,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const num = parseInt(text.trim(), 10)
       if (!Number.isFinite(num) || num < 0 || num > 999) {
         await state.saveChatState(chatId, chatState)
-        await output.sendText(chatId, '0~999 사이의 숫자를 입력하세요. (0 = 무제한)')
+        await output.sendText(chatId, 'Enter a number between 0-999. (0 = unlimited)')
         return
       }
       await state.saveChatState(chatId, chatState)
@@ -539,7 +559,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         gs.debateRounds = num
         await deps.groupSettings.saveGroupSettings(gs)
       }
-      await output.sendText(chatId, `✅ 토론 라운드: ${num === 0 ? '♾️ Unlimited' : `${num} rounds`}`)
+      await output.sendText(chatId, `✅ Debate rounds: ${num === 0 ? '♾️ Unlimited' : `${num} rounds`}`)
       return
     }
     if (chatState.awaitingInput === 'histlimit') {

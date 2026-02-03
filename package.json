@@ -1,5 +1,5 @@
 {
-  "name": "opencaddy",
+  "name": "opencode-go",
   "version": "0.1.0",
   "description": "Telegram bot to remotely control OpenCode coding agent",
   "type": "module",

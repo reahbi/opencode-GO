@@ -53,7 +53,7 @@ describe('sessionCommands', () => {
       expect(state.saveChatState).toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('세션 생성됨'),
+        expect.stringContaining('Session created'),
       )
     })
 
@@ -67,7 +67,7 @@ describe('sessionCommands', () => {
       expect(openCode.createSession).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('활성 프로젝트가 없습니다'),
+        expect.stringContaining('No active project'),
       )
     })
 
@@ -125,7 +125,7 @@ describe('sessionCommands', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('오류가 발생했습니다'),
+        expect.stringContaining('An error occurred'),
       )
     })
   })
@@ -169,7 +169,7 @@ describe('sessionCommands', () => {
       expect(openCode.listSessions).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('활성 프로젝트가 없습니다'),
+        expect.stringContaining('No active project'),
       )
     })
 
@@ -187,7 +187,7 @@ describe('sessionCommands', () => {
 
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('세션이 없습니다'),
+        expect.stringContaining('No sessions'),
       )
     })
 
@@ -258,7 +258,7 @@ describe('sessionCommands', () => {
       expect(state.saveChatState).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('잘못된 세션 번호'),
+        expect.stringContaining('Invalid session number'),
       )
     })
 
@@ -279,7 +279,7 @@ describe('sessionCommands', () => {
       expect(state.saveChatState).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('잘못된 세션 번호'),
+        expect.stringContaining('Invalid session number'),
       )
     })
 
@@ -293,7 +293,7 @@ describe('sessionCommands', () => {
       expect(openCode.listSessions).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('활성 프로젝트가 없습니다'),
+        expect.stringContaining('No active project'),
       )
     })
   })
@@ -316,7 +316,7 @@ describe('sessionCommands', () => {
       expect(state.saveChatState).toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('세션이 중단되었습니다'),
+        expect.stringContaining('Session aborted'),
       )
     })
 
@@ -333,7 +333,7 @@ describe('sessionCommands', () => {
       expect(openCode.abortSession).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('중단할 활성 세션이 없습니다'),
+        expect.stringContaining('No active session to abort'),
       )
     })
 
@@ -347,7 +347,7 @@ describe('sessionCommands', () => {
       expect(openCode.abortSession).not.toHaveBeenCalled()
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
-        expect.stringContaining('활성 프로젝트가 없습니다'),
+        expect.stringContaining('No active project'),
       )
     })
   })
