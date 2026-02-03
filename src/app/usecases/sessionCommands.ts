@@ -356,21 +356,21 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function revertSession(chatId: number): Promise<string | null> {
+  async function revertSession(chatId: number): Promise<void> {
     const state = await deps.state.getChatState(chatId)
     
     if (!state.activeProjectDirectory || !state.activeSessionId) {
       await deps.output.sendText(chatId, 'No active session.')
-      return null
+      return
     }
 
     if (!state.lastAssistantMessageId) {
       await deps.output.sendText(chatId, 'Nothing to undo.')
-      return null
+      return
     }
 
     try {
-      const result = await deps.openCode.revertSession(
+      await deps.openCode.revertSession(
         state.activeSessionId,
         state.activeProjectDirectory,
         state.lastAssistantMessageId
@@ -379,11 +379,10 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       state.redoAvailable = true
       await deps.state.saveChatState(chatId, state)
       
-      return result.diff ?? null
+      await deps.output.sendText(chatId, '⏪ Reverted to previous state.')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       await deps.output.sendText(chatId, `Undo failed: ${message}`)
-      return null
     }
   }
 

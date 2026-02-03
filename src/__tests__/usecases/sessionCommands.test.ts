@@ -476,18 +476,17 @@ describe('sessionCommands', () => {
   })
 
   describe('revertSession', () => {
-    it('should return null if no active session', async () => {
+    it('should send error if no active session', async () => {
       const chatId = 123
       state = createMockStateStore({ activeSessionId: undefined })
 
       const commands = createSessionCommands({ openCode, state, output })
-      const result = await commands.revertSession(chatId)
+      await commands.revertSession(chatId)
 
-      expect(result).toBeNull()
       expect(output.sendText).toHaveBeenCalledWith(chatId, 'No active session.')
     })
 
-    it('should return null if no lastAssistantMessageId', async () => {
+    it('should send error if no lastAssistantMessageId', async () => {
       const chatId = 123
       state = createMockStateStore({
         activeSessionId: 'ses-1',
@@ -496,13 +495,12 @@ describe('sessionCommands', () => {
       })
 
       const commands = createSessionCommands({ openCode, state, output })
-      const result = await commands.revertSession(chatId)
+      await commands.revertSession(chatId)
 
-      expect(result).toBeNull()
       expect(output.sendText).toHaveBeenCalledWith(chatId, 'Nothing to undo.')
     })
 
-    it('should call revertSession and return diff', async () => {
+    it('should call revertSession and send success message', async () => {
       const chatId = 123
       const mockState = buildChatState({
         activeSessionId: 'ses-1',
@@ -521,10 +519,10 @@ describe('sessionCommands', () => {
       openCode.revertSession = revertSessionMock
 
       const commands = createSessionCommands({ openCode, state, output })
-      const result = await commands.revertSession(chatId)
+      await commands.revertSession(chatId)
 
-      expect(result).toBe('- old\n+ new')
       expect(revertSessionMock).toHaveBeenCalledWith('ses-1', '/test', 'msg-1')
+      expect(output.sendText).toHaveBeenCalledWith(chatId, '⏪ Reverted to previous state.')
       
       const savedState = (state.saveChatState as any).mock.calls[0][1]
       expect(savedState.redoAvailable).toBe(true)
@@ -544,9 +542,9 @@ describe('sessionCommands', () => {
       openCode.revertSession = revertSessionMock
 
       const commands = createSessionCommands({ openCode, state, output })
-      const result = await commands.revertSession(chatId)
+      await commands.revertSession(chatId)
 
-      expect(result).toBeNull()
+      expect(output.sendText).toHaveBeenCalledWith(chatId, '⏪ Reverted to previous state.')
     })
   })
 
