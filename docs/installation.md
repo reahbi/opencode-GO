@@ -21,29 +21,44 @@ bun run setup
 
 You are helping the user install **OpenCode-Go** — a Telegram bot that remotely controls OpenCode coding agent sessions from a phone.
 
+**IMPORTANT: Before doing anything else, you MUST complete Step 0 (environment detection) and get user confirmation.**
+
 The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
 
-### Step 0: Detect Environment & Install
+### Step 0: Detect Environment (MANDATORY FIRST STEP)
 
-**First, detect the current environment:**
+**STOP. Before cloning or installing anything, detect the environment first.**
+
+Run this command:
 ```bash
 echo $SHELL && uname -a
 ```
 
-Identify the environment:
+Identify the environment from the output:
 - If output contains `microsoft` or `WSL` → **WSL (Ubuntu on Windows)**
 - If output contains `Darwin` → **macOS**
 - If output contains `Linux` (without WSL) → **Linux**
-- If command fails or you see `PowerShell` / `cmd` prompt → **Windows (PowerShell/cmd)**
+- If command fails or shows error → **Windows (PowerShell/cmd)**
 
-Tell the user which environment was detected and confirm:
-> Detected environment: **[environment name]**
-> 
-> Make sure to run `opencode serve` in the same environment later.
-> If you want to work on Windows projects, use Windows PowerShell (not WSL).
-> If you want to work on WSL/Linux projects, use WSL terminal.
+**Now ask the user to confirm before proceeding:**
 
-Then clone and install:
+> **Detected environment: [environment name]**
+>
+> ⚠️ **Important**: The OpenCode server must run in the **same environment** as this bot.
+>
+> - If you want to work on **Windows projects** (e.g., `C:\Users\...`), you need to run this setup in **Windows PowerShell**, not WSL.
+> - If you want to work on **WSL/Linux projects** (e.g., `/home/...`), continue here.
+>
+> **Is this the correct environment for your project?**
+> - Yes → Continue
+> - No → Please open the correct terminal and start over
+
+**Wait for user confirmation before proceeding to Step 1.**
+
+### Step 1: Clone & Install
+
+After user confirms the environment, proceed with installation:
+
 ```bash
 git clone https://github.com/reahbi/opencode-go.git
 cd opencode-go
@@ -62,7 +77,7 @@ Then install dependencies:
 bun install
 ```
 
-### Step 1: Ask for BOT_TOKEN
+### Step 2: Ask for BOT_TOKEN
 
 Ask the user:
 > Do you have a Telegram bot token?
@@ -89,7 +104,7 @@ curl -s "https://api.telegram.org/bot<TOKEN>/getMe"
 
 Store the token value as `BOT_TOKEN`.
 
-### Step 2: Ask for ALLOWED_USER_IDS
+### Step 3: Ask for ALLOWED_USER_IDS
 
 Ask the user:
 > Do you know your Telegram User ID?
@@ -119,11 +134,11 @@ Store the value as `ALLOWED_USER_IDS`.
 | macOS | macOS |
 | Linux | Linux |
 
-The project list in Step 4 is fetched from the **currently running OpenCode server**. If you run the server in WSL but install the bot in Windows, you'll see WSL projects — not Windows projects.
+The project list in Step 5 is fetched from the **currently running OpenCode server**. If you run the server in WSL but install the bot in Windows, you'll see WSL projects — not Windows projects.
 
 > **Example**: If you want to work on `C:\Users\me\my-project` (Windows path), start `opencode serve` in Windows PowerShell, then run the setup in Windows PowerShell as well.
 
-### Step 3: Ask about server password
+### Step 4: Ask about server password
 
 Ask the user:
 > Would you like to set a password for the OpenCode server?
@@ -152,12 +167,12 @@ curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
 curl -s http://127.0.0.1:4096/project
 ```
 
-- If the server responds with JSON → connection works, proceed to Step 4 with project selection.
-- If the server returns an error or is unreachable → tell the user it's fine, they can start the server later. Proceed to Step 4 with manual path input.
+- If the server responds with JSON → connection works, proceed to Step 5 with project selection.
+- If the server returns an error or is unreachable → tell the user it's fine, they can start the server later. Proceed to Step 5 with manual path input.
 
-### Step 4: Ask for DEFAULT_PROJECT
+### Step 5: Ask for DEFAULT_PROJECT
 
-**If server responded in Step 3** — fetch the project list:
+**If server responded in Step 4** — fetch the project list:
 ```bash
 # If password is set:
 curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
@@ -182,7 +197,7 @@ The response is a JSON array of projects. Filter out any entry where `worktree` 
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 5: Create .env and verify
+### Step 6: Create .env and verify
 
 Generate the `.env` file:
 ```bash
@@ -202,12 +217,12 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 6.
+- All checks passed → proceed to Step 7.
 - Some checks failed → read the failure messages and help the user resolve them. Common issues:
   - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
   - Project directory not found → verify the path exists
 
-### Step 6: Start the bot
+### Step 7: Start the bot
 
 ```bash
 bun run start
