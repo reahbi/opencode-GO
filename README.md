@@ -7,6 +7,17 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
 [![GitHub](https://img.shields.io/github/stars/reahbi/opencode-telegram?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-telegram)
 
+<div align="center">
+<br>
+<img src="docs/images/tdd.png" alt="TDD - Toilet-Driven Development" width="400">
+
+### TDD: Toilet-Driven Development
+
+*Telegram-Driven Development, Toilet-Driven Development — call it whatever you want.*
+*Your AI agent keeps working even while you're on the throne.* 🚽
+
+</div>
+
 ---
 
 Remotely control the [OpenCode](https://github.com/sst/opencode) coding agent running on your server via **Telegram**.
