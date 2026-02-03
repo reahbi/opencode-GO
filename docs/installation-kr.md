@@ -130,23 +130,30 @@ Options (clickable):
 
 ### Step 5: Start OpenCode Server (서버 시작)
 
-**Step 0에서 선택한 환경에 따라 직접 서버를 시작하세요:**
+**먼저 기존 4096 포트 서버를 종료하고, Step 0에서 선택한 환경에 따라 서버를 시작하세요:**
 
 **Windows를 선택한 경우:**
 ```bash
-# 비밀번호가 있는 경우:
+# 기존 4096 포트 서버 종료 (Windows + WSL 모두)
+powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
+kill $(lsof -t -i:4096) 2>/dev/null || true
+
+# Windows 서버 시작 (비밀번호 있음):
 powershell.exe -Command "\$env:OPENCODE_SERVER_PASSWORD='<password>'; Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 
-# 비밀번호가 없는 경우:
+# Windows 서버 시작 (비밀번호 없음):
 powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 ```
 
 **WSL/Linux 또는 macOS를 선택한 경우:**
 ```bash
-# 비밀번호가 있는 경우:
+# 기존 4096 포트 서버 종료
+kill $(lsof -t -i:4096) 2>/dev/null || true
+
+# 서버 시작 (비밀번호 있음):
 OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
 
-# 비밀번호가 없는 경우:
+# 서버 시작 (비밀번호 없음):
 opencode serve --port 4096 &
 ```
 

@@ -130,23 +130,30 @@ Options (clickable):
 
 ### Step 5: Start OpenCode Server
 
-**Start the server in the background yourself based on the environment from Step 0:**
+**First, kill any existing server on port 4096, then start the new server based on the environment from Step 0:**
 
 **If user selected Windows:**
 ```bash
-# If password is set:
+# Kill existing server on port 4096 (both Windows and WSL)
+powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
+kill $(lsof -t -i:4096) 2>/dev/null || true
+
+# Start Windows server (with password):
 powershell.exe -Command "\$env:OPENCODE_SERVER_PASSWORD='<password>'; Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 
-# If no password:
+# Start Windows server (no password):
 powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 ```
 
 **If user selected WSL/Linux or macOS:**
 ```bash
-# If password is set:
+# Kill existing server on port 4096
+kill $(lsof -t -i:4096) 2>/dev/null || true
+
+# Start server (with password):
 OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
 
-# If no password:
+# Start server (no password):
 opencode serve --port 4096 &
 ```
 
