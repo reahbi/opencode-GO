@@ -65,7 +65,19 @@ function isSummaryCandidate(m: ModelInfo): boolean {
   if (DATED_PREVIEW.test(id)) return false
   if (LIGHTWEIGHT.test(id)) return true
   if (m.providerID === 'opencode') return true
+  if (m.providerID === 'antigravity') return true
   return false
+}
+
+function sortSummaryModels(models: ModelInfo[]): ModelInfo[] {
+  return [...models].sort((a, b) => {
+    const aIsAntigravity = a.providerID === 'antigravity'
+    const bIsAntigravity = b.providerID === 'antigravity'
+    if (aIsAntigravity && !bIsAntigravity) return -1
+    if (!aIsAntigravity && bIsAntigravity) return 1
+    if (a.providerID !== b.providerID) return a.providerID.localeCompare(b.providerID)
+    return a.name.localeCompare(b.name)
+  })
 }
 
 interface RegisterCommandsDeps {
@@ -326,7 +338,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'model': {
             try {
               const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
-              const summaryModels = allModels.filter(isSummaryCandidate)
+              const summaryModels = sortSummaryModels(allModels.filter(isSummaryCandidate))
               const kb = new InlineKeyboard()
               for (const m of summaryModels) {
                 kb.text(`${m.name} (${m.providerID})`, `sm:${m.providerID}/${m.modelID}`).row()
