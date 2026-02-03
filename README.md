@@ -177,10 +177,33 @@ Got an idea while commuting? You'll have to wait until you get home.
 |---|---|
 | SSH into server, navigate CLI | One Telegram message does it all |
 | AI requests permission? Rush to terminal | Tap an inline button to approve |
+| AI asks multiple questions? Answer one by one in terminal | Answer each question sequentially with inline buttons — just like on desktop |
 | Scroll through long responses in terminal | Auto-summary + file delivery optimized for mobile |
 | Single project only | Manage multiple projects with PM2 |
+| "What was the AI doing?" — SSH back in, scroll logs | `/resume` → Instantly see ongoing work + real-time progress |
+| Copy-paste terminal output to share | `/history` → Beautiful HTML export with syntax highlighting |
 
 > At a cafe: "Refactor this file" → AI works on it → Tap permission button → Done notification — That's OpenCode-Go.
+
+### Start a task. Walk away. Come back anytime.
+
+```
+🚶 You: "Refactor auth module" → Close phone → Go to lunch
+🍜 30 minutes later...
+📱 You: /resume → See AI still working, approve permission, done
+💻 Back at your desk: /resume → Continue where you left off
+```
+
+**Your AI keeps working. You don't have to watch.**
+
+### Get conversation history without entering a session
+
+```
+📋 /list → See all sessions → Tap one → Get full history as HTML
+📄 /history → Export current session as beautifully formatted HTML
+```
+
+**Review any past session on your phone, tablet, or computer — no SSH required.**
 
 ---
 
@@ -207,6 +230,10 @@ Got an idea while commuting? You'll have to wait until you get home.
 **Bot Registry** — Check registered bot status with `/bots`, add new bots with `/addbot` in Telegram.
 
 **Review Mode** — Toggle read-only mode with a single tap in `/settings`. Applies instantly without server restart.
+
+**Session Resume** — Use `/resume` to jump back into a previous session. Automatically detects ongoing work and shows real-time progress — perfect for checking on tasks you started earlier.
+
+**Beautiful History Export** — Export your conversation history as a beautifully formatted HTML file with `/history`. Review past sessions on any device with syntax highlighting and clean typography.
 
 **Diagnostics** — Run `bun run doctor` to auto-diagnose configuration issues.
 
