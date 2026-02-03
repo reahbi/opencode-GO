@@ -1,4 +1,4 @@
-import type { OpenCodePort, ModelInfo } from '../../domain/ports/OpenCodePort.js'
+import type { OpenCodePort, ModelInfo, RevertResult } from '../../domain/ports/OpenCodePort.js'
 import type { SessionRef, AgentInfo, HistoryMessage, SessionStatus } from '../../domain/models.js'
 import type { AgentOutput, EventHandler } from '../../domain/events.js'
 import { mock } from 'bun:test'
@@ -58,6 +58,14 @@ export function createMockOpenCodePort(overrides: Partial<OpenCodePort> = {}): O
 
   const healthCheck: OpenCodePort['healthCheck'] = mock(() => Promise.resolve(true))
 
+  const revertSession: OpenCodePort['revertSession'] = mock(() =>
+    Promise.resolve<RevertResult>({
+      messageId: 'reverted-message',
+    }),
+  )
+
+  const unrevertSession: OpenCodePort['unrevertSession'] = mock(() => Promise.resolve())
+
   const defaults: OpenCodePort = {
     createSession,
     getSession,
@@ -75,6 +83,8 @@ export function createMockOpenCodePort(overrides: Partial<OpenCodePort> = {}): O
     rejectQuestion,
     getSessionStatuses,
     healthCheck,
+    revertSession,
+    unrevertSession,
   }
 
   return { ...defaults, ...overrides }

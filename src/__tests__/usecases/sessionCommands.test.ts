@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { createSessionCommands } from '../../app/usecases/sessionCommands.js'
 import {
   createMockOpenCodePort,
@@ -472,6 +472,132 @@ describe('sessionCommands', () => {
       const result = await commands.exportSessionHistory(chatId)
 
       expect(result).toBeNull()
+    })
+  })
+
+  describe('revertSession', () => {
+    it('should return null if no active session', async () => {
+      const chatId = 123
+      state = createMockStateStore({ activeSessionId: undefined })
+
+      const commands = createSessionCommands({ openCode, state, output })
+      const result = await commands.revertSession(chatId)
+
+      expect(result).toBeNull()
+      expect(output.sendText).toHaveBeenCalledWith(chatId, 'No active session.')
+    })
+
+    it('should return null if no lastAssistantMessageId', async () => {
+      const chatId = 123
+      state = createMockStateStore({
+        activeSessionId: 'ses-1',
+        activeProjectDirectory: '/test',
+        lastAssistantMessageId: undefined,
+      })
+
+      const commands = createSessionCommands({ openCode, state, output })
+      const result = await commands.revertSession(chatId)
+
+      expect(result).toBeNull()
+      expect(output.sendText).toHaveBeenCalledWith(chatId, 'Nothing to undo.')
+    })
+
+    it('should call revertSession and return diff', async () => {
+      const chatId = 123
+      const mockState = buildChatState({
+        activeSessionId: 'ses-1',
+        activeProjectDirectory: '/test',
+        lastAssistantMessageId: 'msg-1',
+      })
+      
+      state = createMockStateStore(mockState)
+      
+      const revertSessionMock = mock(() => Promise.resolve({ 
+        messageId: 'msg-1', 
+        diff: '- old\n+ new' 
+      }))
+      
+      openCode = createMockOpenCodePort()
+      openCode.revertSession = revertSessionMock
+
+      const commands = createSessionCommands({ openCode, state, output })
+      const result = await commands.revertSession(chatId)
+
+      expect(result).toBe('- old\n+ new')
+      expect(revertSessionMock).toHaveBeenCalledWith('ses-1', '/test', 'msg-1')
+      
+      const savedState = (state.saveChatState as any).mock.calls[0][1]
+      expect(savedState.redoAvailable).toBe(true)
+    })
+
+    it('should handle revert without diff', async () => {
+      const chatId = 123
+      state = createMockStateStore({
+        activeSessionId: 'ses-1',
+        activeProjectDirectory: '/test',
+        lastAssistantMessageId: 'msg-1',
+      })
+      
+      const revertSessionMock = mock(() => Promise.resolve({ messageId: 'msg-1' }))
+      
+      openCode = createMockOpenCodePort()
+      openCode.revertSession = revertSessionMock
+
+      const commands = createSessionCommands({ openCode, state, output })
+      const result = await commands.revertSession(chatId)
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('unrevertSession', () => {
+    it('should return if no active session', async () => {
+      const chatId = 123
+      state = createMockStateStore({ activeSessionId: undefined })
+
+      const commands = createSessionCommands({ openCode, state, output })
+      await commands.unrevertSession(chatId)
+
+      expect(output.sendText).toHaveBeenCalledWith(chatId, 'No active session.')
+      expect(openCode.unrevertSession).not.toHaveBeenCalled()
+    })
+
+    it('should return if redoAvailable is false', async () => {
+      const chatId = 123
+      state = createMockStateStore({
+        activeSessionId: 'ses-1',
+        activeProjectDirectory: '/test',
+        redoAvailable: false,
+      })
+
+      const commands = createSessionCommands({ openCode, state, output })
+      await commands.unrevertSession(chatId)
+
+      expect(output.sendText).toHaveBeenCalledWith(chatId, 'Nothing to redo.')
+      expect(openCode.unrevertSession).not.toHaveBeenCalled()
+    })
+
+    it('should call unrevertSession and send success message', async () => {
+      const chatId = 123
+      state = createMockStateStore({
+        activeSessionId: 'ses-1',
+        activeProjectDirectory: '/test',
+        redoAvailable: true,
+      })
+      
+      const unrevertSessionMock = mock(() => Promise.resolve())
+      
+      openCode = createMockOpenCodePort()
+      openCode.unrevertSession = unrevertSessionMock
+
+      const commands = createSessionCommands({ openCode, state, output })
+      await commands.unrevertSession(chatId)
+
+      expect(unrevertSessionMock).toHaveBeenCalledWith('ses-1', '/test')
+      expect(output.sendText).toHaveBeenCalledWith(chatId, '⏩ Restored previous state.')
+      
+      const savedState = (state.saveChatState as any).mock.calls[0][1]
+      expect(savedState.redoAvailable).toBe(false)
     })
   })
 })

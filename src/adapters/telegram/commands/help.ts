@@ -14,6 +14,13 @@ export function helpCommand(instanceName?: string) {
 /abort — Abort current task
 /history — Export session history
 
+<b>Queue & Undo</b>
+/queue [msg] — Queue message while AI busy
+/clearqueue — Clear queued messages
+/showqueue — Show queue status
+/undo — Undo last AI response
+/redo — Redo undone response
+
 <b>Agent</b>
 /agents — Select AI agent
 

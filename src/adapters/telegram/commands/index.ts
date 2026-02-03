@@ -33,6 +33,8 @@ import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
 import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard } from './addbot.js'
+import { queueCommand, clearQueueCommand, showQueueCommand } from './queue.js'
+import { undoCommand, redoCommand } from './undo.js'
 import { createSessionCommands } from '../../../app/usecases/sessionCommands.js'
 import { createPromptFlow } from '../../../app/usecases/promptFlow.js'
 import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
@@ -108,13 +110,22 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   const summary = createSummaryService(openCode)
   const sessionCommands = createSessionCommands({ openCode, state, output })
   const interactiveFlow = createInteractiveFlow({ openCode, state, output, botRole: deps.botRole })
+  
+  let promptFlow: ReturnType<typeof createPromptFlow>
+  
   const watcher = createSessionWatcher({
     openCode, state, output, summary,
     onPermissionAsked: (cid, e, uid) => interactiveFlow.handlePermissionEvent(cid, e, uid),
     onQuestionAsked: (cid, e, uid) => interactiveFlow.handleQuestionEvent(cid, e, uid),
     isDebateActive: deps.debateFlow ? (chatId) => deps.debateFlow!.isActive(chatId) : undefined,
+    onQueueDrain: async (chatId, messages) => {
+      for (const msg of messages) {
+        await promptFlow.handleUserMessage(chatId, msg.text, { actorUserId: msg.actorUserId })
+      }
+    },
   })
-  const promptFlow = createPromptFlow({
+  
+  promptFlow = createPromptFlow({
     openCode, state, output, watcher,
     botRole: deps.botRole,
   })
@@ -143,6 +154,13 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     await abortCommand(sessionCommands)(ctx)
   })
   reg('history', historyCommand(sessionCommands, output))
+  reg('queue', queueCommand(state, {
+    sendPrompt: (chatId, text, userId) => promptFlow.handleUserMessage(chatId, text, { actorUserId: userId })
+  }, openCode))
+  reg('clearqueue', clearQueueCommand(state))
+  reg('showqueue', showQueueCommand(state))
+  reg('undo', undoCommand(sessionCommands))
+  reg('redo', redoCommand(sessionCommands))
   reg('help', helpCommand(deps.instanceName))
   reg('start', startCommand(state, openCode, deps.instanceName))
   reg('status', statusCommand(state, openCode, deps.instanceName))

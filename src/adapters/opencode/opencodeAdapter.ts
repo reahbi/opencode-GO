@@ -1,7 +1,7 @@
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client'
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client'
 
-import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
+import type { OpenCodePort, RevertResult } from '../../domain/ports/OpenCodePort.js'
 import type { SessionRef, SessionStatus, HistoryMessage, HistoryPart } from '../../domain/models.js'
 import type { AgentOutput } from '../../domain/events.js'
 import { OpenCodeApiError, OpenCodeConnectionError, SessionNotFoundError } from '../../domain/errors.js'
@@ -378,6 +378,35 @@ export function createOpenCodeAdapter(serverUrl: string, username: string, passw
         return !result.error
       } catch {
         return false
+      }
+    },
+
+    async revertSession(sessionId, directory, messageId) {
+      try {
+        const result = await client.session.revert?.({ sessionID: sessionId, directory, messageID: messageId })
+        if (!result) {
+          throw new OpenCodeApiError('session.revert', 501, 'Revert not supported by server')
+        }
+        unwrap(result, 'session.revert', serverUrl, sessionId)
+        return { messageId } satisfies RevertResult
+      } catch (error) {
+        logger.error('opencode', `session.revert failed: ${getErrorMessage(error)}`)
+        if (isDomainError(error)) throw error
+        throw new OpenCodeConnectionError(serverUrl, error instanceof Error ? error : undefined)
+      }
+    },
+
+    async unrevertSession(sessionId, directory) {
+      try {
+        const result = await client.session.unrevert?.({ sessionID: sessionId, directory })
+        if (!result) {
+          throw new OpenCodeApiError('session.unrevert', 501, 'Unrevert not supported by server')
+        }
+        unwrap(result, 'session.unrevert', serverUrl, sessionId)
+      } catch (error) {
+        logger.error('opencode', `session.unrevert failed: ${getErrorMessage(error)}`)
+        if (isDomainError(error)) throw error
+        throw new OpenCodeConnectionError(serverUrl, error instanceof Error ? error : undefined)
       }
     },
   }

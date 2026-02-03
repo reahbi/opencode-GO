@@ -8,6 +8,11 @@ export interface ModelInfo {
   name: string
 }
 
+export interface RevertResult {
+  messageId: string
+  diff?: string
+}
+
 export interface OpenCodePort {
   createSession(directory: string, title: string): Promise<SessionRef>
   getSession(sessionId: string, directory: string): Promise<SessionRef | null>
@@ -30,4 +35,6 @@ export interface OpenCodePort {
   rejectQuestion(requestId: string, directory: string): Promise<void>
   getSessionStatuses(directory: string): Promise<Record<string, SessionStatus>>
   healthCheck(): Promise<boolean>
+  revertSession(sessionId: string, directory: string, messageId: string): Promise<RevertResult>
+  unrevertSession(sessionId: string, directory: string): Promise<void>
 }

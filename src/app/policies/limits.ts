@@ -54,4 +54,11 @@ export const LIMITS = {
   REGISTRY_HEARTBEAT_INTERVAL_MS: 60 * 1000,
 
   REGISTRY_STALE_THRESHOLD_MS: 3 * 60 * 1000,
+
+  // ── Message Queue ────────────────────────────────────────
+  /** Maximum number of queued messages per chat */
+  MAX_QUEUED_MESSAGES: 5,
+
+  /** Maximum total characters across all queued messages */
+  MAX_QUEUED_CHARS: 10000,
 } as const

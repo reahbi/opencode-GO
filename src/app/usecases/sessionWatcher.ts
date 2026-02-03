@@ -2,7 +2,7 @@ import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
-import type { OutputHandle, UserSettings } from '../../domain/models.js'
+import type { OutputHandle, UserSettings, QueuedMessage } from '../../domain/models.js'
 import type { OpenCodeEvent, PermissionAsked, QuestionAsked } from '../../domain/events.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/formatResponse.js'
@@ -23,6 +23,7 @@ interface SessionWatcherDeps {
   onPermissionAsked: (chatId: number, event: PermissionAsked, actorUserId?: number) => Promise<void>
   onQuestionAsked: (chatId: number, event: QuestionAsked, actorUserId?: number) => Promise<void>
   isDebateActive?: (chatId: number) => boolean
+  onQueueDrain?: (chatId: number, messages: QueuedMessage[]) => Promise<void>
 }
 
 interface WatcherEntry {
@@ -270,6 +271,11 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           if (entry.currentMessageId !== event.data.messageId) {
             entry.currentMessageId = event.data.messageId
             await ensureLiveMessage(chatId, entry)
+            // Track for undo
+            const state = await deps.state.getChatState(chatId)
+            state.lastAssistantMessageId = event.data.messageId
+            state.redoAvailable = false  // New work invalidates redo
+            await deps.state.saveChatState(chatId, state)
           }
         }
         break
@@ -320,6 +326,17 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         }
 
         resetTurnState(entry)
+
+        // Drain queued messages
+        if (deps.onQueueDrain) {
+          const state = await deps.state.getChatState(chatId)
+          const queued = [...state.queuedMessages]
+          if (queued.length > 0) {
+            state.queuedMessages = []
+            await deps.state.saveChatState(chatId, state)
+            void deps.onQueueDrain(chatId, queued)
+          }
+        }
         break
       }
 

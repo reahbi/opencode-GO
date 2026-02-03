@@ -356,6 +356,66 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
+  async function revertSession(chatId: number): Promise<string | null> {
+    const state = await deps.state.getChatState(chatId)
+    
+    if (!state.activeProjectDirectory || !state.activeSessionId) {
+      await deps.output.sendText(chatId, 'No active session.')
+      return null
+    }
+
+    if (!state.lastAssistantMessageId) {
+      await deps.output.sendText(chatId, 'Nothing to undo.')
+      return null
+    }
+
+    try {
+      const result = await deps.openCode.revertSession(
+        state.activeSessionId,
+        state.activeProjectDirectory,
+        state.lastAssistantMessageId
+      )
+      
+      state.redoAvailable = true
+      await deps.state.saveChatState(chatId, state)
+      
+      return result.diff ?? null
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      await deps.output.sendText(chatId, `Undo failed: ${message}`)
+      return null
+    }
+  }
+
+  async function unrevertSession(chatId: number): Promise<void> {
+    const state = await deps.state.getChatState(chatId)
+    
+    if (!state.activeProjectDirectory || !state.activeSessionId) {
+      await deps.output.sendText(chatId, 'No active session.')
+      return
+    }
+
+    if (!state.redoAvailable) {
+      await deps.output.sendText(chatId, 'Nothing to redo.')
+      return
+    }
+
+    try {
+      await deps.openCode.unrevertSession(
+        state.activeSessionId,
+        state.activeProjectDirectory
+      )
+      
+      state.redoAvailable = false
+      await deps.state.saveChatState(chatId, state)
+      
+      await deps.output.sendText(chatId, '⏩ Restored previous state.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      await deps.output.sendText(chatId, `Redo failed: ${message}`)
+    }
+  }
+
   return {
     createSession,
     listSessions,
@@ -365,5 +425,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     getSessionPage,
     resumeSessionById,
     exportSessionHistory,
+    revertSession,
+    unrevertSession,
   }
 }

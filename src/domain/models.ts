@@ -49,6 +49,13 @@ export interface PendingInteraction {
   creatorUserId?: number
 }
 
+/** Queued message for delivery when session becomes idle */
+export interface QueuedMessage {
+  text: string
+  timestamp: number
+  actorUserId?: number
+}
+
 export interface UserSettings {
   summaryMode: boolean
   summaryModel: { providerID: string; modelID: string } | null
@@ -68,6 +75,9 @@ export interface ChatState {
   settings: UserSettings
   awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | null
   awaitingInteractionId: string | null
+  queuedMessages: QueuedMessage[]
+  lastAssistantMessageId?: string
+  redoAvailable?: boolean
 }
 
 export function createDefaultUserSettings(): UserSettings {
@@ -91,6 +101,7 @@ export function createDefaultChatState(): ChatState {
     settings: createDefaultUserSettings(),
     awaitingInput: null,
     awaitingInteractionId: null,
+    queuedMessages: [],
   }
 }
 
