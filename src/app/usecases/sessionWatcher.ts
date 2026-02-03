@@ -374,6 +374,10 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       case 'session.busy': {
         if (event.data.sessionId !== entry.sessionId) return
         if (suppressDisplay) break
+        if (entry.promptHandle || entry.liveMsgHandle) {
+          entry.busyNotified = true
+          break
+        }
         if (!entry.busyNotified) {
           entry.busyNotified = true
           logger.info('watcher', `Session ${entry.sessionId} became busy (external)`)
@@ -386,6 +390,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         if (event.data.sessionId !== entry.sessionId) return
         if (suppressDisplay) break
         entry.busyNotified = true
+        if (entry.promptHandle || entry.liveMsgHandle) break
         logger.info('watcher', `Session ${entry.sessionId} retrying (attempt ${event.data.attempt})`)
         const retryMsg = `⏳ AI is retrying (attempt ${event.data.attempt})\n<i>${escapeHtml(event.data.message)}</i>`
         await deps.output.sendText(chatId, retryMsg).catch(() => {})
@@ -456,13 +461,17 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
       if (status.type === 'busy') {
         logger.info('watcher', `Session ${entry.sessionId} is busy on watch start`)
-        if (!entry.busyNotified) {
+        if (entry.promptHandle || entry.liveMsgHandle) {
+          entry.busyNotified = true
+        } else if (!entry.busyNotified) {
           entry.busyNotified = true
           await deps.output.sendText(chatId, '🔄 AI is working...').catch(() => {})
         }
       } else if (status.type === 'retry') {
         logger.info('watcher', `Session ${entry.sessionId} is retrying on watch start (attempt ${status.attempt})`)
-        if (!entry.busyNotified) {
+        if (entry.promptHandle || entry.liveMsgHandle) {
+          entry.busyNotified = true
+        } else if (!entry.busyNotified) {
           entry.busyNotified = true
           const msg = `⏳ AI is retrying (attempt ${status.attempt})\n<i>${escapeHtml(status.message)}</i>`
           await deps.output.sendText(chatId, msg).catch(() => {})
