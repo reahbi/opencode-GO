@@ -12,6 +12,7 @@
     "stop:all": "pm2 stop ecosystem.config.cjs",
     "logs": "pm2 logs",
     "typecheck": "tsc --noEmit",
+    "prepare": "git config core.hooksPath hooks",
     "build": "bun build src/main.ts --outdir dist --target bun",
     "test": "bun test",
     "test:watch": "bun test --watch",

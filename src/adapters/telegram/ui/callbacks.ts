@@ -18,6 +18,7 @@ export type ParsedCallback =
   | { type: 'addbot_start'; instanceName: string }
   | { type: 'debate_accept'; debateId: string }
   | { type: 'debate_reject'; debateId: string }
+  | { type: 'groupsettings'; action: string; value?: string }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -144,6 +145,14 @@ export function parseCallback(data: string): ParsedCallback {
     const instanceName = data.slice('addbot_start:'.length)
     if (!instanceName) return { type: 'unknown', raw: data }
     return { type: 'addbot_start', instanceName }
+  }
+
+  if (data.startsWith('gs:')) {
+    const parts = data.split(':')
+    const action = parts[1]
+    const value = parts.slice(2).join(':') || undefined
+    if (!action) return { type: 'unknown', raw: data }
+    return { type: 'groupsettings', action, value }
   }
 
   if (data.startsWith('dba:')) {

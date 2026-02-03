@@ -21,8 +21,14 @@ import {
   summarySubText, summarySubKeyboard,
   outputSubText, outputSubKeyboard,
   historySubText, historySubKeyboard,
-  debateSubText, debateSubKeyboard,
 } from './settings.js'
+import {
+  groupSettingsCommand,
+  groupSettingsMainText, groupSettingsMainKeyboard,
+  debateSubText, debateSubKeyboard,
+  botsSubText, botsSubKeyboard,
+  filterBotsInChat,
+} from './groupsettings.js'
 import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
@@ -71,6 +77,7 @@ interface RegisterCommandsDeps {
   coordination?: import('../../../domain/ports/CoordinationPort.js').CoordinationPort
   botRole?: 'writer' | 'reader' | 'standalone'
   registry?: import('../../../domain/ports/BotRegistryPort.js').BotRegistryPort
+  groupSettings?: import('../../../domain/ports/GroupSettingsPort.js').GroupSettingsPort
   serverUrl?: string
   serverUsername?: string
   serverPassword?: string
@@ -132,6 +139,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   if (deps.registry) {
     reg('bots', botsCommand(deps.registry))
     reg('addbot', addbotCommand(state))
+  }
+
+  if (deps.groupSettings && deps.registry && deps.instanceName) {
+    reg('groupsettings', groupSettingsCommand(deps.groupSettings, deps.registry, deps.instanceName))
   }
 
   reg('cancel', async (ctx) => {
@@ -199,24 +210,21 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         const chatState = await state.getChatState(chatId)
         chatState.activeAgent = parsed.agentName
         await state.saveChatState(chatId, chatState)
-        await state.setDefaultAgent(parsed.agentName)
-        await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b> (기본값 저장됨)`, { parse_mode: 'HTML' })
+        await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b>`, { parse_mode: 'HTML' })
         break
       }
       case 'settings_agent': {
         const chatState = await state.getChatState(chatId)
         chatState.activeAgent = parsed.agentName
         await state.saveChatState(chatId, chatState)
-        await state.setDefaultAgent(parsed.agentName)
-        const defaultAgent = parsed.agentName
         try {
           const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
           await ctx.editMessageText(
-            agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole, defaultAgent),
+            agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole),
             { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, parsed.agentName) },
           )
         } catch {
-          await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b> (기본값 저장됨)`, { parse_mode: 'HTML' })
+          await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b>`, { parse_mode: 'HTML' })
         }
         break
       }
@@ -226,9 +234,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'sub_agent': {
             try {
               const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
-              const defaultAgent = await state.getDefaultAgent()
               await ctx.editMessageText(
-                agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole, defaultAgent),
+                agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
                 { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
               )
             } catch {
@@ -293,26 +300,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             }
             break
           }
-          case 'sub_debate':
-            await ctx.editMessageText(debateSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: debateSubKeyboard() })
-            break
-          case 'dr': {
-            const rounds = parseInt(parsed.value ?? '', 10)
-            if (Number.isFinite(rounds) && rounds >= 0) {
-              chatState.settings.debateRounds = rounds
-              await state.saveChatState(chatId, chatState)
-            }
-            await ctx.editMessageText(debateSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: debateSubKeyboard() })
-            break
-          }
-          case 'debaterounds':
-            chatState.awaitingInput = 'debaterounds'
-            await state.saveChatState(chatId, chatState)
-            await ctx.editMessageText(
-              `🎭 토론 라운드 수를 입력하세요.\n\n0 = 무제한\n\n현재: ${chatState.settings.debateRounds === 0 ? '♾️ Unlimited' : `${chatState.settings.debateRounds} rounds`}`,
-              { parse_mode: 'HTML' },
-            )
-            break
+
           case 'histformat':
             chatState.settings.historyFormat = chatState.settings.historyFormat === 'html' ? 'md' : 'html'
             await state.saveChatState(chatId, chatState)
@@ -438,6 +426,51 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         if (deps.debateFlow) await deps.debateFlow.handleRejection(chatId, parsed.debateId)
         break
       }
+      case 'groupsettings': {
+        if (!deps.groupSettings || !deps.registry) break
+        const gs = await deps.groupSettings.getGroupSettings()
+        switch (parsed.action) {
+          case 'sub_debate':
+            await ctx.editMessageText(debateSubText(gs), { parse_mode: 'HTML', reply_markup: debateSubKeyboard() })
+            break
+          case 'dr': {
+            const rounds = parseInt(parsed.value ?? '', 10)
+            if (Number.isFinite(rounds) && rounds >= 0) {
+              gs.debateRounds = rounds
+              await deps.groupSettings.saveGroupSettings(gs)
+            }
+            const updated = await deps.groupSettings.getGroupSettings()
+            await ctx.editMessageText(debateSubText(updated), { parse_mode: 'HTML', reply_markup: debateSubKeyboard() })
+            break
+          }
+          case 'debaterounds': {
+            const gsChatState = await state.getChatState(chatId)
+            gsChatState.awaitingInput = 'debaterounds'
+            await state.saveChatState(chatId, gsChatState)
+            await ctx.editMessageText(
+              `🎭 토론 라운드 수를 입력하세요.\n\n0 = 무제한\n\n현재: ${gs.debateRounds === 0 ? '♾️ Unlimited' : `${gs.debateRounds} rounds`}`,
+              { parse_mode: 'HTML' },
+            )
+            break
+          }
+          case 'sub_bots': {
+            const allBots = await deps.registry.list()
+            const bots = await filterBotsInChat(ctx, chatId, allBots)
+            await ctx.editMessageText(botsSubText(bots), { parse_mode: 'HTML', reply_markup: botsSubKeyboard() })
+            break
+          }
+          case 'back': {
+            const allBots = await deps.registry.list()
+            const bots = await filterBotsInChat(ctx, chatId, allBots)
+            await ctx.editMessageText(
+              groupSettingsMainText(gs, bots),
+              { parse_mode: 'HTML', reply_markup: groupSettingsMainKeyboard() },
+            )
+            break
+          }
+        }
+        break
+      }
       case 'selectmodel': {
         const chatState = await state.getChatState(chatId)
         const slashIdx = parsed.value.indexOf('/')
@@ -500,8 +533,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await output.sendText(chatId, '0~999 사이의 숫자를 입력하세요. (0 = 무제한)')
         return
       }
-      chatState.settings.debateRounds = num
       await state.saveChatState(chatId, chatState)
+      if (deps.groupSettings) {
+        const gs = await deps.groupSettings.getGroupSettings()
+        gs.debateRounds = num
+        await deps.groupSettings.saveGroupSettings(gs)
+      }
       await output.sendText(chatId, `✅ 토론 라운드: ${num === 0 ? '♾️ Unlimited' : `${num} rounds`}`)
       return
     }

@@ -57,8 +57,6 @@ export interface UserSettings {
   historyFormat: 'md' | 'html'
   historyLimit: number | null
   reviewMode?: boolean
-  /** Number of rounds for /debate. 0 = unlimited. Default 6. */
-  debateRounds: number
 }
 
 export interface ChatState {
@@ -80,7 +78,6 @@ export function createDefaultUserSettings(): UserSettings {
     outputMode: 'formatted',
     historyFormat: 'html',
     historyLimit: null,
-    debateRounds: 6,
   }
 }
 
@@ -97,13 +94,25 @@ export function createDefaultChatState(): ChatState {
   }
 }
 
+export interface GroupSettings {
+  debateRounds: number
+}
+
+export function createDefaultGroupSettings(): GroupSettings {
+  return {
+    debateRounds: 6,
+  }
+}
+
 export interface BotRegistryEntry {
   instanceName: string
   botUsername: string
+  botUserId?: number
   botRole: 'writer' | 'reader' | 'standalone'
   projectDir: string
   serverUrl: string
   lastSeen: number
+  currentAgent?: string | null
 }
 
 /** A single message part for session history export */

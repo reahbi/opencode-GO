@@ -7,7 +7,6 @@ export function createMockStateStore(
   initialState: Partial<ChatState> = {},
 ): StateStore & { _store: Map<number, ChatState> } {
   const store = new Map<number, ChatState>()
-  let defaultAgent: string | null = null
 
   const getChatState: StateStore['getChatState'] = mock(async (chatId) => {
     const existing = store.get(chatId)
@@ -32,18 +31,10 @@ export function createMockStateStore(
 
   const withChatLock: StateStore['withChatLock'] = mock(async (_chatId, fn) => fn())
 
-  const getDefaultAgent: StateStore['getDefaultAgent'] = mock(async () => defaultAgent)
-
-  const setDefaultAgent: StateStore['setDefaultAgent'] = mock(async (agent) => {
-    defaultAgent = agent
-  })
-
   return {
     getChatState,
     saveChatState,
     withChatLock,
-    getDefaultAgent,
-    setDefaultAgent,
     _store: store,
   }
 }

@@ -3,6 +3,7 @@ import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { CoordinationPort, CoordinationEvent } from '../../domain/ports/CoordinationPort.js'
 import type { BotRegistryPort } from '../../domain/ports/BotRegistryPort.js'
+import type { GroupSettingsPort } from '../../domain/ports/GroupSettingsPort.js'
 import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../policies/limits.js'
 
@@ -12,9 +13,10 @@ interface DebateFlowDeps {
   output: ChatOutputPort
   coordination: CoordinationPort
   registry: BotRegistryPort
+  groupSettings: GroupSettingsPort
   botRole: 'writer' | 'reader' | 'standalone'
   instanceName: string
-  projectDir: string  // NEW: Filter target bot by project directory
+  projectDir: string
 }
 
 type DebateMode = 'debate' | 'review'
@@ -318,8 +320,8 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       return
     }
 
-    const chatState = await deps.state.getChatState(chatId)
-    const maxRounds = overrideRounds ?? chatState.settings.debateRounds ?? LIMITS.MAX_DEBATE_ROUNDS
+    const gs = await deps.groupSettings.getGroupSettings()
+    const maxRounds = overrideRounds ?? gs.debateRounds
 
     const cleanTopic = topic.trim()
     const debateId = crypto.randomUUID()

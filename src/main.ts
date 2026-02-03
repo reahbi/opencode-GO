@@ -6,6 +6,7 @@ import { createOpenCodeAdapter } from './adapters/opencode/opencodeAdapter.js'
 import { createJsonStateStore } from './adapters/persistence/jsonStateStore.js'
 import { createFileCoordinationAdapter } from './adapters/coordination/fileCoordinationAdapter.js'
 import { createFileRegistryAdapter } from './adapters/coordination/fileRegistryAdapter.js'
+import { createFileGroupSettingsAdapter } from './adapters/coordination/fileGroupSettingsAdapter.js'
 import { createChatQueue } from './app/queue/chatQueue.js'
 import { createDebateFlow } from './app/usecases/debateFlow.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
@@ -25,7 +26,7 @@ async function main() {
   const bot = createBot(config.botToken)
   const output = createChatOutputAdapter(bot)
   const openCode = createOpenCodeAdapter(config.openCodeServerUrl, config.openCodeServerUsername, config.openCodeServerPassword)
-  const state = createJsonStateStore(config.stateDir, config.defaultAgent ?? undefined)
+  const state = createJsonStateStore(config.stateDir)
   const queue = createChatQueue()
 
   const botInfo = await bot.api.getMe()
@@ -43,12 +44,9 @@ async function main() {
         chatState.activeProjectDirectory = config.defaultProject
         changed = true
       }
-      if (!chatState.activeAgent) {
-        const defaultAgent = await state.getDefaultAgent()
-        if (defaultAgent) {
-          chatState.activeAgent = defaultAgent
-          changed = true
-        }
+      if (!chatState.activeAgent && config.defaultAgent) {
+        chatState.activeAgent = config.defaultAgent
+        changed = true
       }
       if (changed) await state.saveChatState(chatId, chatState)
     }
@@ -67,10 +65,16 @@ async function main() {
   await fs.mkdir(registryDir, { recursive: true })
   const registry = createFileRegistryAdapter(registryDir)
 
+  // Group settings: shared between bots via coordination dir
+  const groupSettings = config.coordinationDir
+    ? createFileGroupSettingsAdapter(config.coordinationDir)
+    : createFileGroupSettingsAdapter(config.stateDir)
+
   // Auto-register this bot instance
   await registry.register({
     instanceName: config.instanceName,
     botUsername,
+    botUserId: botInfo.id,
     botRole: config.botRole,
     projectDir: config.defaultProject,
     serverUrl: config.openCodeServerUrl,
@@ -84,6 +88,7 @@ async function main() {
       await registry.register({
         instanceName: config.instanceName,
         botUsername,
+        botUserId: botInfo.id,
         botRole: config.botRole,
         projectDir: config.defaultProject,
         serverUrl: config.openCodeServerUrl,
@@ -103,6 +108,7 @@ async function main() {
       output,
       coordination,
       registry,
+      groupSettings,
       botRole: config.botRole,
       instanceName: config.instanceName,
       projectDir: config.defaultProject,
@@ -126,6 +132,7 @@ async function main() {
     coordination,
     botRole: config.botRole,
     registry,
+    groupSettings,
     serverUrl: config.openCodeServerUrl,
     serverUsername: config.openCodeServerUsername,
     serverPassword: config.openCodeServerPassword ?? undefined,
@@ -174,6 +181,7 @@ async function main() {
     { command: 'status', description: '현재 상태 확인' },
     { command: 'agents', description: 'AI 에이전트/모델 선택' },
     { command: 'settings', description: '요약, 출력 형식 등 설정' },
+    { command: 'groupsettings', description: '그룹 공유 설정 (토론, 봇 현황)' },
     { command: 'help', description: '도움말' },
   ])
 

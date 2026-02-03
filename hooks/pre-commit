@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-commit hook: typecheck only (~1s)
+# Prevents committing code with type errors.
+
+echo "🔍 Running typecheck..."
+bun run typecheck
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo "❌ Typecheck failed. Fix type errors before committing."
+  exit 1
+fi
+
+echo "✅ Typecheck passed."
+exit 0

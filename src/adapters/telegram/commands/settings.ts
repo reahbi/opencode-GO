@@ -45,8 +45,6 @@ export function settingsMainKeyboard(): InlineKeyboard {
     .row()
     .text('📝 Output', 'settings:sub_output')
     .text('📜 History Export', 'settings:sub_history')
-    .row()
-    .text('🎭 Debate', 'settings:sub_debate')
 }
 
 // ── Agent & Mode Submenu ──
@@ -56,14 +54,12 @@ export function agentSubText(
   currentAgent: string | null,
   settings: UserSettings,
   botRole?: string,
-  defaultAgent?: string | null,
 ): string {
   const review = resolveReviewMode(settings, botRole) ? 'ON 🔒' : 'OFF'
   const lines = [
     '<b>🤖 Agent & Mode</b>',
     '',
-    `현재 채팅: <code>${currentAgent || 'default'}</code>`,
-    `🌐 기본값: <code>${defaultAgent || 'none'}</code>`,
+    `에이전트: <code>${currentAgent || 'default'}</code>`,
     `Review Mode: ${review}`,
     '',
   ]
@@ -154,32 +150,6 @@ export function historySubKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text('📜 Toggle Format', 'settings:histformat')
     .text('📜 Set Limit', 'settings:histlimit')
-    .row()
-    .text('◀️ Back', 'settings:back')
-}
-
-// ── Debate Submenu ──
-
-export function debateSubText(s: UserSettings): string {
-  const rounds = s.debateRounds === 0 ? '♾️ Unlimited' : `${s.debateRounds} rounds`
-  return [
-    '<b>🎭 Debate</b>',
-    '',
-    `라운드 수: ${rounds}`,
-    '',
-    '<code>/debate [라운드] 주제</code> 형식으로',
-    '인라인 지정도 가능합니다.',
-  ].join('\n')
-}
-
-export function debateSubKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text('3', 'settings:dr:3')
-    .text('6', 'settings:dr:6')
-    .text('10', 'settings:dr:10')
-    .text('♾️', 'settings:dr:0')
-    .row()
-    .text('✏️ 직접 입력', 'settings:debaterounds')
     .row()
     .text('◀️ Back', 'settings:back')
 }

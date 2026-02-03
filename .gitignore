@@ -2,7 +2,9 @@ node_modules/
 .env
 data/projects.json
 data/state.json
+data/registry.json
 data/instances/
+coverage/
 dist/
 *.log
 .DS_Store

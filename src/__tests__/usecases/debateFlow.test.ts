@@ -6,6 +6,7 @@ import {
   createMockChatOutputPort,
   createMockCoordinationPort,
   createMockBotRegistryPort,
+  createMockGroupSettingsPort,
   buildChatState,
   buildBotRegistryEntry,
   buildAgentOutput,
@@ -17,6 +18,7 @@ import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { CoordinationPort, CoordinationEvent } from '../../domain/ports/CoordinationPort.js'
 import type { BotRegistryPort } from '../../domain/ports/BotRegistryPort.js'
+import type { GroupSettingsPort } from '../../domain/ports/GroupSettingsPort.js'
 
 describe('debateFlow', () => {
   let openCode: OpenCodePort
@@ -24,6 +26,7 @@ describe('debateFlow', () => {
   let output: ChatOutputPort
   let coordination: CoordinationPort
   let registry: BotRegistryPort
+  let groupSettings: GroupSettingsPort
 
   const botRole = 'writer'
   const instanceName = 'writer-bot'
@@ -35,6 +38,7 @@ describe('debateFlow', () => {
     output = createMockChatOutputPort()
     coordination = createMockCoordinationPort()
     registry = createMockBotRegistryPort()
+    groupSettings = createMockGroupSettingsPort()
   })
 
   describe('startDebate', () => {
@@ -61,6 +65,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -94,6 +99,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -122,6 +128,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -151,6 +158,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -179,6 +187,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole: 'standalone',
         instanceName: 'standalone-bot',
         projectDir,
@@ -219,6 +228,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -262,6 +272,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -291,6 +302,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -344,6 +356,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole: 'reader',
         instanceName: 'reader-bot',
         projectDir,
@@ -390,6 +403,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -449,6 +463,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole: 'reader',
         instanceName: 'reader-bot',
         projectDir,
@@ -495,6 +510,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole: 'writer',
         instanceName: 'writer-bot',
         projectDir,
@@ -555,6 +571,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -628,6 +645,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -694,6 +712,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -743,6 +762,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -795,6 +815,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -853,6 +874,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -911,6 +933,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -981,6 +1004,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole: 'reader',
         instanceName: 'reader-bot',
         projectDir,
@@ -1034,6 +1058,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -1090,6 +1115,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -1229,6 +1255,7 @@ describe('debateFlow', () => {
           output,
           coordination,
           registry,
+          groupSettings,
           botRole,
           instanceName,
           projectDir,
@@ -1258,6 +1285,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,
@@ -1275,6 +1303,7 @@ describe('debateFlow', () => {
         output,
         coordination,
         registry,
+        groupSettings,
         botRole,
         instanceName,
         projectDir,

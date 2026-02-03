@@ -1,0 +1,24 @@
+#!/bin/sh
+# Pre-push hook: typecheck + full test suite (~12s)
+# Prevents pushing broken code to remote.
+
+echo "🔍 Running typecheck..."
+bun run typecheck
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo "❌ Typecheck failed. Fix type errors before pushing."
+  exit 1
+fi
+
+echo "🧪 Running tests..."
+bun test
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+  echo "❌ Tests failed. Fix failing tests before pushing."
+  exit 1
+fi
+
+echo "✅ All checks passed."
+exit 0
