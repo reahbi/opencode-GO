@@ -23,8 +23,27 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 
 The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
 
-### Step 0: Clone & Install
+### Step 0: Detect Environment & Install (환경 감지 & 설치)
 
+**먼저 현재 환경을 감지합니다:**
+```bash
+echo $SHELL && uname -a
+```
+
+환경 식별:
+- 출력에 `microsoft` 또는 `WSL` 포함 → **WSL (Windows의 Ubuntu)**
+- 출력에 `Darwin` 포함 → **macOS**
+- 출력에 `Linux` 포함 (WSL 아님) → **Linux**
+- 명령 실패 또는 `PowerShell` / `cmd` 프롬프트 → **Windows (PowerShell/cmd)**
+
+감지된 환경을 사용자에게 알려주고 확인:
+> 감지된 환경: **[환경 이름]**
+> 
+> 나중에 `opencode serve`도 같은 환경에서 실행해야 합니다.
+> Windows 프로젝트를 작업하려면 Windows PowerShell을 사용하세요 (WSL 아님).
+> WSL/Linux 프로젝트를 작업하려면 WSL 터미널을 사용하세요.
+
+그 다음 클론 및 설치:
 ```bash
 git clone https://github.com/reahbi/opencode-go.git
 cd opencode-go
@@ -88,6 +107,21 @@ Ask the user:
 **When user provides the ID**, validate it is a number. If user provides multiple IDs separated by commas, that's fine too.
 
 Store the value as `ALLOWED_USER_IDS`.
+
+### Important: Environment Consistency (환경 일관성)
+
+**OpenCode-Go 봇과 OpenCode 서버는 반드시 같은 환경에서 실행해야 합니다.**
+
+| OpenCode-Go 설치 환경 | OpenCode 서버 실행 환경 |
+|-----------------------|------------------------|
+| Windows (PowerShell/cmd) | Windows |
+| WSL (Ubuntu) | WSL |
+| macOS | macOS |
+| Linux | Linux |
+
+Step 4의 프로젝트 목록은 **현재 실행 중인 OpenCode 서버**에서 가져옵니다. WSL에서 서버를 실행하고 Windows에서 봇을 설치하면, Windows 프로젝트가 아닌 WSL 프로젝트가 표시됩니다.
+
+> **예시**: `C:\Users\me\my-project` (Windows 경로)에서 작업하려면, Windows PowerShell에서 `opencode serve`를 실행하고, Windows PowerShell에서 setup도 실행하세요.
 
 ### Step 3: Ask about server password
 

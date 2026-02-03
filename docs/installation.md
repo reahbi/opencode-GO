@@ -23,8 +23,27 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 
 The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
 
-### Step 0: Clone & Install
+### Step 0: Detect Environment & Install
 
+**First, detect the current environment:**
+```bash
+echo $SHELL && uname -a
+```
+
+Identify the environment:
+- If output contains `microsoft` or `WSL` → **WSL (Ubuntu on Windows)**
+- If output contains `Darwin` → **macOS**
+- If output contains `Linux` (without WSL) → **Linux**
+- If command fails or you see `PowerShell` / `cmd` prompt → **Windows (PowerShell/cmd)**
+
+Tell the user which environment was detected and confirm:
+> Detected environment: **[environment name]**
+> 
+> Make sure to run `opencode serve` in the same environment later.
+> If you want to work on Windows projects, use Windows PowerShell (not WSL).
+> If you want to work on WSL/Linux projects, use WSL terminal.
+
+Then clone and install:
 ```bash
 git clone https://github.com/reahbi/opencode-go.git
 cd opencode-go
@@ -88,6 +107,21 @@ Ask the user:
 **When user provides the ID**, validate it is a number. If user provides multiple IDs separated by commas, that's fine too.
 
 Store the value as `ALLOWED_USER_IDS`.
+
+### Important: Environment Consistency
+
+**OpenCode-Go bot and OpenCode server must run in the same environment.**
+
+| If you're installing OpenCode-Go in... | OpenCode server must run in... |
+|----------------------------------------|--------------------------------|
+| Windows (PowerShell/cmd) | Windows |
+| WSL (Ubuntu) | WSL |
+| macOS | macOS |
+| Linux | Linux |
+
+The project list in Step 4 is fetched from the **currently running OpenCode server**. If you run the server in WSL but install the bot in Windows, you'll see WSL projects — not Windows projects.
+
+> **Example**: If you want to work on `C:\Users\me\my-project` (Windows path), start `opencode serve` in Windows PowerShell, then run the setup in Windows PowerShell as well.
 
 ### Step 3: Ask about server password
 
