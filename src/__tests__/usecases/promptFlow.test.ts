@@ -129,6 +129,7 @@ describe('promptFlow', () => {
       directory,
       'hello',
       'agent-1',
+      undefined,
     )
   })
 
@@ -146,6 +147,7 @@ describe('promptFlow', () => {
       sessionId,
       directory,
       expect.stringContaining('[REVIEW MODE]'),
+      undefined,
       undefined,
     )
   })
@@ -165,6 +167,7 @@ describe('promptFlow', () => {
       sessionId,
       directory,
       expect.stringContaining('[REVIEW MODE]'),
+      undefined,
       undefined,
     )
   })

@@ -1,6 +1,7 @@
 import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
+import type { ImageAttachment } from '../../domain/models.js'
 import type { SessionWatcher } from './sessionWatcher.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
@@ -15,7 +16,7 @@ interface PromptFlowDeps {
 
 export function createPromptFlow(deps: PromptFlowDeps) {
 
-  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean }): Promise<void> {
+  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean; images?: ImageAttachment[] }): Promise<void> {
     const state = await deps.state.getChatState(chatId)
     if (!state.activeProjectDirectory) {
       await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
@@ -48,7 +49,7 @@ export function createPromptFlow(deps: PromptFlowDeps) {
       const effectiveText = isReview
         ? '[REVIEW MODE] This session is read-only. Do not modify, create, or delete files. Only perform code review and analysis.\n\n' + text
         : text
-      await deps.openCode.sendPrompt(sessionId, directory, effectiveText, state.activeAgent ?? undefined)
+      await deps.openCode.sendPrompt(sessionId, directory, effectiveText, state.activeAgent ?? undefined, opts?.images)
       logger.debug('session', `Prompt sent for session ${sessionId}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'

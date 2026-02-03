@@ -1,4 +1,4 @@
-import type { SessionRef, AgentInfo, HistoryMessage, SessionStatus } from '../models.js'
+import type { SessionRef, AgentInfo, HistoryMessage, SessionStatus, ImageAttachment } from '../models.js'
 import type { AgentOutput } from '../events.js'
 import type { EventHandler } from '../events.js'
 
@@ -18,7 +18,7 @@ export interface OpenCodePort {
   getSession(sessionId: string, directory: string): Promise<SessionRef | null>
   listSessions(directory: string): Promise<SessionRef[]>
   deleteSession(sessionId: string, directory: string): Promise<void>
-  sendPrompt(sessionId: string, directory: string, text: string, agent?: string): Promise<AgentOutput>
+  sendPrompt(sessionId: string, directory: string, text: string, agent?: string, images?: ImageAttachment[]): Promise<AgentOutput>
   sendPromptAsync(
     sessionId: string,
     directory: string,

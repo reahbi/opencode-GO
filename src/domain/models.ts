@@ -126,6 +126,13 @@ export interface BotRegistryEntry {
   currentAgent?: string | null
 }
 
+/** Image attachment for multimodal prompts */
+export interface ImageAttachment {
+  mime: string
+  data: string // Base64 encoded data (without data URL prefix)
+  filename?: string
+}
+
 /** A single message part for session history export */
 export type HistoryPart =
   | { type: 'text'; text: string }

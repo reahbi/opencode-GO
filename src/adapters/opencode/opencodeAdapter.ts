@@ -155,13 +155,28 @@ export function createOpenCodeAdapter(serverUrl: string, username: string, passw
       }
     },
 
-    async sendPrompt(sessionId, directory, text, agent) {
+    async sendPrompt(sessionId, directory, text, agent, images) {
       try {
+        const parts: Array<{ type: 'text'; text: string } | { type: 'file'; mime: string; url: string; filename?: string }> = [
+          { type: 'text', text },
+        ]
+
+        if (images && images.length > 0) {
+          for (const img of images) {
+            parts.push({
+              type: 'file',
+              mime: img.mime,
+              url: `data:${img.mime};base64,${img.data}`,
+              ...(img.filename ? { filename: img.filename } : {}),
+            })
+          }
+        }
+
         const result = await client.session.prompt({
           sessionID: sessionId,
           directory,
           ...(agent ? { agent } : {}),
-          parts: [{ type: 'text', text }],
+          parts,
         })
         unwrap(result, 'session.prompt', serverUrl, sessionId)
       } catch (error) {

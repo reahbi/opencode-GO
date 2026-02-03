@@ -243,6 +243,8 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 **Beautiful History Export** — Export your conversation history as a beautifully formatted HTML file with `/history`. Review past sessions on any device with syntax highlighting and clean typography.
 
+**Image Support** — Send photos directly from your phone. Screenshots of error messages, UI mockups, diagrams — the AI analyzes them and responds accordingly. (Requires vision-capable model)
+
 **Diagnostics** — Run `bun run doctor` to auto-diagnose configuration issues.
 
 ---

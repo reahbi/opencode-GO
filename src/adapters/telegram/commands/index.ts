@@ -633,4 +633,71 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     void queue.enqueue(chatId, () => promptFlow.handleUserMessage(chatId, cleanedText, { actorUserId, isGroup }))
       .catch(err => logger.error('bot', `Prompt job failed: ${err instanceof Error ? err.message : err}`))
   })
+
+  bot.on('message:photo', async (ctx) => {
+    const chatId = ctx.chat.id
+    const caption = ctx.message.caption ?? ''
+    const photos = ctx.message.photo
+
+    if (!photos || photos.length === 0) {
+      await output.sendText(chatId, 'No photo found in message.')
+      return
+    }
+
+    const chatState = await state.getChatState(chatId)
+    if (!chatState.activeSessionId) {
+      await output.sendText(chatId, 'No active session. Use /new to start one.')
+      return
+    }
+
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const actorUserId = ctx.from?.id
+
+    const largestPhoto = photos[photos.length - 1]
+
+    try {
+      const file = await ctx.api.getFile(largestPhoto.file_id)
+      if (!file.file_path) {
+        await output.sendText(chatId, 'Failed to get file path from Telegram.')
+        return
+      }
+
+      const botToken = bot.token
+      const fileUrl = `https://api.telegram.org/file/bot${botToken}/${file.file_path}`
+
+      const response = await fetch(fileUrl)
+      if (!response.ok) {
+        await output.sendText(chatId, `Failed to download image: ${response.status}`)
+        return
+      }
+
+      const arrayBuffer = await response.arrayBuffer()
+      const base64Data = Buffer.from(arrayBuffer).toString('base64')
+
+      const ext = file.file_path.split('.').pop()?.toLowerCase() ?? 'jpg'
+      const mimeMap: Record<string, string> = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        gif: 'image/gif',
+        webp: 'image/webp',
+      }
+      const mime = mimeMap[ext] ?? 'image/jpeg'
+
+      const text = caption.trim() || 'Analyze this image.'
+
+      void queue.enqueue(chatId, () =>
+        promptFlow.handleUserMessage(chatId, text, {
+          actorUserId,
+          isGroup,
+          images: [{ mime, data: base64Data, filename: file.file_path }],
+        })
+      ).catch(err => logger.error('bot', `Photo prompt failed: ${err instanceof Error ? err.message : err}`))
+
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('bot', `Photo handling failed: ${msg}`)
+      await output.sendText(chatId, `❌ Failed to process image: ${escapeHtml(msg)}`)
+    }
+  })
 }
