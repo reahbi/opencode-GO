@@ -7,6 +7,17 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
 [![GitHub](https://img.shields.io/github/stars/reahbi/opencode-telegram?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-telegram)
 
+<div align="center">
+<br>
+<img src="docs/images/tdd.png" alt="TDD - 화장실 주도 개발" width="400">
+
+### TDD: Toilet-Driven Development
+
+*Telegram-Driven Development, Toilet-Driven Development — 뭐라 부르든 상관없습니다.*
+*당신이 똥 누는 동안에도 AI 에이전트는 일합니다.* 🚽
+
+</div>
+
 ---
 
 서버에서 돌아가는 [OpenCode](https://github.com/sst/opencode) 코딩 에이전트를 **텔레그램**으로 원격 제어합니다.
