@@ -20,6 +20,14 @@
 
 ---
 
+### 🎮 Like Pokémon Go, but for coding
+
+**Code from anywhere.** On a bus, at a park, waiting in line — wherever you are, your AI agent is ready.
+
+For beginners, coding on a smartphone is painful: tiny terminal fonts, SSH clients, typos everywhere. **OpenCode-Go removes all that friction.** Just tap buttons, send messages, and let the AI handle the hard parts.
+
+---
+
 Remotely control the [OpenCode](https://github.com/sst/opencode) coding agent running on your server via **Telegram**.
 On your commute, at a cafe, in bed — command your AI to write code and get real-time results from anywhere.
 
