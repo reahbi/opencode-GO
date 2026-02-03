@@ -27,35 +27,23 @@ The user needs to provide **4 values**. Ask them **one at a time**, explain each
 
 ### Step 0: Confirm Environment (MANDATORY FIRST STEP)
 
-**STOP. Before cloning or installing anything, ask the user about their environment.**
+**STOP. Ask the user to choose ONE option:**
 
-> ⚠️ **Important question before we begin:**
+> **Which environment will you use?**
 >
-> Where is the **project you want to work on** located?
+> 1. **Windows** — Project path like `C:\Users\...`
+> 2. **WSL/Linux** — Project path like `/home/...`
+> 3. **macOS** — Project path like `/Users/...`
 >
-> 1. **Windows path** (e.g., `C:\Users\...` or `D:\Projects\...`)
-> 2. **WSL/Linux path** (e.g., `/home/...` or `/mnt/c/...`)
-> 3. **macOS path** (e.g., `/Users/...`)
+> **Please reply with 1, 2, or 3.**
+
+After user chooses, confirm:
+
+> ✓ Environment: **[Windows/WSL/macOS]**
 >
-> Please tell me the **full path** to your project, or just say "Windows", "WSL", or "macOS".
-
-Based on the user's answer:
-
-| User says | Environment | Next action |
-|-----------|-------------|-------------|
-| Windows path like `C:\...` or says "Windows" | **Windows** | Continue setup. User must run `opencode serve` in **Windows PowerShell** (not WSL). |
-| WSL/Linux path like `/home/...` or says "WSL"/"Linux" | **WSL/Linux** | Ask: "Are you running this in WSL terminal (not PowerShell)?" If not, tell them to open WSL terminal and start over. |
-| macOS path like `/Users/...` or says "macOS" | **macOS** | Continue setup. |
-
-**Confirm with the user:**
-
-> ✓ Got it. Your environment is **[Windows/WSL/macOS]**.
+> Remember: Run `opencode serve` in the **same environment** later.
 >
-> **Important**: When you start `opencode serve` later, make sure to run it in **[same environment]** — otherwise the project list won't show your projects.
->
-> Ready to continue?
-
-**Wait for user confirmation before proceeding to Step 1.**
+> Continuing with installation...
 
 ### Step 1: Clone & Install
 

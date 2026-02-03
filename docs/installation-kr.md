@@ -27,35 +27,23 @@ The user needs to provide **4 values**. Ask them **one at a time**, explain each
 
 ### Step 0: Confirm Environment (환경 확인 - 필수 첫 단계)
 
-**멈추세요. 클론이나 설치 전에 먼저 사용자에게 환경을 물어보세요.**
+**멈추세요. 사용자에게 하나를 선택하게 하세요:**
 
-> ⚠️ **시작하기 전에 중요한 질문:**
+> **어떤 환경을 사용하시나요?**
 >
-> 작업하려는 **프로젝트**가 어디에 있나요?
+> 1. **Windows** — 프로젝트 경로: `C:\Users\...`
+> 2. **WSL/Linux** — 프로젝트 경로: `/home/...`
+> 3. **macOS** — 프로젝트 경로: `/Users/...`
 >
-> 1. **Windows 경로** (예: `C:\Users\...` 또는 `D:\Projects\...`)
-> 2. **WSL/Linux 경로** (예: `/home/...` 또는 `/mnt/c/...`)
-> 3. **macOS 경로** (예: `/Users/...`)
+> **1, 2, 3 중 하나를 선택해주세요.**
+
+사용자가 선택하면 확인:
+
+> ✓ 환경: **[Windows/WSL/macOS]**
 >
-> 프로젝트의 **전체 경로**를 알려주세요. 또는 "Windows", "WSL", "macOS" 중 하나만 말해도 됩니다.
-
-사용자 답변에 따라:
-
-| 사용자 답변 | 환경 | 다음 행동 |
-|------------|------|----------|
-| `C:\...` 같은 Windows 경로 또는 "Windows" | **Windows** | 설치 진행. 사용자는 `opencode serve`를 **Windows PowerShell**에서 실행해야 함 (WSL 아님). |
-| `/home/...` 같은 WSL/Linux 경로 또는 "WSL"/"Linux" | **WSL/Linux** | 물어보기: "지금 WSL 터미널에서 실행 중인가요 (PowerShell 아님)?" 아니면 WSL 터미널을 열고 다시 시작하라고 안내. |
-| `/Users/...` 같은 macOS 경로 또는 "macOS" | **macOS** | 설치 진행. |
-
-**사용자에게 확인:**
-
-> ✓ 알겠습니다. 환경은 **[Windows/WSL/macOS]**입니다.
+> 참고: 나중에 `opencode serve`도 **같은 환경**에서 실행하세요.
 >
-> **중요**: 나중에 `opencode serve`를 시작할 때 반드시 **[같은 환경]**에서 실행하세요 — 그렇지 않으면 프로젝트 목록이 제대로 표시되지 않습니다.
->
-> 계속 진행할까요?
-
-**Step 1로 진행하기 전에 반드시 사용자 확인을 받으세요.**
+> 설치를 진행합니다...
 
 ### Step 1: Clone & Install (클론 & 설치)
 
