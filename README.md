@@ -9,7 +9,7 @@
 
 <div align="center">
 <br>
-<img src="docs/images/tdd.png" alt="TDD - Toilet-Driven Development" width="400">
+<img src="docs/images/tdd.jpeg" alt="TDD - Toilet-Driven Development" width="400">
 
 ### TDD: Toilet-Driven Development
 

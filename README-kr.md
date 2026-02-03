@@ -9,7 +9,7 @@
 
 <div align="center">
 <br>
-<img src="docs/images/tdd.png" alt="TDD - 화장실 주도 개발" width="400">
+<img src="docs/images/tdd.jpeg" alt="TDD - 화장실 주도 개발" width="400">
 
 ### TDD: Toilet-Driven Development
 
