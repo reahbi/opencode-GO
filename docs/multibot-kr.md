@@ -294,7 +294,7 @@ module.exports = {
       name: 'opencode-go-writer',
       script: 'src/main.ts',
       interpreter: 'bun',
-      cwd: '/path/to/opencode-telegram',
+      cwd: '/path/to/opencode-go',
       env: {
         BOT_TOKEN: '여기에-Writer-봇-토큰',
         ALLOWED_USER_IDS: '내-텔레그램-유저-ID',
@@ -313,7 +313,7 @@ module.exports = {
       name: 'opencode-go-reader',
       script: 'src/main.ts',
       interpreter: 'bun',
-      cwd: '/path/to/opencode-telegram',
+      cwd: '/path/to/opencode-go',
       env: {
         BOT_TOKEN: '여기에-Reader-봇-토큰',
         ALLOWED_USER_IDS: '내-텔레그램-유저-ID',

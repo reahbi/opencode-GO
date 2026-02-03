@@ -5,7 +5,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?labelColor=black&style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
-[![GitHub](https://img.shields.io/github/stars/reahbi/opencode-telegram?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-telegram)
+[![GitHub](https://img.shields.io/github/stars/reahbi/opencode-go?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-go)
 
 <div align="center">
 <br>
@@ -53,7 +53,7 @@ On your commute, at a cafe, in bed — command your AI to write code and get rea
 > **Too lazy to read?** Just paste this README link to your AI agent. It'll handle the installation for you.
 > ```
 > Install and configure this project:
-> https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
+> https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
 > ```
 
 ---
@@ -102,7 +102,7 @@ opencode server listening on http://127.0.0.1:4096
 After the OpenCode server is running, start the Telegram bot in a **separate terminal**.
 
 ```bash
-cd opencode-telegram
+cd opencode-go
 
 # Development mode (hot reload)
 bun run dev
@@ -255,7 +255,7 @@ Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
 
 ```
 Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
 ```
 
 The AI will ask 4 questions and handle the rest automatically.
@@ -263,8 +263,8 @@ The AI will ask 4 questions and handle the rest automatically.
 ### Option 2: Manual Installation
 
 ```bash
-git clone https://github.com/reahbi/opencode-telegram.git
-cd opencode-telegram
+git clone https://github.com/reahbi/opencode-go.git
+cd opencode-go
 bun install
 bun run setup    # Interactive setup wizard
 bun run start    # Start the bot

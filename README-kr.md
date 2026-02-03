@@ -5,7 +5,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?labelColor=black&style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
-[![GitHub](https://img.shields.io/github/stars/reahbi/opencode-telegram?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-telegram)
+[![GitHub](https://img.shields.io/github/stars/reahbi/opencode-go?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-go)
 
 <div align="center">
 <br>
@@ -53,7 +53,7 @@
 > **읽기 귀찮으세요?** AI 에이전트에게 이 README 링크를 던져주세요. 설치까지 알아서 해줍니다.
 > ```
 > 이 프로젝트를 설치하고 설정해줘:
-> https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
+> https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
 > ```
 
 ---
@@ -103,7 +103,7 @@ opencode server listening on http://127.0.0.1:4096
 OpenCode 서버가 실행된 후, **별도 터미널**에서 텔레그램 봇을 시작합니다.
 
 ```bash
-cd opencode-telegram
+cd opencode-go
 
 # 개발 모드 (hot reload)
 bun run dev
@@ -256,7 +256,7 @@ AI 에이전트(OpenCode, Claude Code, Cursor 등)에 다음을 붙여넣으세�
 
 ```
 OpenCode-Go를 설치하고 설정해줘:
-https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
 ```
 
 AI가 4가지만 물어보고 나머지는 자동으로 처리합니다.
@@ -264,8 +264,8 @@ AI가 4가지만 물어보고 나머지는 자동으로 처리합니다.
 ### 방법 2: 직접 설치
 
 ```bash
-git clone https://github.com/reahbi/opencode-telegram.git
-cd opencode-telegram
+git clone https://github.com/reahbi/opencode-go.git
+cd opencode-go
 bun install
 bun run setup    # 대화형 설정 마법사
 bun run start    # 봇 실행
@@ -459,13 +459,13 @@ OpenCode-Go is a Telegram bot that lets you remotely control an [OpenCode](https
 Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
 ```
 Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
 ```
 
 **Manual Install**
 ```bash
-git clone https://github.com/reahbi/opencode-telegram.git
-cd opencode-telegram
+git clone https://github.com/reahbi/opencode-go.git
+cd opencode-go
 bun install
 bun run setup    # Interactive setup wizard
 ```
@@ -480,7 +480,7 @@ cd /path/to/your/project
 opencode serve --port 4096
 
 # Terminal 2 — Start Telegram bot
-cd opencode-telegram
+cd opencode-go
 bun run dev      # Development (hot reload)
 # or
 bun run start    # Production

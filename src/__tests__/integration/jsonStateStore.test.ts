@@ -13,7 +13,7 @@ describe('jsonStateStore integration', () => {
   let tempDir = ''
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(join(tmpdir(), 'opencode-telegram-state-'))
+    tempDir = await fs.mkdtemp(join(tmpdir(), 'opencode-go-state-'))
   })
 
   afterEach(async () => {

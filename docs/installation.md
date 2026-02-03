@@ -6,13 +6,13 @@ Paste this into your AI agent (OpenCode, Claude Code, etc.):
 
 ```
 Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-telegram/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
 ```
 
 Or install manually:
 ```bash
-git clone https://github.com/reahbi/opencode-telegram.git
-cd opencode-telegram
+git clone https://github.com/reahbi/opencode-go.git
+cd opencode-go
 bun install
 bun run setup
 ```
@@ -26,8 +26,8 @@ The user needs to provide **4 values**. Ask them **one at a time**, explain each
 ### Step 0: Clone & Install
 
 ```bash
-git clone https://github.com/reahbi/opencode-telegram.git
-cd opencode-telegram
+git clone https://github.com/reahbi/opencode-go.git
+cd opencode-go
 ```
 
 Check if Bun is installed:
