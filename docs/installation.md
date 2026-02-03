@@ -6,7 +6,7 @@ Paste this into your AI agent (OpenCode, Claude Code, etc.):
 
 ```
 Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 ```
 
 Or install manually:

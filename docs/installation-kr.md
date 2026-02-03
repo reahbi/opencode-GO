@@ -6,7 +6,7 @@ AI 에이전트(OpenCode, Claude Code 등)에 다음을 붙여넣으세요:
 
 ```
 OpenCode-Go를 설치하고 설정해줘:
-https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 ```
 
 또는 직접 설치:

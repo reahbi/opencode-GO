@@ -53,7 +53,7 @@
 > **읽기 귀찮으세요?** AI 에이전트에게 이 README 링크를 던져주세요. 설치까지 알아서 해줍니다.
 > ```
 > 이 프로젝트를 설치하고 설정해줘:
-> https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+> https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 > ```
 
 ---
@@ -256,7 +256,7 @@ AI 에이전트(OpenCode, Claude Code, Cursor 등)에 다음을 붙여넣으세�
 
 ```
 OpenCode-Go를 설치하고 설정해줘:
-https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 ```
 
 AI가 4가지만 물어보고 나머지는 자동으로 처리합니다.
@@ -459,7 +459,7 @@ OpenCode-Go is a Telegram bot that lets you remotely control an [OpenCode](https
 Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
 ```
 Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 ```
 
 **Manual Install**

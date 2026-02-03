@@ -53,7 +53,7 @@ On your commute, at a cafe, in bed — command your AI to write code and get rea
 > **Too lazy to read?** Just paste this README link to your AI agent. It'll handle the installation for you.
 > ```
 > Install and configure this project:
-> https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+> https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 > ```
 
 ---
@@ -255,7 +255,7 @@ Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
 
 ```
 Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-go/main/docs/installation.md
+https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
 ```
 
 The AI will ask 4 questions and handle the rest automatically.
