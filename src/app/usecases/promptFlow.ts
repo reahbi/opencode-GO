@@ -15,7 +15,7 @@ interface PromptFlowDeps {
 
 export function createPromptFlow(deps: PromptFlowDeps) {
 
-  async function handleUserMessage(chatId: number, text: string): Promise<void> {
+  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean }): Promise<void> {
     const state = await deps.state.getChatState(chatId)
     if (!state.activeProjectDirectory) {
       await deps.output.sendText(chatId, '활성 프로젝트가 없습니다. .env 에서 DEFAULT_PROJECT 를 설정하세요.')
@@ -33,12 +33,19 @@ export function createPromptFlow(deps: PromptFlowDeps) {
     await deps.state.saveChatState(chatId, state)
 
     await deps.watcher.ensureWatching(chatId)
+    deps.watcher.setPromptContext(chatId, {
+      actorUserId: opts?.actorUserId,
+      liveUpdatesEnabled: !opts?.isGroup,
+    })
 
     const handle = await deps.output.sendText(chatId, '⏳ Processing...')
     deps.watcher.setPromptHandle(chatId, handle)
 
     try {
-      const effectiveText = deps.botRole === 'reader'
+      const isReview = state.settings.reviewMode !== undefined
+        ? state.settings.reviewMode
+        : deps.botRole === 'reader'
+      const effectiveText = isReview
         ? '[REVIEW MODE] 이 세션은 읽기 전용입니다. 파일 수정, 생성, 삭제를 하지 마세요. 코드 리뷰와 분석만 수행하세요.\n\n' + text
         : text
       await deps.openCode.sendPrompt(sessionId, directory, effectiveText, state.activeAgent ?? undefined)

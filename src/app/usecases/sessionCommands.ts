@@ -27,8 +27,108 @@ interface SessionCommandsDeps {
   output: ChatOutputPort
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+export function formatTimestamp(ms: number): string {
+  return new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+}
+
+export function messagesToMarkdown(title: string, sessionId: string, messages: HistoryMessage[]): string {
+  const lines: string[] = []
+  lines.push(`# ${title}`)
+  lines.push(`Session: \`${sessionId}\`\n`)
+  lines.push('---\n')
+
+  for (const msg of messages) {
+    const ts = formatTimestamp(msg.createdAt)
+    const roleLabel = msg.role === 'user' ? '👤 User' : '🤖 Assistant'
+    lines.push(`## ${roleLabel}`)
+    lines.push(`_${ts}_\n`)
+
+    for (const part of msg.parts) {
+      switch (part.type) {
+        case 'text':
+          lines.push(part.text)
+          lines.push('')
+          break
+        case 'tool':
+          lines.push(`> 🔧 **${part.tool}**: ${part.title} (${part.status})`)
+          lines.push('')
+          break
+        case 'subtask':
+          lines.push(`> 🔀 **Subtask** [${part.agent}]: ${part.description}`)
+          lines.push('')
+          break
+      }
+    }
+
+    lines.push('---\n')
+  }
+
+  return lines.join('\n')
+}
+
+export function messagesToHtml(title: string, sessionId: string, messages: HistoryMessage[]): string {
+  const esc = escapeHtml
+  const parts: string[] = []
+  parts.push('<!DOCTYPE html>')
+  parts.push('<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">')
+  parts.push(`<title>${esc(title)}</title>`)
+  parts.push('<style>')
+  parts.push('body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:800px;margin:0 auto;padding:16px;background:#1a1a2e;color:#e0e0e0;font-size:15px;line-height:1.6}')
+  parts.push('h1{color:#e94560;border-bottom:2px solid #e94560;padding-bottom:8px}')
+  parts.push('.meta{color:#888;font-size:13px;margin-bottom:4px}')
+  parts.push('.msg{margin:16px 0;padding:12px;border-radius:8px}')
+  parts.push('.user{background:#16213e;border-left:4px solid #0f3460}')
+  parts.push('.assistant{background:#1a1a2e;border-left:4px solid #e94560}')
+  parts.push('.role{font-weight:700;margin-bottom:4px}')
+  parts.push('.role.u{color:#0f3460}.role.a{color:#e94560}')
+  parts.push('.tool{background:#0d1117;padding:8px 12px;border-radius:4px;margin:6px 0;font-size:13px;color:#8b949e}')
+  parts.push('pre{background:#0d1117;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px}')
+  parts.push('code{font-family:monospace}')
+  parts.push('hr{border:0;border-top:1px solid #333;margin:20px 0}')
+  parts.push('</style></head><body>')
+  parts.push(`<h1>${esc(title)}</h1>`)
+  parts.push(`<p class="meta">Session: ${esc(sessionId)} | ${messages.length} messages</p>`)
+  parts.push('<hr>')
+
+  for (const msg of messages) {
+    const ts = formatTimestamp(msg.createdAt)
+    const isUser = msg.role === 'user'
+    const cls = isUser ? 'user' : 'assistant'
+    const roleCls = isUser ? 'u' : 'a'
+    const roleLabel = isUser ? '👤 User' : '🤖 Assistant'
+
+    parts.push(`<div class="msg ${cls}">`)
+    parts.push(`<div class="role ${roleCls}">${roleLabel}</div>`)
+    parts.push(`<div class="meta">${esc(ts)}</div>`)
+
+    for (const part of msg.parts) {
+      switch (part.type) {
+        case 'text': {
+          const text = esc(part.text)
+            .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br>')
+          parts.push(`<div>${text}</div>`)
+          break
+        }
+        case 'tool':
+          parts.push(`<div class="tool">🔧 <b>${esc(part.tool)}</b>: ${esc(part.title)} (${esc(part.status)})</div>`)
+          break
+        case 'subtask':
+          parts.push(`<div class="tool">🔀 <b>Subtask</b> [${esc(part.agent)}]: ${esc(part.description)}</div>`)
+          break
+      }
+    }
+
+    parts.push('</div>')
+  }
+
+  parts.push('</body></html>')
+  return parts.join('\n')
 }
 
 export function createSessionCommands(deps: SessionCommandsDeps) {
@@ -222,106 +322,6 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
         await deps.output.sendText(chatId, '오류가 발생했습니다. 다시 시도해 주세요.')
       }
     }
-  }
-
-  function formatTimestamp(ms: number): string {
-    return new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
-  }
-
-  function messagesToMarkdown(title: string, sessionId: string, messages: HistoryMessage[]): string {
-    const lines: string[] = []
-    lines.push(`# ${title}`)
-    lines.push(`Session: \`${sessionId}\`\n`)
-    lines.push('---\n')
-
-    for (const msg of messages) {
-      const ts = formatTimestamp(msg.createdAt)
-      const roleLabel = msg.role === 'user' ? '👤 User' : '🤖 Assistant'
-      lines.push(`## ${roleLabel}`)
-      lines.push(`_${ts}_\n`)
-
-      for (const part of msg.parts) {
-        switch (part.type) {
-          case 'text':
-            lines.push(part.text)
-            lines.push('')
-            break
-          case 'tool':
-            lines.push(`> 🔧 **${part.tool}**: ${part.title} (${part.status})`)
-            lines.push('')
-            break
-          case 'subtask':
-            lines.push(`> 🔀 **Subtask** [${part.agent}]: ${part.description}`)
-            lines.push('')
-            break
-        }
-      }
-
-      lines.push('---\n')
-    }
-
-    return lines.join('\n')
-  }
-
-  function messagesToHtml(title: string, sessionId: string, messages: HistoryMessage[]): string {
-    const esc = escapeHtml
-    const parts: string[] = []
-    parts.push('<!DOCTYPE html>')
-    parts.push('<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">')
-    parts.push(`<title>${esc(title)}</title>`)
-    parts.push('<style>')
-    parts.push('body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:800px;margin:0 auto;padding:16px;background:#1a1a2e;color:#e0e0e0;font-size:15px;line-height:1.6}')
-    parts.push('h1{color:#e94560;border-bottom:2px solid #e94560;padding-bottom:8px}')
-    parts.push('.meta{color:#888;font-size:13px;margin-bottom:4px}')
-    parts.push('.msg{margin:16px 0;padding:12px;border-radius:8px}')
-    parts.push('.user{background:#16213e;border-left:4px solid #0f3460}')
-    parts.push('.assistant{background:#1a1a2e;border-left:4px solid #e94560}')
-    parts.push('.role{font-weight:700;margin-bottom:4px}')
-    parts.push('.role.u{color:#0f3460}.role.a{color:#e94560}')
-    parts.push('.tool{background:#0d1117;padding:8px 12px;border-radius:4px;margin:6px 0;font-size:13px;color:#8b949e}')
-    parts.push('pre{background:#0d1117;padding:12px;border-radius:6px;overflow-x:auto;font-size:13px}')
-    parts.push('code{font-family:monospace}')
-    parts.push('hr{border:0;border-top:1px solid #333;margin:20px 0}')
-    parts.push('</style></head><body>')
-    parts.push(`<h1>${esc(title)}</h1>`)
-    parts.push(`<p class="meta">Session: ${esc(sessionId)} | ${messages.length} messages</p>`)
-    parts.push('<hr>')
-
-    for (const msg of messages) {
-      const ts = formatTimestamp(msg.createdAt)
-      const isUser = msg.role === 'user'
-      const cls = isUser ? 'user' : 'assistant'
-      const roleCls = isUser ? 'u' : 'a'
-      const roleLabel = isUser ? '👤 User' : '🤖 Assistant'
-
-      parts.push(`<div class="msg ${cls}">`)
-      parts.push(`<div class="role ${roleCls}">${roleLabel}</div>`)
-      parts.push(`<div class="meta">${esc(ts)}</div>`)
-
-      for (const part of msg.parts) {
-        switch (part.type) {
-          case 'text': {
-            const text = esc(part.text)
-              .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-              .replace(/`([^`]+)`/g, '<code>$1</code>')
-              .replace(/\n/g, '<br>')
-            parts.push(`<div>${text}</div>`)
-            break
-          }
-          case 'tool':
-            parts.push(`<div class="tool">🔧 <b>${esc(part.tool)}</b>: ${esc(part.title)} (${esc(part.status)})</div>`)
-            break
-          case 'subtask':
-            parts.push(`<div class="tool">🔀 <b>Subtask</b> [${esc(part.agent)}]: ${esc(part.description)}</div>`)
-            break
-        }
-      }
-
-      parts.push('</div>')
-    }
-
-    parts.push('</body></html>')
-    return parts.join('\n')
   }
 
   async function exportSessionHistory(

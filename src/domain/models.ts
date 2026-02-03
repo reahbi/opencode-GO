@@ -9,6 +9,11 @@ export interface SessionRef {
   updatedAt: string
 }
 
+export type SessionStatus =
+  | { type: 'idle' }
+  | { type: 'busy' }
+  | { type: 'retry'; attempt: number; message: string; next: number }
+
 /** Summary of an OpenCode agent */
 export interface AgentInfo {
   name: string
@@ -51,6 +56,9 @@ export interface UserSettings {
   outputMode: 'formatted' | 'raw'
   historyFormat: 'md' | 'html'
   historyLimit: number | null
+  reviewMode?: boolean
+  /** Number of rounds for /debate. 0 = unlimited. Default 6. */
+  debateRounds: number
 }
 
 export interface ChatState {
@@ -60,7 +68,7 @@ export interface ChatState {
   lastPrompt: string | null
   pendingInteractions: PendingInteraction[]
   settings: UserSettings
-  awaitingInput: 'threshold' | 'question' | 'histlimit' | null
+  awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | null
   awaitingInteractionId: string | null
 }
 
@@ -72,6 +80,7 @@ export function createDefaultUserSettings(): UserSettings {
     outputMode: 'formatted',
     historyFormat: 'html',
     historyLimit: null,
+    debateRounds: 6,
   }
 }
 
@@ -86,6 +95,15 @@ export function createDefaultChatState(): ChatState {
     awaitingInput: null,
     awaitingInteractionId: null,
   }
+}
+
+export interface BotRegistryEntry {
+  instanceName: string
+  botUsername: string
+  botRole: 'writer' | 'reader' | 'standalone'
+  projectDir: string
+  serverUrl: string
+  lastSeen: number
 }
 
 /** A single message part for session history export */

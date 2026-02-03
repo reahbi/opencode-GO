@@ -179,7 +179,68 @@ bun run typecheck
 
 # Build to dist/
 bun run build
+
+# Run all tests
+bun test
+
+# Watch mode
+bun test --watch
+
+# With coverage report
+bun test --coverage
 ```
+
+## TESTING
+
+### Framework
+- **Runner**: `bun:test` (built-in, zero dependencies)
+- **Config**: `bunfig.toml` at project root
+- **Types**: Included via `@types/bun`
+
+### Directory Structure
+```
+src/__tests__/
+├── smoke.test.ts              # Framework verification
+├── helpers/
+│   ├── index.ts               # Re-exports all helpers
+│   ├── mockOpenCodePort.ts    # OpenCodePort mock factory
+│   ├── mockChatOutputPort.ts  # ChatOutputPort mock factory
+│   ├── mockStateStore.ts      # StateStore mock factory
+│   ├── mockCoordinationPort.ts # CoordinationPort mock factory
+│   ├── mockBotRegistryPort.ts # BotRegistryPort mock factory
+│   ├── builders.ts            # Test data builders
+│   └── async.ts               # Async test utilities
+├── pure/                      # Pure function tests (no mocks)
+│   ├── formatResponse.test.ts
+│   ├── structuralExtract.test.ts
+│   ├── deliveryRouter.test.ts
+│   ├── domain.test.ts
+│   ├── sessionCommandsHelpers.test.ts
+│   └── interactiveFlowHelpers.test.ts
+└── usecases/                  # Usecase tests (with mocked ports)
+    ├── promptFlow.test.ts
+    ├── sessionCommands.test.ts
+    ├── interactiveFlow.test.ts
+    ├── sessionWatcher.test.ts
+    ├── debateFlow.test.ts
+    └── chatQueue.test.ts
+```
+
+### Conventions
+- **Test location**: All tests in `src/__tests__/`, mirroring source structure
+- **Naming**: `{module}.test.ts` for test files
+- **Mocking**: Only mock at port boundaries. Use `createMock*Port()` factories.
+- **No `any`**: Full type safety in tests. Mock factories return typed port objects.
+- **Pure vs Usecase**: Pure function tests go in `pure/`, usecase tests in `usecases/`
+- **Builders**: Use `build*()` helpers from `helpers/builders.ts` for test data
+- **Async**: Use `createDeferredPromise()` for controlling async flow
+- **New tests**: When adding a feature, add tests in the same commit
+
+### Adding New Tests
+1. If testing a pure function: add to `src/__tests__/pure/`
+2. If testing a usecase: add to `src/__tests__/usecases/`, use mock factories
+3. If a new port method is added: update the corresponding mock factory in `helpers/`
+4. Run `bun test` before committing — all tests must pass
 
 ## ENVIRONMENT VARIABLES
 
@@ -198,7 +259,7 @@ DEBUG=                   # Any truthy value enables debug logging
 
 ## NOTES
 
-- **No tests exist** — no test framework configured. Manual testing via Telegram bot.
+- **Tests**: `bun:test` with 210+ tests across 13 files. See `## TESTING` section above.
 - **No CI/CD** — manual deployment. No GitHub Actions, Makefile, or Dockerfile.
 - **No linter/formatter** — relies solely on `tsc --strict` for quality.
 - **SDK version**: Uses `@opencode-ai/sdk/v2/client` exclusively (v1 API was dropped).

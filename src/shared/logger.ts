@@ -11,6 +11,8 @@ const PREFIXES = {
   coordination: '[COORDINATION]',
   group: '[GROUP]',
   debate: '[DEBATE]',
+  review: '[REVIEW]',
+  registry: '[REGISTRY]',
 } as const
 
 type LogContext = keyof typeof PREFIXES

@@ -2,7 +2,7 @@ import { createOpencodeClient } from '@opencode-ai/sdk/v2/client'
 import type { OpencodeClient } from '@opencode-ai/sdk/v2/client'
 
 import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
-import type { SessionRef, HistoryMessage, HistoryPart } from '../../domain/models.js'
+import type { SessionRef, SessionStatus, HistoryMessage, HistoryPart } from '../../domain/models.js'
 import type { AgentOutput } from '../../domain/events.js'
 import { OpenCodeApiError, OpenCodeConnectionError, SessionNotFoundError } from '../../domain/errors.js'
 import { logger } from '../../shared/logger.js'
@@ -338,6 +338,37 @@ export function createOpenCodeAdapter(serverUrl: string, username: string, passw
         logger.error('opencode', `app.agents failed: ${getErrorMessage(error)}`)
         if (isDomainError(error)) throw error
         throw new OpenCodeConnectionError(serverUrl, error instanceof Error ? error : undefined)
+      }
+    },
+
+    async getSessionStatuses(directory) {
+      try {
+        const result = await client.session.status({ directory })
+        const data = unwrap(result, 'session.status', serverUrl)
+        if (!isRecord(data)) return {}
+        const statuses: Record<string, SessionStatus> = {}
+        const entries = Object.entries(data as RecordLike)
+        for (const [sid, raw] of entries) {
+          if (!isRecord(raw)) continue
+          const value = raw
+          const statusType = getString(value.type)
+          if (statusType === 'busy') {
+            statuses[sid] = { type: 'busy' }
+          } else if (statusType === 'retry') {
+            statuses[sid] = {
+              type: 'retry',
+              attempt: typeof value.attempt === 'number' ? value.attempt : 0,
+              message: typeof value.message === 'string' ? value.message : '',
+              next: typeof value.next === 'number' ? value.next : 0,
+            }
+          } else {
+            statuses[sid] = { type: 'idle' }
+          }
+        }
+        return statuses
+      } catch (error) {
+        logger.warn('opencode', `session.status failed: ${getErrorMessage(error)}`)
+        return {}
       }
     },
 

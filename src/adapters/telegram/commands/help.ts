@@ -12,9 +12,17 @@ export function helpCommand(instanceName?: string) {
 /list — List sessions
 /resume [n] — Resume session #n
 /abort — Abort current task
+/history — Export session history
 
 <b>Agent</b>
 /agents — Select AI agent
+
+<b>Multi-Bot</b>
+/debate [topic] — Start debate between bots
+/review [target] — Request code review
+/bots — List registered bots
+/addbot — Add new bot (DM only)
+/cancel — Cancel addbot wizard
 
 <b>General</b>
 /status — Current status

@@ -10,6 +10,7 @@ export interface EnvConfig {
   openCodeServerUsername: string
   openCodeServerPassword: string | null
   defaultProject: string
+  defaultAgent: string | null
   instanceName: string
   stateDir: string
   botRole: BotRole
@@ -58,6 +59,7 @@ export function loadEnvConfig(): EnvConfig {
   )
 
   const coordinationDir = process.env.COORDINATION_DIR || ''
+  const defaultAgent = process.env.DEFAULT_AGENT || null
 
   return {
     botToken,
@@ -66,6 +68,7 @@ export function loadEnvConfig(): EnvConfig {
     openCodeServerUsername,
     openCodeServerPassword,
     defaultProject,
+    defaultAgent,
     instanceName,
     stateDir,
     botRole,

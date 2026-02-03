@@ -27,6 +27,13 @@ export function createGroupMiddleware(botUsername: string, groupChatEnabled: boo
     const message = ctx.message
     const text = message?.text
     const entities = message?.entities
+
+    // Allow all slash commands through (broadcast to all bots)
+    // e.g. "/new", "/abort", "/list" — grammy handles @suffix filtering
+    if (text && entities?.some((e) => e.type === 'bot_command' && e.offset === 0)) {
+      return next()
+    }
+
     if (!text || !entities?.length) {
       logger.debug('group', 'Group message without entities ignored')
       return

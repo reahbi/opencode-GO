@@ -41,11 +41,17 @@ export const LIMITS = {
   COORDINATION_POLL_INTERVAL_MS: 2000,
 
   /** Maximum wait time for a debate response from the other bot (ms) */
-  DEBATE_RESPONSE_TIMEOUT_MS: 5 * 60 * 1000,
+  DEBATE_RESPONSE_TIMEOUT_MS: 15 * 60 * 1000,  // 15 minutes
 
   /** Coordination event TTL — ignore events older than this (ms) */
   COORDINATION_EVENT_TTL_MS: 10 * 60 * 1000,
 
   /** Maximum size of a single coordination JSONL file before daily rotation (bytes) */
   COORDINATION_MAX_FILE_SIZE: 10 * 1024 * 1024,
+
+  // ── Bot Registry ───────────────────────────────────────────
+
+  REGISTRY_HEARTBEAT_INTERVAL_MS: 60 * 1000,
+
+  REGISTRY_STALE_THRESHOLD_MS: 3 * 60 * 1000,
 } as const

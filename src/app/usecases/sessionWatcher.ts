@@ -20,8 +20,9 @@ interface SessionWatcherDeps {
   state: StateStore
   output: ChatOutputPort
   summary: SummaryService
-  onPermissionAsked: (chatId: number, event: PermissionAsked) => Promise<void>
-  onQuestionAsked: (chatId: number, event: QuestionAsked) => Promise<void>
+  onPermissionAsked: (chatId: number, event: PermissionAsked, actorUserId?: number) => Promise<void>
+  onQuestionAsked: (chatId: number, event: QuestionAsked, actorUserId?: number) => Promise<void>
+  isDebateActive?: (chatId: number) => boolean
 }
 
 interface WatcherEntry {
@@ -39,6 +40,10 @@ interface WatcherEntry {
   assistantMessageIds: Set<string>
   currentMessageId: string | null
   typingInterval: ReturnType<typeof setInterval> | null
+  liveUpdatesEnabled: boolean
+  actorUserId: number | null
+  /** Prevents duplicate busy/retry notifications from REST + SSE race */
+  busyNotified: boolean
 }
 
 export interface SessionWatcher {
@@ -52,6 +57,7 @@ export interface SessionWatcher {
   isWatching(chatId: number): boolean
   /** Register a pre-created Telegram message handle for the next assistant response. */
   setPromptHandle(chatId: number, handle: OutputHandle): void
+  setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean }): void
 }
 
 function sleep(ms: number): Promise<void> {
@@ -185,11 +191,14 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     entry.lastEditTime = 0
     entry.currentMessageId = null
     entry.assistantMessageIds.clear()
+    entry.busyNotified = false
   }
 
   // ── Throttled streaming edits ─────────────────────────────
 
   function throttledEdit(chatId: number, entry: WatcherEntry, content: string): void {
+    if (!entry.liveUpdatesEnabled) return
+
     if (entry.pendingEditTimer) {
       clearTimeout(entry.pendingEditTimer)
       entry.pendingEditTimer = null
@@ -249,9 +258,13 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     if (!current || current.generation !== gen) return
     if (entry.abort.signal.aborted) return
 
+    const debateActive = deps.isDebateActive?.(chatId) ?? false
+    const suppressDisplay = debateActive && event.type !== 'permission.asked' && event.type !== 'question.asked'
+
     switch (event.type) {
       case 'message.updated': {
         if (event.data.sessionId !== entry.sessionId) return
+        if (suppressDisplay) break
         if (event.data.role === 'assistant') {
           entry.assistantMessageIds.add(event.data.messageId)
           if (entry.currentMessageId !== event.data.messageId) {
@@ -263,6 +276,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       }
 
       case 'message.part.updated': {
+        if (suppressDisplay) break
         const { sessionId: evtSessionId, messageId, content } = event.data
         if (evtSessionId !== entry.sessionId) return
         if (messageId && !entry.assistantMessageIds.has(messageId)) return
@@ -291,7 +305,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           entry.typingInterval = null
         }
 
-        if (entry.lastContent && entry.liveMsgHandle) {
+        if (!suppressDisplay && entry.lastContent && entry.liveMsgHandle) {
           try {
             const state = await deps.state.getChatState(chatId)
             await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
@@ -311,7 +325,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
       case 'session.error': {
         if (event.data.sessionId !== entry.sessionId) return
-        logger.debug('watcher', `Session error: ${entry.sessionId}: ${event.data.error}`)
+        logger.warn('watcher', `Session error: ${entry.sessionId}: ${event.data.error}`)
 
         if (entry.pendingEditTimer) {
           clearTimeout(entry.pendingEditTimer)
@@ -322,25 +336,49 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           entry.typingInterval = null
         }
 
-        const errorMsg = `❌ Error: ${escapeHtml(event.data.error)}`
-        if (entry.liveMsgHandle) {
+        if (entry.lastContent && entry.liveMsgHandle) {
           try {
-            await deps.output.editText(chatId, entry.liveMsgHandle, errorMsg)
+            const state = await deps.state.getChatState(chatId)
+            await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
           } catch {
-            try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
+            if (entry.liveMsgHandle) {
+              await deps.output.editText(chatId, entry.liveMsgHandle, truncateForDisplay(entry.lastContent)).catch(() => {})
+            }
           }
-        } else {
-          try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
         }
 
+        const errorMsg = `❌ Error: ${escapeHtml(event.data.error)}`
+        try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
+
         resetTurnState(entry)
+        break
+      }
+
+      case 'session.busy': {
+        if (event.data.sessionId !== entry.sessionId) return
+        if (suppressDisplay) break
+        if (!entry.busyNotified) {
+          entry.busyNotified = true
+          logger.info('watcher', `Session ${entry.sessionId} became busy (external)`)
+          await deps.output.sendText(chatId, '🔄 AI가 작업 중입니다...').catch(() => {})
+        }
+        break
+      }
+
+      case 'session.retry': {
+        if (event.data.sessionId !== entry.sessionId) return
+        if (suppressDisplay) break
+        entry.busyNotified = true
+        logger.info('watcher', `Session ${entry.sessionId} retrying (attempt ${event.data.attempt})`)
+        const retryMsg = `⏳ AI가 재시도 중입니다 (${event.data.attempt}회차)\n<i>${escapeHtml(event.data.message)}</i>`
+        await deps.output.sendText(chatId, retryMsg).catch(() => {})
         break
       }
 
       case 'permission.asked': {
         if (event.data.sessionId !== entry.sessionId) return
         try {
-          await deps.onPermissionAsked(chatId, event.data)
+          await deps.onPermissionAsked(chatId, event.data, entry.actorUserId ?? undefined)
         } catch (e) {
           logger.error('watcher', `Permission handler error: ${e}`)
         }
@@ -350,7 +388,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       case 'question.asked': {
         if (event.data.sessionId !== entry.sessionId) return
         try {
-          await deps.onQuestionAsked(chatId, event.data)
+          await deps.onQuestionAsked(chatId, event.data, entry.actorUserId ?? undefined)
         } catch (e) {
           logger.error('watcher', `Question handler error: ${e}`)
         }
@@ -359,6 +397,62 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
       default:
         break
+    }
+  }
+
+  // ── Initial status check on watch ──────────────────────────
+
+  async function deliverLastResponse(chatId: number, entry: WatcherEntry): Promise<void> {
+    try {
+      const messages = await deps.openCode.getSessionMessages(entry.sessionId, entry.directory)
+      if (messages.length === 0) return
+
+      const last = messages[messages.length - 1]
+      if (last.role !== 'assistant') return
+
+      const textParts = last.parts.filter(p => p.type === 'text')
+      const content = textParts.map(p => ('text' in p ? p.text : '')).join('\n').trim()
+      if (!content) return
+
+      const state = await deps.state.getChatState(chatId)
+      const handle = await deps.output.sendText(chatId, '📋 마지막 응답을 불러오는 중...')
+      await sendFinalResponse(chatId, handle, content, state.settings, entry.directory)
+    } catch (err) {
+      logger.warn('watcher', `Failed to deliver last response for chat ${chatId}: ${err instanceof Error ? err.message : 'unknown'}`)
+    }
+  }
+
+  async function checkInitialSessionStatus(chatId: number, entry: WatcherEntry): Promise<void> {
+    try {
+      const statuses = await deps.openCode.getSessionStatuses(entry.directory)
+      const status = statuses[entry.sessionId]
+
+      if (!status || status.type === 'idle') {
+        logger.info('watcher', `Initial status check: session ${entry.sessionId} is ${status ? 'idle' : `not in status map (${Object.keys(statuses).length} returned)`}`)
+        await deliverLastResponse(chatId, entry)
+        return
+      }
+
+      if (entry.abort.signal.aborted) return
+      const current = watchers.get(chatId)
+      if (!current || current.generation !== entry.generation) return
+
+      if (status.type === 'busy') {
+        logger.info('watcher', `Session ${entry.sessionId} is busy on watch start`)
+        if (!entry.busyNotified) {
+          entry.busyNotified = true
+          await deps.output.sendText(chatId, '🔄 AI가 작업 중입니다...').catch(() => {})
+        }
+      } else if (status.type === 'retry') {
+        logger.info('watcher', `Session ${entry.sessionId} is retrying on watch start (attempt ${status.attempt})`)
+        if (!entry.busyNotified) {
+          entry.busyNotified = true
+          const msg = `⏳ AI가 재시도 중입니다 (${status.attempt}회차)\n<i>${escapeHtml(status.message)}</i>`
+          await deps.output.sendText(chatId, msg).catch(() => {})
+        }
+      }
+    } catch (err) {
+      logger.warn('watcher', `Initial status check failed for chat ${chatId}: ${err instanceof Error ? err.message : 'unknown'}`)
     }
   }
 
@@ -416,12 +510,16 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       assistantMessageIds: new Set(),
       currentMessageId: null,
       typingInterval: null,
+      liveUpdatesEnabled: true,
+      actorUserId: null,
+      busyNotified: false,
     }
 
     watchers.set(chatId, entry)
     logger.info('watcher', `Started watching session ${state.activeSessionId} for chat ${chatId}`)
 
     void runSseLoop(chatId, entry)
+    void checkInitialSessionStatus(chatId, entry)
   }
 
   function stop(chatId: number): void {
@@ -460,5 +558,12 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     }
   }
 
-  return { watch, stop, ensureWatching, isWatching, setPromptHandle }
+  function setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean }): void {
+    const entry = watchers.get(chatId)
+    if (!entry) return
+    if (ctx.actorUserId !== undefined) entry.actorUserId = ctx.actorUserId
+    if (ctx.liveUpdatesEnabled !== undefined) entry.liveUpdatesEnabled = ctx.liveUpdatesEnabled
+  }
+
+  return { watch, stop, ensureWatching, isWatching, setPromptHandle, setPromptContext }
 }

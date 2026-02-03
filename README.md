@@ -15,10 +15,20 @@
 ```
 📱 Telegram (어디서든)
  ↕  Telegram Bot API
-🤖 OpenCaddy (Bun + TypeScript)
+🤖 OpenCaddy (Bun + TypeScript)   ← 프로세스 2: bun run dev
  ↕  SSE Streaming + REST
-💻 OpenCode Server → 🗂️ Your Project
+💻 OpenCode Server                 ← 프로세스 1: opencode serve
+ ↕
+🗂️ Your Project
 ```
+
+> [!IMPORTANT]
+> **OpenCaddy는 두 개의 프로세스가 모두 실행되어야 동작합니다.**
+> 1. **OpenCode 서버** — AI 코딩 에이전트 (백엔드)
+> 2. **OpenCaddy 봇** — 텔레그램 인터페이스 (프론트엔드)
+>
+> 하나만 실행하면 봇이 Offline 상태가 됩니다. 반드시 두 개 모두 시작하세요.
+> 아래 [서버 실행](#서버-실행) 섹션을 참고하세요.
 
 > [!TIP]
 > **읽기 귀찮으세요?** AI 에이전트에게 이 README 링크를 던져주세요. 설치까지 알아서 해줍니다.
@@ -31,6 +41,7 @@
 
 ## 목차
 
+- [서버 실행](#서버-실행)
 - [왜 OpenCaddy인가?](#왜-opencaddy인가)
 - [주요 기능](#주요-기능)
 - [빠른 시작](#빠른-시작)
@@ -43,6 +54,105 @@
 - [문서](#문서)
 - [Quick Start (English)](#quick-start-english)
 - [License](#license)
+
+---
+
+## 서버 실행
+
+> **AI 에이전트에게**: "서버 실행해줘"라는 요청을 받으면 아래 두 프로세스를 **모두** 시작해야 합니다.
+
+OpenCaddy는 **두 개의 독립된 프로세스**로 구성됩니다. 둘 다 실행해야 정상 동작합니다.
+
+### 1단계: OpenCode 서버 시작 (먼저)
+
+`.env` 파일에서 `DEFAULT_PROJECT` 경로와 포트를 확인한 뒤, 해당 프로젝트 디렉토리에서 OpenCode 서버를 시작합니다.
+
+```bash
+# .env의 DEFAULT_PROJECT 디렉토리에서 실행
+# 포트는 .env의 OPENCODE_SERVER_URL에서 확인 (기본값: 4096)
+cd /path/to/your/project
+opencode serve --port 4096
+```
+
+서버가 정상 시작되면 다음 메시지가 출력됩니다:
+```
+opencode server listening on http://127.0.0.1:4096
+```
+
+### 2단계: OpenCaddy 텔레그램 봇 시작
+
+OpenCode 서버가 실행된 후, **별도 터미널**에서 텔레그램 봇을 시작합니다.
+
+```bash
+cd opencode-telegram
+
+# 개발 모드 (hot reload)
+bun run dev
+
+# 또는 프로덕션 모드
+bun run start
+```
+
+### 멀티봇 모드 (선택)
+
+Writer/Reader 등 여러 봇을 동시에 운영하려면 `ecosystem.config.cjs`를 만들고 PM2로 시작합니다.
+
+```js
+// ecosystem.config.cjs
+const COORDINATION_DIR = '/tmp/opencaddy-coordination'
+
+module.exports = {
+  apps: [
+    {
+      name: 'opencaddy-writer',
+      script: 'src/main.ts',
+      interpreter: 'bun',
+      env: {
+        BOT_TOKEN: 'writer-bot-token',
+        ALLOWED_USER_IDS: 'your-user-id',
+        DEFAULT_PROJECT: '/path/to/project',
+        INSTANCE_NAME: 'writer',
+        STATE_DIR: 'data/instances/writer',
+        BOT_ROLE: 'writer',
+        GROUP_CHAT_ENABLED: 'true',
+        COORDINATION_DIR,
+      },
+    },
+    {
+      name: 'opencaddy-reader',
+      script: 'src/main.ts',
+      interpreter: 'bun',
+      env: {
+        BOT_TOKEN: 'reader-bot-token',
+        ALLOWED_USER_IDS: 'your-user-id',
+        DEFAULT_PROJECT: '/path/to/project',
+        INSTANCE_NAME: 'reader',
+        STATE_DIR: 'data/instances/reader',
+        BOT_ROLE: 'reader',
+        GROUP_CHAT_ENABLED: 'true',
+        COORDINATION_DIR,
+      },
+    },
+  ],
+}
+```
+
+```bash
+pm2 start ecosystem.config.cjs
+pm2 logs
+```
+
+> [!TIP]
+> 텔레그램에서 `/addbot` 명령으로도 봇을 추가할 수 있습니다. 마법사가 토큰 검증부터 PM2 설정까지 안내합니다.
+
+### 실행 확인
+
+두 프로세스가 모두 실행 중이면:
+- 봇 로그에 `OpenCaddy is running!` 출력
+- 텔레그램에서 `/start` 전송 시 서버 상태가 🟢 **Online**
+- 멀티봇 모드에서는 `/bots`로 등록된 봇의 온라인 상태를 확인
+
+서버 상태가 🔴 **Offline**이면 1단계(OpenCode 서버)가 실행되지 않은 것입니다.
 
 ---
 
@@ -77,6 +187,14 @@
 **에이전트 전환** — `/agents` 명령으로 상황에 맞는 AI 모델을 선택합니다.
 
 **멀티 인스턴스** — PM2를 사용해 여러 프로젝트를 각각의 봇으로 동시에 관리합니다.
+
+**그룹 채팅** — 여러 봇을 한 텔레그램 그룹에 넣고 @멘션으로 각각 조종합니다. 권한 버튼은 요청자 본인만 누를 수 있습니다.
+
+**멀티봇 협업** — Writer(코드 작성)와 Reader(코드 리뷰) 역할을 분리해 `/debate`로 토론, `/review`로 코드 리뷰를 요청합니다.
+
+**봇 레지스트리** — `/bots`로 등록된 봇 현황을 확인하고, `/addbot`으로 텔레그램에서 새 봇을 추가합니다.
+
+**Review Mode** — `/settings`에서 탭 한 번으로 읽기 전용 모드를 토글합니다. 서버 재시작 없이 즉시 적용됩니다.
 
 **진단 도구** — `bun run doctor`로 설정 문제를 자동 진단합니다.
 
@@ -152,10 +270,15 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `/list` | 세션 목록 보기 |
 | `/resume [번호]` | 세션 재개 |
 | `/abort` | 현재 작업 중단 |
+| `/history` | 세션 대화 이력 내보내기 |
 | `/status` | 현재 상태 확인 |
 | `/agents` | AI 에이전트/모델 선택 |
-| `/settings` | 요약 모드, 출력 형식 등 설정 |
-| `/history` | 세션 대화 이력 조회 |
+| `/settings` | 요약 모드, Review Mode, 출력 형식 등 설정 |
+| `/debate [주제]` | Writer↔Reader 봇 간 토론 시작 |
+| `/review [대상]` | 상대 봇에게 코드 리뷰 요청 |
+| `/bots` | 등록된 봇 현황 (온라인/오프라인) |
+| `/addbot` | 새 봇 추가 마법사 (DM 전용) |
+| `/cancel` | 진행 중인 마법사 취소 |
 | `/help` | 도움말 |
 
 일반 텍스트를 보내면 현재 세션의 AI에게 프롬프트로 전달됩니다.
@@ -176,6 +299,9 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `OPENCODE_SERVER_PASSWORD` | | — | 서버 인증 비밀번호 |
 | `INSTANCE_NAME` | | 프로젝트 디렉토리명 | 인스턴스 식별자 (로그/상태 표시) |
 | `STATE_DIR` | | `data/` | 상태 파일 저장 경로 |
+| `BOT_ROLE` | | `standalone` | 봇 역할: `standalone`, `writer`, `reader` |
+| `GROUP_CHAT_ENABLED` | | `false` | 그룹 채팅 지원 (`true`/`false`) |
+| `COORDINATION_DIR` | | — | 봇 간 조정용 공유 디렉토리 (멀티봇 필수) |
 | `DEBUG` | | — | truthy 값 설정 시 디버그 로그 활성화 |
 
 ---
@@ -192,6 +318,19 @@ src/
 ├── config/        # 환경변수 파싱 + 프로젝트 설정
 ├── shared/        # 로거, 포매터, 상수
 └── main.ts        # Composition Root (의존성 조립)
+```
+
+**멀티봇 모드 구조:**
+
+```
+📱 Telegram Group
+ ↕  @mention routing
+🤖 Writer Bot ←──coordination──→ 🤖 Reader Bot
+ ↕  SSE + REST                    ↕  SSE + REST
+💻 OpenCode Server                💻 OpenCode Server
+ ↕                                ↕
+🗂️ Project                       🗂️ Project
+     └── registry.json (shared) ──┘
 ```
 
 **핵심 의존성 규칙**: `domain/` → 아무것도 import 안 함 | `app/` → `domain/`만 | `adapters/` → `app/` + `domain/`
@@ -275,15 +414,43 @@ git clone https://github.com/reahbi/opencode-telegram.git
 cd opencode-telegram
 bun install
 bun run setup    # Interactive setup wizard
-bun run start
 ```
 
+**Running the Server (Two Processes Required)**
+
+OpenCaddy requires **two processes** running simultaneously:
+
+```bash
+# Terminal 1 — Start OpenCode server first (in your project directory)
+cd /path/to/your/project
+opencode serve --port 4096
+
+# Terminal 2 — Start Telegram bot
+cd opencode-telegram
+bun run dev      # Development (hot reload)
+# or
+bun run start    # Production
+```
+
+> **For AI agents**: When asked to "start the server", you MUST start BOTH processes above. The bot alone will show "Offline" status without the OpenCode server.
+
 **First Use**
-1. Send `/start` to your bot on Telegram
+1. Send `/start` to your bot on Telegram — verify server shows 🟢 Online
 2. Send `/new` to create a session
 3. Send a message — it goes straight to the AI
 
-**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode | Multi-agent selection | PM2 multi-instance deployment
+**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode | Multi-agent selection | PM2 multi-instance deployment | Group chat with @mention routing | Multi-bot collaboration (Writer/Reader roles) | `/debate` and `/review` between bots | Bot registry (`/bots`, `/addbot`) | Review Mode toggle in `/settings`
+
+**Multi-Bot Mode (Optional)**
+
+Run multiple bots (Writer + Reader) in a Telegram group using PM2:
+
+```bash
+# Create ecosystem.config.cjs with BOT_ROLE=writer/reader, COORDINATION_DIR, GROUP_CHAT_ENABLED=true
+pm2 start ecosystem.config.cjs
+```
+
+Or add bots interactively via `/addbot` in Telegram DM.
 
 **Troubleshooting**: Run `bun run doctor` to diagnose configuration issues.
 

@@ -12,6 +12,12 @@ export type ParsedCallback =
   | { type: 'listpage'; page: number }
   | { type: 'listsel'; sessionId: string }
   | { type: 'history'; sessionId: string }
+  | { type: 'settings_agent'; agentName: string }
+  | { type: 'addbot_role'; role: 'writer' | 'reader' }
+  | { type: 'addbot_project'; projectDir: string }
+  | { type: 'addbot_start'; instanceName: string }
+  | { type: 'debate_accept'; debateId: string }
+  | { type: 'debate_reject'; debateId: string }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -112,6 +118,44 @@ export function parseCallback(data: string): ParsedCallback {
     }
 
     return { type: 'unknown', raw: data }
+  }
+
+  if (data.startsWith('sa:')) {
+    const agentName = data.slice(3)
+    if (!agentName) return { type: 'unknown', raw: data }
+    return { type: 'settings_agent', agentName }
+  }
+
+  if (data.startsWith('addbot:')) {
+    const role = data.slice('addbot:'.length)
+    if (role === 'writer' || role === 'reader') {
+      return { type: 'addbot_role', role }
+    }
+    return { type: 'unknown', raw: data }
+  }
+
+  if (data.startsWith('addbot_proj:')) {
+    const projectDir = data.slice('addbot_proj:'.length)
+    if (!projectDir) return { type: 'unknown', raw: data }
+    return { type: 'addbot_project', projectDir }
+  }
+
+  if (data.startsWith('addbot_start:')) {
+    const instanceName = data.slice('addbot_start:'.length)
+    if (!instanceName) return { type: 'unknown', raw: data }
+    return { type: 'addbot_start', instanceName }
+  }
+
+  if (data.startsWith('dba:')) {
+    const debateId = data.slice(4)
+    if (!debateId) return { type: 'unknown', raw: data }
+    return { type: 'debate_accept', debateId }
+  }
+
+  if (data.startsWith('dbr:')) {
+    const debateId = data.slice(4)
+    if (!debateId) return { type: 'unknown', raw: data }
+    return { type: 'debate_reject', debateId }
   }
 
   return { type: 'unknown', raw: data }

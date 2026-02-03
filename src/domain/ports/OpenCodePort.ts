@@ -1,4 +1,4 @@
-import type { SessionRef, AgentInfo, HistoryMessage } from '../models.js'
+import type { SessionRef, AgentInfo, HistoryMessage, SessionStatus } from '../models.js'
 import type { AgentOutput } from '../events.js'
 import type { EventHandler } from '../events.js'
 
@@ -28,5 +28,6 @@ export interface OpenCodePort {
   replyPermission(requestId: string, directory: string, response: 'once' | 'always' | 'reject'): Promise<void>
   replyQuestion(requestId: string, directory: string, answers: string[][]): Promise<void>
   rejectQuestion(requestId: string, directory: string): Promise<void>
+  getSessionStatuses(directory: string): Promise<Record<string, SessionStatus>>
   healthCheck(): Promise<boolean>
 }

@@ -14,14 +14,23 @@ interface InteractiveFlowDeps {
   botRole?: 'writer' | 'reader' | 'standalone'
 }
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function answerLabel(answer: string[] | null): string {
+export function answerLabel(answer: string[] | null): string {
   if (answer === null) return '⏳'
   if (answer.length === 0) return '⏭️ skipped'
   return `✅ ${escapeHtml(answer[0])}`
+}
+
+export function refreshTTL(interaction: PendingInteraction): void {
+  interaction.expiresAt = Date.now() + LIMITS.INTERACTION_TTL_MS
+}
+
+export function toSubmitAnswers(interaction: PendingInteraction): string[][] {
+  const answers = interaction.collectedAnswers ?? []
+  return answers.map(a => (a === null ? [] : a))
 }
 
 export function createInteractiveFlow(deps: InteractiveFlowDeps) {
@@ -99,10 +108,6 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     return { text: lines.join('\n'), buttons }
   }
 
-  function refreshTTL(interaction: PendingInteraction): void {
-    interaction.expiresAt = Date.now() + LIMITS.INTERACTION_TTL_MS
-  }
-
   async function editOrSendQuestion(chatId: number, interaction: PendingInteraction): Promise<void> {
     const { text, buttons } = buildQuestionMessage(interaction)
     if (interaction.messageHandle) {
@@ -115,11 +120,6 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
     const handle = await deps.output.sendInteraction(chatId, text, buttons)
     interaction.messageHandle = handle
-  }
-
-  function toSubmitAnswers(interaction: PendingInteraction): string[][] {
-    const answers = interaction.collectedAnswers ?? []
-    return answers.map(a => (a === null ? [] : a))
   }
 
   async function submitAllAnswers(
@@ -156,7 +156,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handlePermissionEvent(chatId: number, event: PermissionAsked): Promise<void> {
+  async function handlePermissionEvent(chatId: number, event: PermissionAsked, actorUserId?: number): Promise<void> {
     try {
       if (deps.botRole === 'reader') {
         const chatState = await deps.state.getChatState(chatId)
@@ -197,7 +197,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleQuestionEvent(chatId: number, event: QuestionAsked): Promise<void> {
+  async function handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number): Promise<void> {
     try {
       const interactionId = randomUUID()
       const questions = event.questions.map(q => ({

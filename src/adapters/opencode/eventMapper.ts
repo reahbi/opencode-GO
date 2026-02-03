@@ -4,8 +4,10 @@ import type {
   PermissionAsked,
   QuestionAsked,
   QuestionInfo,
+  SessionBusy,
   SessionError,
   SessionIdle,
+  SessionRetry,
 } from '../../domain/events.js'
 
 type RecordLike = Record<string, unknown>
@@ -116,11 +118,27 @@ export function mapSdkEvent(event: unknown): OpenCodeEvent | null {
     case 'session.status': {
       const status = isRecord(properties.status) ? properties.status : null
       const statusType = status ? getString(status.type) : null
-      if (statusType !== 'idle') return null
       const sessionId = getString(properties.sessionID)
       if (!sessionId) return null
-      const data: SessionIdle = { sessionId }
-      return { type: 'session.idle', data }
+
+      if (statusType === 'busy') {
+        const data: SessionBusy = { sessionId }
+        return { type: 'session.busy', data }
+      }
+      if (statusType === 'retry') {
+        const data: SessionRetry = {
+          sessionId,
+          attempt: typeof status!.attempt === 'number' ? status!.attempt : 0,
+          message: typeof status!.message === 'string' ? status!.message : '',
+          next: typeof status!.next === 'number' ? status!.next : 0,
+        }
+        return { type: 'session.retry', data }
+      }
+      if (statusType === 'idle') {
+        const data: SessionIdle = { sessionId }
+        return { type: 'session.idle', data }
+      }
+      return null
     }
 
     case 'message.updated': {

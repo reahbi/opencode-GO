@@ -12,7 +12,10 @@
     "stop:all": "pm2 stop ecosystem.config.cjs",
     "logs": "pm2 logs",
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/main.ts --outdir dist --target bun"
+    "build": "bun build src/main.ts --outdir dist --target bun",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage"
   },
   "dependencies": {
     "@opencode-ai/sdk": "~1.1.48",

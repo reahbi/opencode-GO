@@ -4,4 +4,6 @@ export interface StateStore {
   getChatState(chatId: number): Promise<ChatState>
   saveChatState(chatId: number, state: ChatState): Promise<void>
   withChatLock<T>(chatId: number, fn: () => Promise<T>): Promise<T>
+  getDefaultAgent(): Promise<string | null>
+  setDefaultAgent(agent: string | null): Promise<void>
 }

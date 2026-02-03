@@ -2,7 +2,7 @@ import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { CoordinationPort, CoordinationEvent } from '../../domain/ports/CoordinationPort.js'
-import type { AgentOutput } from '../../domain/events.js'
+import type { BotRegistryPort } from '../../domain/ports/BotRegistryPort.js'
 import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../policies/limits.js'
 
@@ -11,11 +11,19 @@ interface DebateFlowDeps {
   state: StateStore
   output: ChatOutputPort
   coordination: CoordinationPort
+  registry: BotRegistryPort
   botRole: 'writer' | 'reader' | 'standalone'
   instanceName: string
+  projectDir: string  // NEW: Filter target bot by project directory
 }
 
 type DebateMode = 'debate' | 'review'
+
+interface DebateMessage {
+  from: 'self' | 'opponent'
+  round: number
+  text: string
+}
 
 interface DebateSession {
   chatId: number
@@ -23,9 +31,22 @@ interface DebateSession {
   directory: string
   topic: string
   round: number
+  maxRounds: number
   mode: DebateMode
   target?: string
   timeoutId?: ReturnType<typeof setTimeout>
+  debateId: string
+  messages: DebateMessage[]
+}
+
+interface PendingAcceptance {
+  chatId: number
+  debateId: string
+  topic: string
+  messages: DebateMessage[]
+  sessionId: string
+  directory: string
+  createdAt: number
 }
 
 interface ChatContext {
@@ -34,26 +55,145 @@ interface ChatContext {
   agent: string | null
 }
 
+const DEBATE_MSG_MAX_LENGTH = 3500
+const RESPONSE_POLL_INTERVAL_MS = 2000
+const RESPONSE_POLL_TIMEOUT_MS = 10 * 60 * 1000
+
 function escapeHtml(t: string): string {
   return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function extractText(output: AgentOutput): string {
-  const textParts = output.parts
-    .filter((part) => part.type === 'text')
-    .map((part) => part.content)
-  return textParts.join('\n').trim()
+function truncateForTelegram(text: string): string {
+  if (text.length <= DEBATE_MSG_MAX_LENGTH) return text
+  return text.slice(0, DEBATE_MSG_MAX_LENGTH) + '\n\n... (truncated)'
 }
+
+async function sendWithRetry(
+  fn: () => Promise<unknown>,
+  maxRetries = 3,
+): Promise<void> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await fn()
+      return
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const retryMatch = msg.match(/retry after (\d+)/i)
+      if (retryMatch && attempt < maxRetries) {
+        const waitSec = Math.min(parseInt(retryMatch[1], 10) + 1, 60)
+        logger.warn('debate', `Rate limited, waiting ${waitSec}s before retry (attempt ${attempt + 1}/${maxRetries})`)
+        await new Promise(r => setTimeout(r, waitSec * 1000))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+async function waitForResponse(
+  openCode: OpenCodePort,
+  sessionId: string,
+  directory: string,
+  beforeCount: number,
+): Promise<string> {
+  const deadline = Date.now() + RESPONSE_POLL_TIMEOUT_MS
+  logger.info('debate', `[waitForResponse] session=${sessionId} dir=${directory} beforeCount=${beforeCount}`)
+
+  let sawBusy = false
+  let pollCount = 0
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, RESPONSE_POLL_INTERVAL_MS))
+    pollCount++
+
+    // Check status — but treat missing/empty status map as "unknown", NOT idle
+    const statuses = await openCode.getSessionStatuses(directory)
+    const status = statuses[sessionId]
+
+    if (status && (status.type === 'busy' || status.type === 'retry')) {
+      sawBusy = true
+      if (pollCount % 5 === 0) logger.info('debate', `[waitForResponse] still busy (poll #${pollCount})`)
+      continue
+    }
+
+    // Only treat explicit idle as completion — undefined means "not in map" (unreliable)
+    if (sawBusy && status?.type === 'idle') {
+      logger.info('debate', `[waitForResponse] busy→idle transition detected (poll #${pollCount})`)
+      break
+    }
+
+    // Always check message count as a fallback (regardless of sawBusy)
+    const currentMessages = await openCode.getSessionMessages(sessionId, directory)
+    if (currentMessages.length > beforeCount) {
+      // Verify the new message is an assistant message with actual text
+      const lastMsg = currentMessages[currentMessages.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant') {
+        const hasText = lastMsg.parts.some(p => p.type === 'text')
+        if (hasText) {
+          logger.info('debate', `[waitForResponse] new assistant message detected (poll #${pollCount}, count ${beforeCount}→${currentMessages.length})`)
+          break
+        }
+      }
+    }
+
+    if (pollCount % 10 === 0) {
+      logger.info('debate', `[waitForResponse] polling... #${pollCount} sawBusy=${sawBusy} status=${status?.type ?? 'undefined'} msgCount=${currentMessages?.length ?? '?'}`)
+    }
+  }
+
+  // Extract the last assistant text that appeared AFTER our prompt
+  const messages = await openCode.getSessionMessages(sessionId, directory)
+  logger.info('debate', `[waitForResponse] final msgCount=${messages.length} (was ${beforeCount})`)
+
+  // Look for assistant messages after beforeCount index
+  for (let i = messages.length - 1; i >= beforeCount; i--) {
+    if (messages[i].role === 'assistant') {
+      const textParts = messages[i].parts
+        .filter(p => p.type === 'text')
+        .map(p => (p as { type: 'text'; text: string }).text)
+      const text = textParts.join('\n').trim()
+      if (text) return text
+    }
+  }
+
+  // Fallback: if no new assistant message found, try the last one in the entire session
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') {
+      const textParts = messages[i].parts
+        .filter(p => p.type === 'text')
+        .map(p => (p as { type: 'text'; text: string }).text)
+      const text = textParts.join('\n').trim()
+      if (text) {
+        logger.warn('debate', `[waitForResponse] using fallback: last assistant msg at index ${i} (beforeCount was ${beforeCount})`)
+        return text
+      }
+    }
+  }
+
+  logger.warn('debate', `[waitForResponse] no assistant response found after ${pollCount} polls`)
+  return ''
+}
+
+const ACCEPTANCE_TTL_MS = 30 * 60 * 1000
 
 export function createDebateFlow(deps: DebateFlowDeps) {
   const sessions = new Map<number, DebateSession>()
+  const pendingAcceptances = new Map<string, PendingAcceptance>()
   let pollInterval: ReturnType<typeof setInterval> | null = null
   let pollOffset = 0
-  let pollChatId: number | null = null
 
-  function getTargetBot(): string | null {
+  async function getTargetBot(): Promise<string | null> {
     if (deps.botRole === 'standalone') return null
-    return deps.botRole === 'writer' ? 'reader' : 'writer'
+    const targetRole = deps.botRole === 'writer' ? 'reader' : 'writer'
+    const peers = await deps.registry.findByRole(targetRole)
+    
+    // NEW: Filter by matching projectDir
+    const sameProjPeers = peers.filter(p => p.projectDir === deps.projectDir)
+    
+    const now = Date.now()
+    const activePeer = sameProjPeers.find(p => (now - p.lastSeen) < LIMITS.REGISTRY_STALE_THRESHOLD_MS)
+    if (activePeer) return activePeer.instanceName
+    if (sameProjPeers.length > 0) return sameProjPeers[0].instanceName
+    return null
   }
 
   async function loadChatContext(chatId: number): Promise<ChatContext | null> {
@@ -105,14 +245,17 @@ export function createDebateFlow(deps: DebateFlowDeps) {
   async function publishEvent(
     type: CoordinationEvent['type'],
     toBot: string,
-    sessionId: string,
+    debateId: string,      // NEW: Debate identifier
+    chatId: number,        // NEW: Target chat ID for receiver
     payload: Record<string, unknown>,
   ): Promise<void> {
     await deps.coordination.publish({
       type,
       fromBot: deps.instanceName,
       toBot,
-      sessionId,
+      sessionId: '',  // Deprecated, empty string for backward compat
+      debateId,       // NEW
+      chatId,         // NEW
       payload,
     })
   }
@@ -122,14 +265,37 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     sessions.delete(chatId)
     stopPolling()
 
-    const targetBot = getTargetBot()
+    const targetBot = await getTargetBot()
     if (session.mode === 'debate' && targetBot) {
       await publishEvent(
         'debate.end',
         targetBot,
-        session.sessionId,
+        session.debateId,
+        session.chatId,
         { topic: session.topic, round: session.round, reason },
       )
+    }
+
+    if (session.mode === 'debate' && deps.botRole === 'writer' && session.messages.length > 0) {
+      pendingAcceptances.set(session.debateId, {
+        chatId,
+        debateId: session.debateId,
+        topic: session.topic,
+        messages: session.messages,
+        sessionId: session.sessionId,
+        directory: session.directory,
+        createdAt: Date.now(),
+      })
+
+      await sendWithRetry(() => deps.output.sendInteraction(
+        chatId,
+        `🏁 토론 종료: ${escapeHtml(reason)}\n\n<b>${escapeHtml(session.topic)}</b>\n\n결과를 코드에 반영하시겠습니까?`,
+        [
+          { label: '✅ 반영하기', callbackData: `dba:${session.debateId}` },
+          { label: '❌ 무시하기', callbackData: `dbr:${session.debateId}` },
+        ],
+      ))
+      return
     }
 
     const endMessage = session.mode === 'review'
@@ -138,11 +304,11 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     await deps.output.sendText(chatId, escapeHtml(endMessage), 'HTML')
   }
 
-  async function startDebate(chatId: number, topic: string): Promise<void> {
+  async function startDebate(chatId: number, topic: string, overrideRounds?: number): Promise<void> {
     const context = await loadChatContext(chatId)
     if (!context) return
 
-    const targetBot = getTargetBot()
+    const targetBot = await getTargetBot()
     if (!targetBot) {
       await deps.output.sendText(
         chatId,
@@ -152,32 +318,41 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       return
     }
 
+    const chatState = await deps.state.getChatState(chatId)
+    const maxRounds = overrideRounds ?? chatState.settings.debateRounds ?? LIMITS.MAX_DEBATE_ROUNDS
+
     const cleanTopic = topic.trim()
+    const debateId = crypto.randomUUID()
     const session: DebateSession = {
       chatId,
       sessionId: context.sessionId,
       directory: context.directory,
       topic: cleanTopic,
       round: 1,
+      maxRounds,
       mode: 'debate',
+      debateId,
+      messages: [],
     }
 
     sessions.set(chatId, session)
 
+    const roundsLabel = maxRounds === 0 ? '♾️' : `${maxRounds}`
     await deps.output.sendText(
       chatId,
-      escapeHtml(`🎭 Starting debate: ${cleanTopic}`),
+      escapeHtml(`🎭 Starting debate (${roundsLabel} rounds): ${cleanTopic}`),
       'HTML',
     )
 
     await publishEvent(
       'debate.request',
       targetBot,
-      context.sessionId,
-      { topic: cleanTopic, round: 1 },
+      debateId,
+      chatId,
+      { topic: cleanTopic, round: 1, maxRounds },
     )
 
-    startPolling(chatId)
+    startPolling()
     scheduleResponseTimeout(session)
   }
 
@@ -185,7 +360,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     const context = await loadChatContext(chatId)
     if (!context) return
 
-    const targetBot = getTargetBot()
+    const targetBot = await getTargetBot()
     if (!targetBot) {
       await deps.output.sendText(
         chatId,
@@ -196,14 +371,18 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     }
 
     const reviewTarget = target?.trim() || 'latest changes'
+    const debateId = crypto.randomUUID()
     const session: DebateSession = {
       chatId,
       sessionId: context.sessionId,
       directory: context.directory,
       topic: reviewTarget,
       round: 1,
+      maxRounds: 0,
       mode: 'review',
       target: reviewTarget,
+      debateId,
+      messages: [],
     }
 
     sessions.set(chatId, session)
@@ -217,11 +396,12 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     await publishEvent(
       'review.request',
       targetBot,
-      context.sessionId,
+      debateId,
+      chatId,
       { target: reviewTarget, description: 'Code review request' },
     )
 
-    startPolling(chatId)
+    startPolling()
     scheduleResponseTimeout(session)
   }
 
@@ -229,12 +409,17 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     if (deps.botRole === 'standalone') return
 
     const context = await loadChatContext(chatId)
-    if (!context) return
-
-    if (event.sessionId !== context.sessionId) return
+    if (!context) {
+      logger.warn('debate', `[handleDebateRequest] no context for chat ${chatId}`)
+      return
+    }
 
     const topic = typeof event.payload.topic === 'string' ? event.payload.topic : 'Debate'
     const round = typeof event.payload.round === 'number' ? event.payload.round : 1
+    const maxRounds = typeof event.payload.maxRounds === 'number' ? event.payload.maxRounds : LIMITS.MAX_DEBATE_ROUNDS
+    const debateId = event.debateId || event.id
+
+    logger.info('debate', `[handleDebateRequest] chat=${chatId} session=${context.sessionId} dir=${context.directory} topic="${topic}" round=${round} maxRounds=${maxRounds} debateId=${debateId}`)
 
     const session: DebateSession = {
       chatId,
@@ -242,69 +427,140 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       directory: context.directory,
       topic,
       round,
+      maxRounds,
       mode: 'debate',
+      debateId,
+      messages: [],
     }
     sessions.set(chatId, session)
 
-    const prompt = `You are in a structured debate.\nTopic: ${topic}\nRound ${round}.\nProvide your opening argument.`
-    const output = await deps.openCode.sendPrompt(
-      context.sessionId,
-      context.directory,
-      prompt,
-      context.agent ?? undefined,
-    )
+    try {
+      const prompt = `You are in a structured debate.\nTopic: ${topic}\nRound ${round}.\nProvide your opening argument.`
+      const msgsBefore = await deps.openCode.getSessionMessages(context.sessionId, context.directory)
+      const beforeCount = msgsBefore.length
+      logger.info('debate', `[handleDebateRequest] sending prompt to session ${context.sessionId} (beforeCount=${beforeCount})`)
+      await deps.openCode.sendPromptAsync(
+        context.sessionId,
+        context.directory,
+        prompt,
+      )
 
-    const responseText = extractText(output) || 'No response generated.'
-    const targetBot = getTargetBot()
-    if (!targetBot) return
+      const responseText = await waitForResponse(deps.openCode, context.sessionId, context.directory, beforeCount)
+      logger.info('debate', `[handleDebateRequest] got response (${responseText.length} chars): "${responseText.slice(0, 80)}..."`)
+      
+      session.messages.push({ from: 'self', round, text: responseText || '(empty response)' })
 
-    session.round = round + 1
-    await publishEvent(
-      'debate.response',
-      targetBot,
-      context.sessionId,
-      { topic, round: session.round, message: responseText },
-    )
+      await sendWithRetry(() => deps.output.sendText(
+        chatId,
+        escapeHtml(truncateForTelegram(`💬 Debate: ${topic}\n\n${responseText || '(empty response)'}`)),
+        'HTML',
+      ))
 
-    scheduleResponseTimeout(session)
+      const targetBot = await getTargetBot()
+      if (!targetBot) return
+
+      session.round = round + 1
+      logger.info('debate', `[handleDebateRequest] publishing debate.response to ${targetBot}, round=${session.round}`)
+      await publishEvent(
+        'debate.response',
+        targetBot,
+        debateId,
+        chatId,
+        { topic, round: session.round, maxRounds, message: responseText || '(empty response)' },
+      )
+
+      scheduleResponseTimeout(session)
+    } catch (error) {
+      logger.error('debate', `Failed to generate debate response: ${error instanceof Error ? error.message : String(error)}`)
+      await deps.output.sendText(
+        chatId,
+        escapeHtml(`❌ 토론 응답 생성 실패: ${error instanceof Error ? error.message : String(error)}`),
+        'HTML',
+      )
+      const targetBot = await getTargetBot()
+      if (targetBot) {
+        await publishEvent('debate.end', targetBot, debateId, chatId, { reason: 'AI prompt failed' })
+      }
+      sessions.delete(chatId)
+    }
   }
 
   async function handleDebateResponse(chatId: number, event: CoordinationEvent): Promise<void> {
     const session = sessions.get(chatId)
     if (!session || session.mode !== 'debate') return
-    if (event.sessionId !== session.sessionId) return
+    
+    if (event.debateId && event.debateId !== session.debateId) {
+      logger.warn('debate', `debateId mismatch: event=${event.debateId}, session=${session.debateId}`)
+      return
+    }
+
+    clearTimeoutFor(session)
 
     const round = typeof event.payload.round === 'number' ? event.payload.round : session.round
+    if (typeof event.payload.maxRounds === 'number') session.maxRounds = event.payload.maxRounds
     const opponentMessage = typeof event.payload.message === 'string'
       ? event.payload.message
       : ''
+    logger.info('debate', `[handleDebateResponse] chat=${chatId} round=${round} maxRounds=${session.maxRounds} opponentMsg=${opponentMessage.length} chars`)
 
-    if (round >= LIMITS.MAX_DEBATE_ROUNDS) {
+    session.messages.push({ from: 'opponent', round, text: opponentMessage })
+
+    await sendWithRetry(() => deps.output.sendText(
+      chatId,
+        escapeHtml(truncateForTelegram(`💬 Opponent:\n\n${opponentMessage}`)),
+      'HTML',
+    ))
+
+    if (session.maxRounds > 0 && round >= session.maxRounds) {
       await endDebate(chatId, session, '최대 라운드에 도달했습니다.')
       return
     }
 
-    const prompt = `You are debating the topic: ${session.topic}.\nRound ${round}.\nOpponent says:\n${opponentMessage}\n\nRespond with your argument.`
-    const output = await deps.openCode.sendPrompt(
-      session.sessionId,
-      session.directory,
-      prompt,
-      undefined,
-    )
-    const responseText = extractText(output) || 'No response generated.'
+    try {
+      const prompt = `You are debating the topic: ${session.topic}.\nRound ${round}.\nOpponent says:\n${opponentMessage}\n\nRespond with your argument.`
+      const msgsBefore = await deps.openCode.getSessionMessages(session.sessionId, session.directory)
+      const beforeCount = msgsBefore.length
+      await deps.openCode.sendPromptAsync(
+        session.sessionId,
+        session.directory,
+        prompt,
+      )
+      const responseText = await waitForResponse(deps.openCode, session.sessionId, session.directory, beforeCount)
 
-    session.round = round + 1
-    const targetBot = getTargetBot()
-    if (!targetBot) return
+      session.messages.push({ from: 'self', round: round + 1, text: responseText || '(empty response)' })
 
-    await publishEvent(
-      'debate.response',
-      targetBot,
-      session.sessionId,
-      { topic: session.topic, round: session.round, message: responseText },
-    )
+      await sendWithRetry(() => deps.output.sendText(
+        chatId,
+        escapeHtml(truncateForTelegram(`💬 My response:\n\n${responseText || '(empty response)'}`)),
+        'HTML',
+      ))
 
-    scheduleResponseTimeout(session)
+      session.round = round + 1
+      const targetBot = await getTargetBot()
+      if (!targetBot) return
+
+      await publishEvent(
+        'debate.response',
+        targetBot,
+        session.debateId,
+        chatId,
+        { topic: session.topic, round: session.round, maxRounds: session.maxRounds, message: responseText || '(empty response)' },
+      )
+
+      scheduleResponseTimeout(session)
+    } catch (error) {
+      logger.error('debate', `Failed to generate debate response: ${error instanceof Error ? error.message : String(error)}`)
+      await deps.output.sendText(
+        chatId,
+        escapeHtml(`❌ 토론 응답 생성 실패: ${error instanceof Error ? error.message : String(error)}`),
+        'HTML',
+      )
+      const targetBot = await getTargetBot()
+      if (targetBot) {
+        await publishEvent('debate.end', targetBot, session.debateId, chatId, { reason: 'AI prompt failed' })
+      }
+      sessions.delete(chatId)
+    }
   }
 
   async function handleReviewRequest(chatId: number, event: CoordinationEvent): Promise<void> {
@@ -312,50 +568,71 @@ export function createDebateFlow(deps: DebateFlowDeps) {
 
     const context = await loadChatContext(chatId)
     if (!context) return
-    if (event.sessionId !== context.sessionId) return
 
     const target = typeof event.payload.target === 'string' ? event.payload.target : 'latest changes'
     const description = typeof event.payload.description === 'string'
       ? event.payload.description
       : 'Code review request'
+    const debateId = event.debateId || event.id
 
-    const prompt = `Provide a concise code review.\nTarget: ${target}\n${description}\nFocus on risks, correctness, and improvements.`
-    const output = await deps.openCode.sendPrompt(
-      context.sessionId,
-      context.directory,
-      prompt,
-      context.agent ?? undefined,
-    )
-    const responseText = extractText(output) || 'No review generated.'
+    try {
+      const prompt = `Provide a concise code review.\nTarget: ${target}\n${description}\nFocus on risks, correctness, and improvements.`
+      const msgsBefore = await deps.openCode.getSessionMessages(context.sessionId, context.directory)
+      const beforeCount = msgsBefore.length
+      await deps.openCode.sendPromptAsync(
+        context.sessionId,
+        context.directory,
+        prompt,
+      )
+      const responseText = await waitForResponse(deps.openCode, context.sessionId, context.directory, beforeCount) || '(empty response)'
 
-    const targetBot = getTargetBot()
-    if (!targetBot) return
+      await deps.output.sendText(
+        chatId,
+        escapeHtml(truncateForTelegram(`🔍 Review: ${target}\n\n${responseText}`)),
+        'HTML',
+      )
 
-    await publishEvent(
-      'review.response',
-      targetBot,
-      context.sessionId,
-      { target, message: responseText },
-    )
+      const targetBot = await getTargetBot()
+      if (!targetBot) return
+
+      await publishEvent(
+        'review.response',
+        targetBot,
+        debateId,
+        chatId,
+        { target, message: responseText },
+      )
+    } catch (error) {
+      logger.error('debate', `Failed to generate review: ${error instanceof Error ? error.message : String(error)}`)
+      await deps.output.sendText(
+        chatId,
+        escapeHtml(`❌ 리뷰 생성 실패: ${error instanceof Error ? error.message : String(error)}`),
+        'HTML',
+      )
+    }
   }
 
   async function handleReviewResponse(chatId: number, event: CoordinationEvent): Promise<void> {
     const session = sessions.get(chatId)
     if (!session || session.mode !== 'review') return
-    if (event.sessionId !== session.sessionId) return
-
-    const reviewMessage = typeof event.payload.message === 'string'
-      ? event.payload.message
-      : ''
+    
+    if (event.debateId && event.debateId !== session.debateId) {
+      logger.warn('debate', `debateId mismatch: event=${event.debateId}, session=${session.debateId}`)
+      return
+    }
 
     clearTimeoutFor(session)
     sessions.delete(chatId)
     stopPolling()
 
+    const reviewMessage = typeof event.payload.message === 'string'
+      ? event.payload.message
+      : ''
+
     const header = session.target
       ? `🔎 Review: ${session.target}\n\n`
       : '🔎 Review Result\n\n'
-    await deps.output.sendText(chatId, escapeHtml(`${header}${reviewMessage}`), 'HTML')
+    await deps.output.sendText(chatId, escapeHtml(truncateForTelegram(`${header}${reviewMessage}`)), 'HTML')
   }
 
   async function handleCoordinationEvent(chatId: number, event: CoordinationEvent): Promise<void> {
@@ -371,6 +648,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       case 'debate.end': {
         const session = sessions.get(chatId)
         if (!session || session.mode !== 'debate') return
+        if (event.debateId && event.debateId !== session.debateId) return
         const reason = typeof event.payload.reason === 'string'
           ? event.payload.reason
           : '상대 봇이 종료했습니다.'
@@ -389,7 +667,6 @@ export function createDebateFlow(deps: DebateFlowDeps) {
   }
 
   async function pollOnce(): Promise<void> {
-    if (pollChatId === null) return
     try {
       const { events, newOffset } = await deps.coordination.poll(pollOffset)
       pollOffset = newOffset
@@ -398,32 +675,89 @@ export function createDebateFlow(deps: DebateFlowDeps) {
       for (const event of events) {
         if (event.toBot !== deps.instanceName) continue
         if (now - event.timestamp > LIMITS.COORDINATION_EVENT_TTL_MS) continue
-        await handleCoordinationEvent(pollChatId, event)
+        
+        // Extract chatId from event
+        const chatId = event.chatId
+        if (!chatId) {
+          logger.warn('debate', `Event missing chatId: ${event.id}`)
+          continue
+        }
+        
+        await handleCoordinationEvent(chatId, event)
       }
     } catch (error) {
       logger.warn('debate', `Coordination polling error: ${error instanceof Error ? error.message : 'unknown'}`)
     }
   }
 
-  function startPolling(chatId: number): void {
-    pollChatId = chatId
+  function startPolling(): void {
     if (pollInterval) return
-    void deps.coordination.currentOffset().then((offset) => {
-      pollOffset = offset
-    }).catch((error) => {
-      logger.warn('debate', `Failed to read coordination offset: ${error instanceof Error ? error.message : 'unknown'}`)
-    })
-
+    
+    pollOffset = 0
     pollInterval = setInterval(() => {
-      void pollOnce()
+      void pollOnce().catch(err => logger.error('debate', `Polling error: ${err}`))
     }, LIMITS.COORDINATION_POLL_INTERVAL_MS)
+    
+    logger.info('debate', 'Coordination polling started')
   }
 
   function stopPolling(): void {
     if (!pollInterval) return
     clearInterval(pollInterval)
     pollInterval = null
-    pollChatId = null
+  }
+
+  function isActive(chatId: number): boolean {
+    return sessions.has(chatId)
+  }
+
+  function cleanupStaleAcceptances(): void {
+    const now = Date.now()
+    for (const [id, acc] of pendingAcceptances) {
+      if (now - acc.createdAt > ACCEPTANCE_TTL_MS) pendingAcceptances.delete(id)
+    }
+  }
+
+  async function handleAcceptance(chatId: number, debateId: string): Promise<void> {
+    cleanupStaleAcceptances()
+    const acceptance = pendingAcceptances.get(debateId)
+    if (!acceptance) {
+      await deps.output.sendText(chatId, escapeHtml('토론 데이터가 만료되었습니다.'), 'HTML')
+      return
+    }
+    pendingAcceptances.delete(debateId)
+
+    const history = acceptance.messages.map(m => {
+      const label = m.from === 'self' ? '나' : '상대방'
+      return `[${label} - Round ${m.round}]\n${m.text}`
+    }).join('\n\n')
+
+    const prompt = [
+      `다음은 "${acceptance.topic}" 주제에 대한 토론 결과입니다:`,
+      '',
+      history,
+      '',
+      '위 토론에서 논의된 개선사항과 합의된 내용을 현재 코드베이스에 반영해주세요.',
+      '구체적인 변경사항을 구현하되, 토론에서 동의한 방향으로만 수정하세요.',
+    ].join('\n')
+
+    await sendWithRetry(() => deps.output.sendText(
+      chatId,
+      escapeHtml(`⚡ 토론 결과를 반영합니다: ${acceptance.topic}`),
+      'HTML',
+    ))
+
+    try {
+      await deps.openCode.sendPromptAsync(acceptance.sessionId, acceptance.directory, prompt)
+    } catch (error) {
+      logger.error('debate', `Acceptance prompt failed: ${error instanceof Error ? error.message : String(error)}`)
+      await deps.output.sendText(chatId, escapeHtml('❌ 반영 프롬프트 전송 실패'), 'HTML')
+    }
+  }
+
+  async function handleRejection(chatId: number, debateId: string): Promise<void> {
+    pendingAcceptances.delete(debateId)
+    await deps.output.sendText(chatId, escapeHtml('🗑️ 토론 결과를 무시합니다.'), 'HTML')
   }
 
   return {
@@ -432,5 +766,8 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     handleCoordinationEvent,
     startPolling,
     stopPolling,
+    isActive,
+    handleAcceptance,
+    handleRejection,
   }
 }

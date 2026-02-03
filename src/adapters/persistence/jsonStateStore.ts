@@ -5,9 +5,10 @@ import { LIMITS } from '../../app/policies/limits.js';
 import { promises as fs } from 'node:fs';
 import { resolve } from 'node:path';
 
-export function createJsonStateStore(dataDir?: string): StateStore {
+export function createJsonStateStore(dataDir?: string, envDefaultAgent?: string): StateStore {
   const dir = dataDir || resolve(process.cwd(), 'data');
   const filepath = resolve(dir, 'state.json');
+  const instanceConfigPath = resolve(dir, 'instance.json');
   const locks = new Map<number, Promise<void>>();
 
   async function ensureFile(): Promise<void> {
@@ -99,9 +100,34 @@ export function createJsonStateStore(dataDir?: string): StateStore {
     return current;
   }
 
+  async function getDefaultAgent(): Promise<string | null> {
+    try {
+      const content = await fs.readFile(instanceConfigPath, 'utf-8')
+      const config = JSON.parse(content) as { defaultAgent?: string | null }
+      if (config.defaultAgent) return config.defaultAgent
+    } catch {}
+    return envDefaultAgent || null
+  }
+
+  async function setDefaultAgent(agent: string | null): Promise<void> {
+    let config: Record<string, unknown> = {}
+    try {
+      const content = await fs.readFile(instanceConfigPath, 'utf-8')
+      config = JSON.parse(content) as Record<string, unknown>
+    } catch {}
+    config.defaultAgent = agent
+    await fs.mkdir(dir, { recursive: true })
+    const random = Math.random().toString(36).substring(7)
+    const tmpPath = `${instanceConfigPath}.tmp.${random}`
+    await fs.writeFile(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
+    await fs.rename(tmpPath, instanceConfigPath)
+  }
+
   return {
     getChatState,
     saveChatState,
     withChatLock,
+    getDefaultAgent,
+    setDefaultAgent,
   };
 }

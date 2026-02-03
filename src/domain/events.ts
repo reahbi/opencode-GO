@@ -35,6 +35,19 @@ export interface SessionIdle {
   sessionId: string
 }
 
+/** Session is busy (actively processing) */
+export interface SessionBusy {
+  sessionId: string
+}
+
+/** Session is retrying after an error */
+export interface SessionRetry {
+  sessionId: string
+  attempt: number
+  message: string
+  next: number
+}
+
 /** Session error */
 export interface SessionError {
   sessionId: string
@@ -53,6 +66,8 @@ export type OpenCodeEvent =
   | { type: 'permission.asked'; data: PermissionAsked }
   | { type: 'question.asked'; data: QuestionAsked }
   | { type: 'session.idle'; data: SessionIdle }
+  | { type: 'session.busy'; data: SessionBusy }
+  | { type: 'session.retry'; data: SessionRetry }
   | { type: 'session.error'; data: SessionError }
   | { type: 'message.updated'; data: MessageUpdated }
   | { type: 'message.part.updated'; data: { sessionId: string; partId: string; messageId: string; content: string; finished: boolean } }

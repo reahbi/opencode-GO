@@ -10,7 +10,9 @@ export interface CoordinationEvent {
   type: CoordinationEventType
   fromBot: string
   toBot: string
-  sessionId: string
+  sessionId: string              // Keep for backward compat (deprecated)
+  debateId?: string              // NEW: UUID for debate session matching
+  chatId?: number                // NEW: Telegram chat ID for routing
   timestamp: number
   payload: Record<string, unknown>
 }
