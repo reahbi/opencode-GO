@@ -21,19 +21,23 @@ bun run setup
 
 You are helping the user install **OpenCode-Go** — a Telegram bot that remotely controls OpenCode coding agent sessions from a phone.
 
-**IMPORTANT: Before doing anything else, you MUST complete Step 0 (environment detection) and get user confirmation.**
+**IMPORTANT RULES:**
+1. Before doing anything else, you MUST complete Step 0 and get user confirmation.
+2. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
+3. Ask questions **one at a time**, explain each briefly, and verify before moving on.
 
-The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
+The user needs to provide **4 values**.
 
 ### Step 0: Confirm Environment (MANDATORY FIRST STEP)
 
-**STOP. Ask the user to choose ONE option:**
+**STOP. Present clickable options to the user:**
 
 > **Which environment will you use?**
->
-> - **Windows** — Project path like `C:\Users\...`
-> - **WSL/Linux** — Project path like `/home/...`
-> - **macOS** — Project path like `/Users/...`
+
+Options (clickable):
+- **Windows** — Project path like `C:\Users\...`
+- **WSL/Linux** — Project path like `/home/...`
+- **macOS** — Project path like `/Users/...`
 
 After user chooses, confirm and continue:
 
@@ -65,16 +69,16 @@ bun install
 
 ### Step 2: Ask for BOT_TOKEN
 
-Ask the user:
-> Do you have a Telegram bot token?
->
-> A bot token looks like `123456:ABC-DEF...`.
-> You can get one by creating a bot with @BotFather.
->
-> - If you have one, please share it
-> - If not, just say "no"
+**Present clickable options:**
 
-**If user doesn't have one**, guide them:
+> Do you have a Telegram bot token?
+> (A bot token looks like `123456:ABC-DEF...`)
+
+Options (clickable):
+- **Yes, I have one** — User will provide token
+- **No, I need to create one** — Guide them through BotFather
+
+**If user selects "No"**, guide them:
 > Search for @BotFather in Telegram and start a conversation.
 > 1. Send `/newbot`
 > 2. Enter a bot name (e.g., My OpenCode-Go)
@@ -92,16 +96,16 @@ Store the token value as `BOT_TOKEN`.
 
 ### Step 3: Ask for ALLOWED_USER_IDS
 
-Ask the user:
-> Do you know your Telegram User ID?
->
-> It's a numeric ID (e.g., `7702469661`).
-> This is used to restrict who can use the bot.
->
-> - If you know it, please share it
-> - If not, just say "no"
+**Present clickable options:**
 
-**If user doesn't know**, guide them:
+> Do you know your Telegram User ID?
+> (It's a numeric ID like `7702469661`)
+
+Options (clickable):
+- **Yes, I know it** — User will provide ID
+- **No, I don't know it** — Guide them to @userinfobot
+
+**If user selects "No"**, guide them:
 > Send any message to @userinfobot in Telegram — it will reply with your numeric ID.
 > Let me know once you have it.
 
@@ -111,18 +115,18 @@ Store the value as `ALLOWED_USER_IDS`.
 
 ### Step 4: Ask about server password
 
-Ask the user:
+**Present clickable options:**
+
 > Would you like to set a password for the OpenCode server?
->
-> A password prevents unauthorized access to your server.
-> If you're only using it locally, you can skip this.
->
-> - To set one: Enter your desired password
-> - To skip: Say "no" or "skip"
+> (A password prevents unauthorized access. Skip if only using locally.)
 
-**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD`.
+Options (clickable):
+- **Yes, set a password** — User will provide password
+- **No, skip** — No password needed
 
-**If user skips**, set `OPENCODE_SERVER_PASSWORD=` (empty).
+**If user selects "Yes"**, ask for the password and store it as `OPENCODE_SERVER_PASSWORD`.
+
+**If user selects "No"**, set `OPENCODE_SERVER_PASSWORD=` (empty).
 
 ### Step 5: Start OpenCode Server
 
@@ -144,8 +148,11 @@ Now tell the user to start the OpenCode server in the environment they chose in 
 >   ```
 >
 > (If no password was set, just run: `opencode serve --port 4096`)
->
-> Let me know when the server is running.
+
+**Present clickable option:**
+
+Options (clickable):
+- **Server is running** — Continue to next step
 
 **Wait for user confirmation before proceeding.**
 
@@ -184,13 +191,14 @@ The response is a JSON array of projects. Filter out any entry where `worktree` 
 > This means the wrong OpenCode server is running.
 > Please start the server in [correct environment] and try again.
 
-**If paths match**, present the list to the user:
+**If paths match**, present clickable options from the project list:
+
 > Here are your [environment] projects:
->
-> 1. C:\Users\me\my-app
-> 2. C:\Users\me\another-project
->
-> Select a number or enter a different path directly.
+
+Options (clickable):
+- **C:\Users\me\my-app** (most recent)
+- **C:\Users\me\another-project**
+- **Enter a different path** — User will type manually
 
 **If server was unreachable** — ask directly:
 > What's the path to the project OpenCode should work on?

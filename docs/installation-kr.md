@@ -21,19 +21,23 @@ bun run setup
 
 You are helping the user install **OpenCode-Go** — a Telegram bot that remotely controls OpenCode coding agent sessions from a phone.
 
-**IMPORTANT: Before doing anything else, you MUST complete Step 0 (environment detection) and get user confirmation.**
+**IMPORTANT RULES:**
+1. Before doing anything else, you MUST complete Step 0 and get user confirmation.
+2. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
+3. Ask questions **one at a time**, explain each briefly, and verify before moving on.
 
-The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
+The user needs to provide **4 values**.
 
 ### Step 0: Confirm Environment (환경 확인 - 필수 첫 단계)
 
-**멈추세요. 사용자에게 하나를 선택하게 하세요:**
+**멈추세요. 클릭 가능한 선택지를 제공하세요:**
 
 > **어떤 환경을 사용하시나요?**
->
-> - **Windows** — 프로젝트 경로: `C:\Users\...`
-> - **WSL/Linux** — 프로젝트 경로: `/home/...`
-> - **macOS** — 프로젝트 경로: `/Users/...`
+
+Options (clickable):
+- **Windows** — 프로젝트 경로: `C:\Users\...`
+- **WSL/Linux** — 프로젝트 경로: `/home/...`
+- **macOS** — 프로젝트 경로: `/Users/...`
 
 사용자가 선택하면 확인:
 
@@ -65,16 +69,16 @@ bun install
 
 ### Step 2: Ask for BOT_TOKEN
 
-Ask the user:
-> Telegram 봇 토큰이 있나요?
->
-> 봇 토큰은 `123456:ABC-DEF...` 형태의 문자열입니다.
-> @BotFather에서 봇을 만들면 발급받을 수 있어요.
->
-> - 있으면 토큰을 알려주세요
-> - 없으면 "없어"라고 하세요
+**클릭 가능한 선택지를 제공하세요:**
 
-**If user doesn't have one**, guide them:
+> Telegram 봇 토큰이 있나요?
+> (봇 토큰은 `123456:ABC-DEF...` 형태입니다)
+
+Options (clickable):
+- **있어요** — 토큰을 입력받음
+- **없어요, 만들어야 해요** — BotFather 안내
+
+**"없어요"를 선택하면** 안내:
 > 텔레그램에서 @BotFather 를 검색해서 대화를 시작하세요.
 > 1. `/newbot` 전송
 > 2. 봇 이름 입력 (예: My OpenCode-Go)
@@ -92,16 +96,16 @@ Store the token value as `BOT_TOKEN`.
 
 ### Step 3: Ask for ALLOWED_USER_IDS
 
-Ask the user:
-> 본인의 Telegram User ID를 알고 계신가요?
->
-> 숫자로 된 고유 ID입니다 (예: `7702469661`).
-> 봇을 사용할 수 있는 사람을 제한하는 데 사용됩니다.
->
-> - 알면 알려주세요
-> - 모르면 "몰라"라고 하세요
+**클릭 가능한 선택지를 제공하세요:**
 
-**If user doesn't know**, guide them:
+> Telegram User ID를 알고 계신가요?
+> (숫자로 된 고유 ID입니다, 예: `7702469661`)
+
+Options (clickable):
+- **알아요** — ID를 입력받음
+- **몰라요** — @userinfobot 안내
+
+**"몰라요"를 선택하면** 안내:
 > 텔레그램에서 @userinfobot 에게 아무 메시지나 보내면 숫자 ID를 알려줍니다.
 > 확인 후 알려주세요.
 
@@ -111,14 +115,14 @@ Store the value as `ALLOWED_USER_IDS`.
 
 ### Step 4: Ask about server password
 
-Ask the user:
+**클릭 가능한 선택지를 제공하세요:**
+
 > OpenCode 서버에 비밀번호를 설정하시겠어요?
->
-> 비밀번호를 설정하면 외부에서 서버에 접근하는 걸 막을 수 있습니다.
-> 로컬에서만 쓴다면 없어도 괜찮습니다.
->
-> - 설정하려면: 원하는 비밀번호를 입력하세요
-> - 필요 없으면: "없어" 또는 "스킵"
+> (로컬에서만 쓴다면 없어도 괜찮습니다)
+
+Options (clickable):
+- **설정할래요** — 비밀번호를 입력받음
+- **스킵** — 비밀번호 없이 진행
 
 **If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD`.
 
@@ -144,8 +148,11 @@ Ask the user:
 >   ```
 >
 > (비밀번호가 없으면: `opencode serve --port 4096`)
->
-> 서버가 실행되면 알려주세요.
+
+**클릭 가능한 선택지를 제공하세요:**
+
+Options (clickable):
+- **서버 실행됨** — 다음 단계로 진행
 
 **사용자 확인을 받은 후 진행하세요.**
 
@@ -184,13 +191,14 @@ The response is a JSON array of projects. Filter out any entry where `worktree` 
 > 잘못된 OpenCode 서버가 실행 중입니다.
 > [올바른 환경]에서 서버를 시작하고 다시 시도하세요.
 
-**경로가 일치하면** 목록 표시:
+**경로가 일치하면** 클릭 가능한 선택지로 프로젝트 목록 표시:
+
 > [환경] 프로젝트 목록입니다:
->
-> 1. C:\Users\me\my-app
-> 2. C:\Users\me\another-project
->
-> 번호로 선택하거나 다른 경로를 직접 입력하세요.
+
+Options (clickable):
+- **C:\Users\me\my-app** (가장 최근)
+- **C:\Users\me\another-project**
+- **다른 경로 입력** — 직접 입력
 
 **If server was unreachable** — ask directly:
 > OpenCode가 작업할 프로젝트의 경로를 알려주세요.
