@@ -138,12 +138,19 @@ Options (clickable):
 powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
 kill $(lsof -t -i:4096) 2>/dev/null || true
 
-# Start Windows server (with password):
-powershell.exe -Command "\$env:OPENCODE_SERVER_PASSWORD='<password>'; Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+# Start Windows server (with password) — MUST use .bat wrapper:
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=<password>
+opencode serve --port 4096
+BATEOF
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
 
 # Start Windows server (no password):
 powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 ```
+
+> **Why .bat wrapper?** Windows PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable inside the same process that runs `opencode serve`.
 
 **If user selected WSL/Linux or macOS:**
 ```bash

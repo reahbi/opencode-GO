@@ -138,12 +138,19 @@ Options (clickable):
 powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
 kill $(lsof -t -i:4096) 2>/dev/null || true
 
-# Windows 서버 시작 (비밀번호 있음):
-powershell.exe -Command "\$env:OPENCODE_SERVER_PASSWORD='<password>'; Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+# Windows 서버 시작 (비밀번호 있음) — 반드시 .bat 래퍼 사용:
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=<password>
+opencode serve --port 4096
+BATEOF
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
 
 # Windows 서버 시작 (비밀번호 없음):
 powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 ```
+
+> **왜 .bat 래퍼가 필요한가?** Windows PowerShell의 `Start-Process`는 환경 변수를 자식 프로세스에 전달하지 않습니다. .bat 파일은 `opencode serve`를 실행하는 동일 프로세스 내에서 변수를 설정합니다.
 
 **WSL/Linux 또는 macOS를 선택한 경우:**
 ```bash
