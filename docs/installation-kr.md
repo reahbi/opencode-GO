@@ -130,8 +130,18 @@ Options (clickable):
 
 ### Step 5: Start OpenCode Server (서버 시작)
 
-**직접 백그라운드에서 서버를 시작하세요 (사용자에게 시키지 마세요):**
+**Step 0에서 선택한 환경에 따라 직접 서버를 시작하세요:**
 
+**Windows를 선택한 경우:**
+```bash
+# 비밀번호가 있는 경우:
+powershell.exe -Command "\$env:OPENCODE_SERVER_PASSWORD='<password>'; Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+
+# 비밀번호가 없는 경우:
+powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+```
+
+**WSL/Linux 또는 macOS를 선택한 경우:**
 ```bash
 # 비밀번호가 있는 경우:
 OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &

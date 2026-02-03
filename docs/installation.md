@@ -130,8 +130,18 @@ Options (clickable):
 
 ### Step 5: Start OpenCode Server
 
-**Start the server in the background yourself (don't ask the user to do it):**
+**Start the server in the background yourself based on the environment from Step 0:**
 
+**If user selected Windows:**
+```bash
+# If password is set:
+powershell.exe -Command "\$env:OPENCODE_SERVER_PASSWORD='<password>'; Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+
+# If no password:
+powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+```
+
+**If user selected WSL/Linux or macOS:**
 ```bash
 # If password is set:
 OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
