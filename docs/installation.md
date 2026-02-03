@@ -25,33 +25,35 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 
 The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
 
-### Step 0: Detect Environment (MANDATORY FIRST STEP)
+### Step 0: Confirm Environment (MANDATORY FIRST STEP)
 
-**STOP. Before cloning or installing anything, detect the environment first.**
+**STOP. Before cloning or installing anything, ask the user about their environment.**
 
-Run this command:
-```bash
-echo $SHELL && uname -a
-```
-
-Identify the environment from the output:
-- If output contains `microsoft` or `WSL` → **WSL (Ubuntu on Windows)**
-- If output contains `Darwin` → **macOS**
-- If output contains `Linux` (without WSL) → **Linux**
-- If command fails or shows error → **Windows (PowerShell/cmd)**
-
-**Now ask the user to confirm before proceeding:**
-
-> **Detected environment: [environment name]**
+> ⚠️ **Important question before we begin:**
 >
-> ⚠️ **Important**: The OpenCode server must run in the **same environment** as this bot.
+> Where is the **project you want to work on** located?
 >
-> - If you want to work on **Windows projects** (e.g., `C:\Users\...`), you need to run this setup in **Windows PowerShell**, not WSL.
-> - If you want to work on **WSL/Linux projects** (e.g., `/home/...`), continue here.
+> 1. **Windows path** (e.g., `C:\Users\...` or `D:\Projects\...`)
+> 2. **WSL/Linux path** (e.g., `/home/...` or `/mnt/c/...`)
+> 3. **macOS path** (e.g., `/Users/...`)
 >
-> **Is this the correct environment for your project?**
-> - Yes → Continue
-> - No → Please open the correct terminal and start over
+> Please tell me the **full path** to your project, or just say "Windows", "WSL", or "macOS".
+
+Based on the user's answer:
+
+| User says | Environment | Next action |
+|-----------|-------------|-------------|
+| Windows path like `C:\...` or says "Windows" | **Windows** | Continue setup. User must run `opencode serve` in **Windows PowerShell** (not WSL). |
+| WSL/Linux path like `/home/...` or says "WSL"/"Linux" | **WSL/Linux** | Ask: "Are you running this in WSL terminal (not PowerShell)?" If not, tell them to open WSL terminal and start over. |
+| macOS path like `/Users/...` or says "macOS" | **macOS** | Continue setup. |
+
+**Confirm with the user:**
+
+> ✓ Got it. Your environment is **[Windows/WSL/macOS]**.
+>
+> **Important**: When you start `opencode serve` later, make sure to run it in **[same environment]** — otherwise the project list won't show your projects.
+>
+> Ready to continue?
 
 **Wait for user confirmation before proceeding to Step 1.**
 
@@ -123,20 +125,9 @@ Ask the user:
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Important: Environment Consistency
+### Reminder: Environment from Step 0
 
-**OpenCode-Go bot and OpenCode server must run in the same environment.**
-
-| If you're installing OpenCode-Go in... | OpenCode server must run in... |
-|----------------------------------------|--------------------------------|
-| Windows (PowerShell/cmd) | Windows |
-| WSL (Ubuntu) | WSL |
-| macOS | macOS |
-| Linux | Linux |
-
-The project list in Step 5 is fetched from the **currently running OpenCode server**. If you run the server in WSL but install the bot in Windows, you'll see WSL projects — not Windows projects.
-
-> **Example**: If you want to work on `C:\Users\me\my-project` (Windows path), start `opencode serve` in Windows PowerShell, then run the setup in Windows PowerShell as well.
+The project list in Step 5 comes from the **currently running OpenCode server**. Make sure `opencode serve` is running in the **same environment** confirmed in Step 0.
 
 ### Step 4: Ask about server password
 

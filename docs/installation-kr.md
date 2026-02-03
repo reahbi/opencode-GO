@@ -25,33 +25,35 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 
 The user needs to provide **4 values**. Ask them **one at a time**, explain each briefly, and verify before moving on.
 
-### Step 0: Detect Environment (환경 감지 - 필수 첫 단계)
+### Step 0: Confirm Environment (환경 확인 - 필수 첫 단계)
 
-**멈추세요. 클론이나 설치 전에 먼저 환경을 감지해야 합니다.**
+**멈추세요. 클론이나 설치 전에 먼저 사용자에게 환경을 물어보세요.**
 
-다음 명령을 실행하세요:
-```bash
-echo $SHELL && uname -a
-```
-
-출력에서 환경을 식별:
-- 출력에 `microsoft` 또는 `WSL` 포함 → **WSL (Windows의 Ubuntu)**
-- 출력에 `Darwin` 포함 → **macOS**
-- 출력에 `Linux` 포함 (WSL 아님) → **Linux**
-- 명령 실패 또는 에러 → **Windows (PowerShell/cmd)**
-
-**진행 전에 사용자에게 확인을 받으세요:**
-
-> **감지된 환경: [환경 이름]**
+> ⚠️ **시작하기 전에 중요한 질문:**
 >
-> ⚠️ **중요**: OpenCode 서버는 이 봇과 **같은 환경**에서 실행해야 합니다.
+> 작업하려는 **프로젝트**가 어디에 있나요?
 >
-> - **Windows 프로젝트** (예: `C:\Users\...`)를 작업하려면, WSL이 아닌 **Windows PowerShell**에서 설치해야 합니다.
-> - **WSL/Linux 프로젝트** (예: `/home/...`)를 작업하려면, 여기서 계속 진행하세요.
+> 1. **Windows 경로** (예: `C:\Users\...` 또는 `D:\Projects\...`)
+> 2. **WSL/Linux 경로** (예: `/home/...` 또는 `/mnt/c/...`)
+> 3. **macOS 경로** (예: `/Users/...`)
 >
-> **이 환경이 맞나요?**
-> - 맞음 → 계속 진행
-> - 아님 → 올바른 터미널을 열고 다시 시작하세요
+> 프로젝트의 **전체 경로**를 알려주세요. 또는 "Windows", "WSL", "macOS" 중 하나만 말해도 됩니다.
+
+사용자 답변에 따라:
+
+| 사용자 답변 | 환경 | 다음 행동 |
+|------------|------|----------|
+| `C:\...` 같은 Windows 경로 또는 "Windows" | **Windows** | 설치 진행. 사용자는 `opencode serve`를 **Windows PowerShell**에서 실행해야 함 (WSL 아님). |
+| `/home/...` 같은 WSL/Linux 경로 또는 "WSL"/"Linux" | **WSL/Linux** | 물어보기: "지금 WSL 터미널에서 실행 중인가요 (PowerShell 아님)?" 아니면 WSL 터미널을 열고 다시 시작하라고 안내. |
+| `/Users/...` 같은 macOS 경로 또는 "macOS" | **macOS** | 설치 진행. |
+
+**사용자에게 확인:**
+
+> ✓ 알겠습니다. 환경은 **[Windows/WSL/macOS]**입니다.
+>
+> **중요**: 나중에 `opencode serve`를 시작할 때 반드시 **[같은 환경]**에서 실행하세요 — 그렇지 않으면 프로젝트 목록이 제대로 표시되지 않습니다.
+>
+> 계속 진행할까요?
 
 **Step 1로 진행하기 전에 반드시 사용자 확인을 받으세요.**
 
@@ -123,20 +125,9 @@ Ask the user:
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Important: Environment Consistency (환경 일관성)
+### Reminder: Step 0에서 확인한 환경
 
-**OpenCode-Go 봇과 OpenCode 서버는 반드시 같은 환경에서 실행해야 합니다.**
-
-| OpenCode-Go 설치 환경 | OpenCode 서버 실행 환경 |
-|-----------------------|------------------------|
-| Windows (PowerShell/cmd) | Windows |
-| WSL (Ubuntu) | WSL |
-| macOS | macOS |
-| Linux | Linux |
-
-Step 5의 프로젝트 목록은 **현재 실행 중인 OpenCode 서버**에서 가져옵니다. WSL에서 서버를 실행하고 Windows에서 봇을 설치하면, Windows 프로젝트가 아닌 WSL 프로젝트가 표시됩니다.
-
-> **예시**: `C:\Users\me\my-project` (Windows 경로)에서 작업하려면, Windows PowerShell에서 `opencode serve`를 실행하고, Windows PowerShell에서 setup도 실행하세요.
+Step 5의 프로젝트 목록은 **현재 실행 중인 OpenCode 서버**에서 가져옵니다. `opencode serve`가 Step 0에서 확인한 **같은 환경**에서 실행 중인지 확인하세요.
 
 ### Step 4: Ask about server password
 
