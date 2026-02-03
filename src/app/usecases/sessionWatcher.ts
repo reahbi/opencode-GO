@@ -581,6 +581,8 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     const entry = watchers.get(chatId)
     if (entry) {
       entry.promptHandle = handle
+      // Prevent "AI is working" message for user-initiated prompts
+      entry.busyNotified = true
     }
   }
 
