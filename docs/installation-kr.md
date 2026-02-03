@@ -130,33 +130,17 @@ Options (clickable):
 
 ### Step 5: Start OpenCode Server (서버 시작)
 
-이제 Step 0에서 선택한 환경에서 OpenCode 서버를 시작하라고 안내:
+**직접 백그라운드에서 서버를 시작하세요 (사용자에게 시키지 마세요):**
 
-> **[Step 0에서 선택한 환경]에서 OpenCode 서버를 시작하세요:**
->
-> - **Windows** → **Windows PowerShell** 열고 실행:
->   ```
->   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
->   ```
-> - **WSL/Linux** → **WSL/Linux 터미널** 열고 실행:
->   ```
->   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
->   ```
-> - **macOS** → **터미널** 열고 실행:
->   ```
->   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
->   ```
->
-> (비밀번호가 없으면: `opencode serve --port 4096`)
+```bash
+# 비밀번호가 있는 경우:
+OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
 
-**클릭 가능한 선택지를 제공하세요:**
+# 비밀번호가 없는 경우:
+opencode serve --port 4096 &
+```
 
-Options (clickable):
-- **서버 실행됨** — 다음 단계로 진행
-
-**사용자 확인을 받은 후 진행하세요.**
-
-서버 연결 확인:
+몇 초 기다린 후 서버 연결 확인:
 ```bash
 # If password is set:
 curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project

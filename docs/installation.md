@@ -130,33 +130,17 @@ Options (clickable):
 
 ### Step 5: Start OpenCode Server
 
-Now tell the user to start the OpenCode server in the environment they chose in Step 0:
+**Start the server in the background yourself (don't ask the user to do it):**
 
-> **Start the OpenCode server in [environment from Step 0]:**
->
-> - **Windows** → Open **Windows PowerShell** and run:
->   ```
->   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
->   ```
-> - **WSL/Linux** → Open **WSL/Linux terminal** and run:
->   ```
->   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
->   ```
-> - **macOS** → Open **Terminal** and run:
->   ```
->   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
->   ```
->
-> (If no password was set, just run: `opencode serve --port 4096`)
+```bash
+# If password is set:
+OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
 
-**Present clickable option:**
+# If no password:
+opencode serve --port 4096 &
+```
 
-Options (clickable):
-- **Server is running** — Continue to next step
-
-**Wait for user confirmation before proceeding.**
-
-Then verify the server connection:
+Wait a few seconds for the server to start, then verify the connection:
 ```bash
 # If password is set:
 curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
