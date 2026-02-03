@@ -409,6 +409,15 @@ bun run build      # Build to dist/
 
 ---
 
+## Acknowledgments
+
+This project was inspired by and built upon ideas from:
+
+- [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — Agent configuration and tooling inspiration
+- [Kimaki](https://github.com/remorses/kimaki) — Implementation references and ideas
+
+---
+
 ## Disclaimer
 
 This project is not built by or affiliated with the OpenCode team.

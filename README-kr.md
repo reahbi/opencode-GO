@@ -472,6 +472,15 @@ See [docs/](docs/) for detailed guides.
 
 ---
 
+## Acknowledgments
+
+이 프로젝트는 다음 프로젝트들에서 영감을 받고 아이디어를 참고했습니다:
+
+- [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — 에이전트 설정 및 툴링 영감
+- [Kimaki](https://github.com/remorses/kimaki) — 구현 참고 및 아이디어
+
+---
+
 ## Disclaimer
 
 This project is not built by or affiliated with the OpenCode team.
