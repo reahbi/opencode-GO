@@ -31,19 +31,15 @@ The user needs to provide **4 values**. Ask them **one at a time**, explain each
 
 > **어떤 환경을 사용하시나요?**
 >
-> 1. **Windows** — 프로젝트 경로: `C:\Users\...`
-> 2. **WSL/Linux** — 프로젝트 경로: `/home/...`
-> 3. **macOS** — 프로젝트 경로: `/Users/...`
->
-> **1, 2, 3 중 하나를 선택해주세요.**
+> - **Windows** — 프로젝트 경로: `C:\Users\...`
+> - **WSL/Linux** — 프로젝트 경로: `/home/...`
+> - **macOS** — 프로젝트 경로: `/Users/...`
 
 사용자가 선택하면 확인:
 
 > ✓ 환경: **[Windows/WSL/macOS]**
->
-> 참고: 나중에 `opencode serve`도 **같은 환경**에서 실행하세요.
->
-> 설치를 진행합니다...
+
+**이 선택을 저장하세요 — Step 5에서 필요합니다.**
 
 ### Step 1: Clone & Install (클론 & 설치)
 
@@ -113,10 +109,6 @@ Ask the user:
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Reminder: Step 0에서 확인한 환경
-
-Step 5의 프로젝트 목록은 **현재 실행 중인 OpenCode 서버**에서 가져옵니다. `opencode serve`가 Step 0에서 확인한 **같은 환경**에서 실행 중인지 확인하세요.
-
 ### Step 4: Ask about server password
 
 Ask the user:
@@ -128,55 +120,86 @@ Ask the user:
 > - 설정하려면: 원하는 비밀번호를 입력하세요
 > - 필요 없으면: "없어" 또는 "스킵"
 
-**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD` and tell the user:
-> ✓ 비밀번호가 설정됩니다.
-> `opencode serve` 시작 시에도 같은 비밀번호를 사용해야 합니다:
-> ```
-> OPENCODE_SERVER_PASSWORD=<password> opencode serve
-> ```
+**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD`.
 
 **If user skips**, set `OPENCODE_SERVER_PASSWORD=` (empty).
 
-Now verify the server connection:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
+### Step 5: Start OpenCode Server (서버 시작)
 
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
+이제 Step 0에서 선택한 환경에서 OpenCode 서버를 시작하라고 안내:
 
-- If the server responds with JSON → connection works, proceed to Step 5 with project selection.
-- If the server returns an error or is unreachable → tell the user it's fine, they can start the server later. Proceed to Step 5 with manual path input.
-
-### Step 5: Ask for DEFAULT_PROJECT
-
-**If server responded in Step 4** — fetch the project list:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first). Present the list to the user:
-
-> OpenCode에서 사용한 프로젝트 목록입니다:
+> **[Step 0에서 선택한 환경]에서 OpenCode 서버를 시작하세요:**
 >
-> 1. /home/user/my-app
-> 2. /home/user/another-project
+> - **Windows** → **Windows PowerShell** 열고 실행:
+>   ```
+>   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
+>   ```
+> - **WSL/Linux** → **WSL/Linux 터미널** 열고 실행:
+>   ```
+>   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
+>   ```
+> - **macOS** → **터미널** 열고 실행:
+>   ```
+>   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
+>   ```
+>
+> (비밀번호가 없으면: `opencode serve --port 4096`)
+>
+> 서버가 실행되면 알려주세요.
+
+**사용자 확인을 받은 후 진행하세요.**
+
+서버 연결 확인:
+```bash
+# If password is set:
+curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
+
+# If no password:
+curl -s http://127.0.0.1:4096/project
+```
+
+- If the server responds with JSON → connection works, proceed to Step 6 with project selection.
+- If the server returns an error or is unreachable → ask the user to check if the server is running. Proceed to Step 6 with manual path input.
+
+### Step 6: Ask for DEFAULT_PROJECT
+
+**If server responded in Step 5** — fetch the project list:
+```bash
+# If password is set:
+curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
+
+# If no password:
+curl -s http://127.0.0.1:4096/project
+```
+
+The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first).
+
+**경로가 Step 0에서 선택한 환경과 일치하는지 확인:**
+- Windows → 경로가 `C:\...` 또는 `/c/...` 형태
+- WSL/Linux → 경로가 `/home/...` 형태
+- macOS → 경로가 `/Users/...` 형태
+
+**경로가 일치하지 않으면** 경고:
+> ⚠️ 프로젝트 경로가 [WSL/Windows/macOS]처럼 보이는데, Step 0에서 [환경]을 선택하셨습니다.
+> 잘못된 OpenCode 서버가 실행 중입니다.
+> [올바른 환경]에서 서버를 시작하고 다시 시도하세요.
+
+**경로가 일치하면** 목록 표시:
+> [환경] 프로젝트 목록입니다:
+>
+> 1. C:\Users\me\my-app
+> 2. C:\Users\me\another-project
 >
 > 번호로 선택하거나 다른 경로를 직접 입력하세요.
 
 **If server was unreachable** — ask directly:
 > OpenCode가 작업할 프로젝트의 경로를 알려주세요.
 >
-> 절대 경로로 입력해주세요 (예: `/home/user/my-project`).
+> 절대 경로로 입력해주세요 (Windows: `C:\Users\...`, WSL: `/home/...`, macOS: `/Users/...`).
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 6: Create .env and verify
+### Step 7: Create .env and verify
 
 Generate the `.env` file:
 ```bash
@@ -196,12 +219,12 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 7.
+- All checks passed → proceed to Step 8.
 - Some checks failed → read the failure messages and help the user resolve them. Common issues:
   - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
   - Project directory not found → verify the path exists
 
-### Step 7: Start the bot
+### Step 8: Start the bot
 
 ```bash
 bun run start

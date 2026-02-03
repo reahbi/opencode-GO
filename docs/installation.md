@@ -31,19 +31,15 @@ The user needs to provide **4 values**. Ask them **one at a time**, explain each
 
 > **Which environment will you use?**
 >
-> 1. **Windows** — Project path like `C:\Users\...`
-> 2. **WSL/Linux** — Project path like `/home/...`
-> 3. **macOS** — Project path like `/Users/...`
->
-> **Please reply with 1, 2, or 3.**
+> - **Windows** — Project path like `C:\Users\...`
+> - **WSL/Linux** — Project path like `/home/...`
+> - **macOS** — Project path like `/Users/...`
 
-After user chooses, confirm:
+After user chooses, confirm and continue:
 
 > ✓ Environment: **[Windows/WSL/macOS]**
->
-> Remember: Run `opencode serve` in the **same environment** later.
->
-> Continuing with installation...
+
+**Store this choice — you will need it in Step 5.**
 
 ### Step 1: Clone & Install
 
@@ -113,10 +109,6 @@ Ask the user:
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Reminder: Environment from Step 0
-
-The project list in Step 5 comes from the **currently running OpenCode server**. Make sure `opencode serve` is running in the **same environment** confirmed in Step 0.
-
 ### Step 4: Ask about server password
 
 Ask the user:
@@ -128,55 +120,86 @@ Ask the user:
 > - To set one: Enter your desired password
 > - To skip: Say "no" or "skip"
 
-**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD` and tell the user:
-> ✓ Password will be set.
-> You'll need to use the same password when starting `opencode serve`:
-> ```
-> OPENCODE_SERVER_PASSWORD=<password> opencode serve
-> ```
+**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD`.
 
 **If user skips**, set `OPENCODE_SERVER_PASSWORD=` (empty).
 
-Now verify the server connection:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
+### Step 5: Start OpenCode Server
 
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
+Now tell the user to start the OpenCode server in the environment they chose in Step 0:
 
-- If the server responds with JSON → connection works, proceed to Step 5 with project selection.
-- If the server returns an error or is unreachable → tell the user it's fine, they can start the server later. Proceed to Step 5 with manual path input.
-
-### Step 5: Ask for DEFAULT_PROJECT
-
-**If server responded in Step 4** — fetch the project list:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first). Present the list to the user:
-
-> Here are the projects used with OpenCode:
+> **Start the OpenCode server in [environment from Step 0]:**
 >
-> 1. /home/user/my-app
-> 2. /home/user/another-project
+> - **Windows** → Open **Windows PowerShell** and run:
+>   ```
+>   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
+>   ```
+> - **WSL/Linux** → Open **WSL/Linux terminal** and run:
+>   ```
+>   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
+>   ```
+> - **macOS** → Open **Terminal** and run:
+>   ```
+>   OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096
+>   ```
+>
+> (If no password was set, just run: `opencode serve --port 4096`)
+>
+> Let me know when the server is running.
+
+**Wait for user confirmation before proceeding.**
+
+Then verify the server connection:
+```bash
+# If password is set:
+curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
+
+# If no password:
+curl -s http://127.0.0.1:4096/project
+```
+
+- If the server responds with JSON → connection works, proceed to Step 6 with project selection.
+- If the server returns an error or is unreachable → ask the user to check if the server is running. Proceed to Step 6 with manual path input.
+
+### Step 6: Ask for DEFAULT_PROJECT
+
+**If server responded in Step 5** — fetch the project list:
+```bash
+# If password is set:
+curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
+
+# If no password:
+curl -s http://127.0.0.1:4096/project
+```
+
+The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first).
+
+**Verify the paths match the environment from Step 0:**
+- Windows → paths should look like `C:\...` or `/c/...`
+- WSL/Linux → paths should look like `/home/...`
+- macOS → paths should look like `/Users/...`
+
+**If paths don't match**, warn the user:
+> ⚠️ The project paths look like [WSL/Windows/macOS], but you selected [environment] in Step 0.
+> This means the wrong OpenCode server is running.
+> Please start the server in [correct environment] and try again.
+
+**If paths match**, present the list to the user:
+> Here are your [environment] projects:
+>
+> 1. C:\Users\me\my-app
+> 2. C:\Users\me\another-project
 >
 > Select a number or enter a different path directly.
 
 **If server was unreachable** — ask directly:
 > What's the path to the project OpenCode should work on?
 >
-> Please enter an absolute path (e.g., `/home/user/my-project`).
+> Please enter an absolute path (Windows: `C:\Users\...`, WSL: `/home/...`, macOS: `/Users/...`).
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 6: Create .env and verify
+### Step 7: Create .env and verify
 
 Generate the `.env` file:
 ```bash
@@ -196,12 +219,12 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 7.
+- All checks passed → proceed to Step 8.
 - Some checks failed → read the failure messages and help the user resolve them. Common issues:
   - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
   - Project directory not found → verify the path exists
 
-### Step 7: Start the bot
+### Step 8: Start the bot
 
 ```bash
 bun run start
