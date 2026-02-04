@@ -13,6 +13,7 @@ const PREFIXES = {
   debate: '[DEBATE]',
   review: '[REVIEW]',
   registry: '[REGISTRY]',
+  tunnel: '[TUNNEL]',
 } as const
 
 type LogContext = keyof typeof PREFIXES

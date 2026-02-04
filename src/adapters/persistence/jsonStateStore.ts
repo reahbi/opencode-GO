@@ -9,6 +9,22 @@ export function createJsonStateStore(dataDir?: string): StateStore {
   const dir = dataDir || resolve(process.cwd(), 'data');
   const filepath = resolve(dir, 'state.json');
   const locks = new Map<number, Promise<void>>();
+  
+  // Global file lock to prevent cross-chat race conditions on read-modify-write
+  let fileLock: Promise<void> = Promise.resolve();
+  
+  async function withFileLock<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = fileLock;
+    let resolveLock: () => void;
+    fileLock = new Promise(resolve => { resolveLock = resolve; });
+    
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      resolveLock!();
+    }
+  }
 
   async function ensureFile(): Promise<void> {
     try {
@@ -59,6 +75,7 @@ export function createJsonStateStore(dataDir?: string): StateStore {
       collectedAnswers: pi.collectedAnswers,
       currentQuestionIndex: pi.currentQuestionIndex,
       phase: pi.phase,
+      creatorUserId: pi.creatorUserId,
     }
   }
 
@@ -89,10 +106,12 @@ export function createJsonStateStore(dataDir?: string): StateStore {
   }
 
   async function saveChatState(chatId: number, chatState: ChatState): Promise<void> {
-    const state = await readState();
-    state[String(chatId)] = chatState;
-    await atomicWrite(state);
-    logger.debug('state', `Saved state for chat ${chatId}`);
+    await withFileLock(async () => {
+      const state = await readState();
+      state[String(chatId)] = chatState;
+      await atomicWrite(state);
+      logger.debug('state', `Saved state for chat ${chatId}`);
+    });
   }
 
   async function withChatLock<T>(chatId: number, fn: () => Promise<T>): Promise<T> {

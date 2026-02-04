@@ -4,6 +4,7 @@ import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
 import type { OutputHandle, UserSettings, QueuedMessage } from '../../domain/models.js'
 import type { OpenCodeEvent, PermissionAsked, QuestionAsked } from '../../domain/events.js'
+import type { TunnelManager } from './tunnelManager.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/formatResponse.js'
 import { routeDelivery } from '../policies/deliveryRouter.js'
@@ -24,6 +25,8 @@ interface SessionWatcherDeps {
   onQuestionAsked: (chatId: number, event: QuestionAsked, actorUserId?: number) => Promise<void>
   isDebateActive?: (chatId: number) => boolean
   onQueueDrain?: (chatId: number, messages: QueuedMessage[]) => Promise<void>
+  tunnel?: TunnelManager
+  onPreviewRequest?: (chatId: number, url: string) => Promise<void>
 }
 
 interface WatcherEntry {
@@ -315,6 +318,14 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           try {
             const state = await deps.state.getChatState(chatId)
             await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
+
+            const tunnelState = deps.tunnel?.get(chatId)
+            if (tunnelState?.isActive && tunnelState.url) {
+              await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                { label: '🌐 Open Preview', url: tunnelState.url },
+                { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+              ])
+            }
           } catch (err) {
             logger.error('watcher', `Final delivery failed: ${err instanceof Error ? err.message : 'unknown'}`)
             if (entry.liveMsgHandle) {

@@ -83,18 +83,41 @@ OpenCode-Go consists of **two independent processes**. Both must be running for 
 
 ### Step 1: Start OpenCode Server (First)
 
-Check the `DEFAULT_PROJECT` path and port in your `.env` file, then start the OpenCode server in that project directory.
+Check the `DEFAULT_PROJECT` path and port in your `.env` file, then start the OpenCode server.
 
+**WSL/Linux/macOS:**
 ```bash
-# Run in the DEFAULT_PROJECT directory from .env
-# Port is defined in OPENCODE_SERVER_URL (default: 4096)
-cd /path/to/your/project
-opencode serve --port 4096
+# With password (recommended)
+OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
+
+# Without password
+opencode serve --port 4096 &
 ```
+
+**Windows** (requires .bat wrapper for password):
+```bash
+# Create server.bat
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=your-password
+opencode serve --port 4096
+BATEOF
+
+# Start minimized
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+```
+
+> [!NOTE]
+> **Why .bat for Windows?** PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable in the same process that runs `opencode serve`.
 
 When the server starts successfully, you'll see:
 ```
 opencode server listening on http://127.0.0.1:4096
+```
+
+Verify with password:
+```bash
+curl -s -u opencode:your-password http://127.0.0.1:4096/project
 ```
 
 ### Step 2: Start OpenCode-Go Telegram Bot

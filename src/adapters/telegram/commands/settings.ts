@@ -59,7 +59,7 @@ export function agentSubText(
   const lines = [
     '<b>🤖 Agent & Mode</b>',
     '',
-    `Agent: <code>${currentAgent || 'default'}</code>`,
+    `Agent: <code>${currentAgent || 'Not set'}</code>`,
     `Review Mode: ${review}`,
     '',
   ]

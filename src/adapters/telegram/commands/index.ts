@@ -32,9 +32,10 @@ import {
 import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
-import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard } from './addbot.js'
+import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, clearAddbotIfActive } from './addbot.js'
 import { queueCommand, clearQueueCommand, showQueueCommand } from './queue.js'
 import { undoCommand, redoCommand } from './undo.js'
+import { tunnelCommand, startTunnelWithFeedback, handleTunnelPortInput } from './tunnel.js'
 import { createSessionCommands } from '../../../app/usecases/sessionCommands.js'
 import { createPromptFlow } from '../../../app/usecases/promptFlow.js'
 import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
@@ -96,6 +97,7 @@ interface RegisterCommandsDeps {
   serverUsername?: string
   serverPassword?: string
   debateFlow?: ReturnType<typeof createDebateFlow>
+  tunnel?: import('../../../app/usecases/tunnelManager.js').TunnelManager
 }
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
@@ -135,6 +137,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await promptFlow.handleUserMessage(chatId, msg.text, { actorUserId: msg.actorUserId })
       }
     },
+    tunnel: deps.tunnel,
   })
   
   promptFlow = createPromptFlow({
@@ -150,14 +153,20 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   }
 
   reg('new', async (ctx) => {
-    await newCommand(sessionCommands)(ctx)
     const chatId = ctx.chat?.id
+    if (chatId) await clearAddbotIfActive(chatId, state)
+    await newCommand(sessionCommands)(ctx)
     if (chatId) await watcher.watch(chatId)
   })
-  reg('list', listCommand(sessionCommands))
-  reg('resume', async (ctx) => {
-    await resumeCommand(sessionCommands)(ctx)
+  reg('list', async (ctx) => {
     const chatId = ctx.chat?.id
+    if (chatId) await clearAddbotIfActive(chatId, state)
+    await listCommand(sessionCommands)(ctx)
+  })
+  reg('resume', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (chatId) await clearAddbotIfActive(chatId, state)
+    await resumeCommand(sessionCommands)(ctx)
     if (chatId) await watcher.watch(chatId)
   })
   reg('abort', async (ctx) => {
@@ -173,11 +182,23 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('showqueue', showQueueCommand(state))
   reg('undo', undoCommand(sessionCommands))
   reg('redo', redoCommand(sessionCommands))
-  reg('help', helpCommand(deps.instanceName))
+  reg('help', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (chatId) await clearAddbotIfActive(chatId, state)
+    await helpCommand(deps.instanceName)(ctx)
+  })
   reg('start', startCommand(state, openCode, deps.instanceName))
-  reg('status', statusCommand(state, openCode, deps.instanceName))
+  reg('status', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (chatId) await clearAddbotIfActive(chatId, state)
+    await statusCommand(state, openCode, deps.instanceName, deps.tunnel)(ctx)
+  })
   reg('agents', agentsCommand(state, openCode))
-  reg('settings', settingsCommand(state, openCode, deps.instanceName, deps.botRole))
+  reg('settings', async (ctx) => {
+    const chatId = ctx.chat?.id
+    if (chatId) await clearAddbotIfActive(chatId, state)
+    await settingsCommand(state, openCode, deps.instanceName, deps.botRole)(ctx)
+  })
 
   if (deps.debateFlow) {
     reg('debate', debateCommand(deps.debateFlow, deps.botRole || 'standalone'))
@@ -191,6 +212,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   if (deps.groupSettings && deps.registry && deps.instanceName) {
     reg('groupsettings', groupSettingsCommand(deps.groupSettings, deps.registry, deps.instanceName))
+  }
+
+  if (deps.tunnel) {
+    reg('tunnel', tunnelCommand(state, deps.tunnel))
   }
 
   reg('cancel', async (ctx) => {
@@ -534,6 +559,31 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard() })
         break
       }
+      case 'tunnel': {
+        if (!deps.tunnel) break
+        switch (parsed.action) {
+          case 'stop': {
+            await deps.tunnel.stop(chatId)
+            await ctx.editMessageText('Tunnel stopped.')
+            break
+          }
+          case 'start': {
+            if (parsed.port) {
+              await ctx.editMessageText(`Starting tunnel on port ${parsed.port}...`)
+              await startTunnelWithFeedback(ctx, chatId, parsed.port, deps.tunnel)
+            }
+            break
+          }
+          case 'custom': {
+            const chatState = await state.getChatState(chatId)
+            chatState.awaitingInput = 'tunnel_port'
+            await state.saveChatState(chatId, chatState)
+            await ctx.editMessageText('Enter port number (1-65535):')
+            break
+          }
+        }
+        break
+      }
       default:
         break
     }
@@ -611,6 +661,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       await state.saveChatState(chatId, chatState)
       await output.sendText(chatId, `✅ History export: last ${num} messages only`)
       return
+    }
+    if (chatState.awaitingInput === 'tunnel_port' && deps.tunnel) {
+      const handled = await handleTunnelPortInput(chatId, text, state, deps.tunnel, output.sendText.bind(output))
+      if (handled) return
     }
 
     const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
@@ -698,6 +752,64 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       logger.error('bot', `Photo handling failed: ${msg}`)
       await output.sendText(chatId, `❌ Failed to process image: ${escapeHtml(msg)}`)
+    }
+  })
+
+  bot.on('message:document', async (ctx) => {
+    const chatId = ctx.chat.id
+    const caption = ctx.message.caption ?? ''
+    const document = ctx.message.document
+
+    if (!document) {
+      await output.sendText(chatId, 'No document found in message.')
+      return
+    }
+
+    const chatState = await state.getChatState(chatId)
+    if (!chatState.activeSessionId) {
+      await output.sendText(chatId, 'No active session. Use /new to start one.')
+      return
+    }
+
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const actorUserId = ctx.from?.id
+
+    try {
+      const file = await ctx.api.getFile(document.file_id)
+      if (!file.file_path) {
+        await output.sendText(chatId, 'Failed to get file path from Telegram.')
+        return
+      }
+
+      const botToken = bot.token
+      const fileUrl = `https://api.telegram.org/file/bot${botToken}/${file.file_path}`
+
+      const response = await fetch(fileUrl)
+      if (!response.ok) {
+        await output.sendText(chatId, `Failed to download file: ${response.status}`)
+        return
+      }
+
+      const arrayBuffer = await response.arrayBuffer()
+      const base64Data = Buffer.from(arrayBuffer).toString('base64')
+
+      const mime = document.mime_type ?? 'application/octet-stream'
+      const filename = document.file_name ?? file.file_path.split('/').pop() ?? 'file'
+
+      const text = caption.trim() || `Analyze this file: ${filename}`
+
+      void queue.enqueue(chatId, () =>
+        promptFlow.handleUserMessage(chatId, text, {
+          actorUserId,
+          isGroup,
+          images: [{ mime, data: base64Data, filename }],
+        })
+      ).catch(err => logger.error('bot', `Document prompt failed: ${err instanceof Error ? err.message : err}`))
+
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('bot', `Document handling failed: ${msg}`)
+      await output.sendText(chatId, `❌ Failed to process file: ${escapeHtml(msg)}`)
     }
   })
 }

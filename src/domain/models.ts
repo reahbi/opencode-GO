@@ -31,7 +31,10 @@ export interface ProjectRef {
 /** Button for interactive prompts */
 export interface Button {
   label: string
-  callbackData: string
+  /** Callback data for inline button action */
+  callbackData?: string
+  /** URL for link button (opens in browser) */
+  url?: string
 }
 
 /** Pending interactive request (permission or question) */
@@ -66,6 +69,14 @@ export interface UserSettings {
   reviewMode?: boolean
 }
 
+/** State for cloudflared tunnel */
+export interface TunnelState {
+  isActive: boolean
+  url: string | null
+  port: number
+  startedAt: number
+}
+
 export interface ChatState {
   activeProjectDirectory: string | null
   activeSessionId: string | null
@@ -73,11 +84,12 @@ export interface ChatState {
   lastPrompt: string | null
   pendingInteractions: PendingInteraction[]
   settings: UserSettings
-  awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | null
+  awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | 'tunnel_port' | null
   awaitingInteractionId: string | null
   queuedMessages: QueuedMessage[]
   lastAssistantMessageId?: string
   redoAvailable?: boolean
+  tunnelState?: TunnelState
 }
 
 export function createDefaultUserSettings(): UserSettings {

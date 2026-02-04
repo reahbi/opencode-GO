@@ -13,8 +13,10 @@ interface AddBotWizardState {
   role?: 'writer' | 'reader'
   projectDir?: string
   instanceName?: string
+  tokenAttempts?: number
 }
 
+const MAX_TOKEN_ATTEMPTS = 3
 const wizards = new Map<number, AddBotWizardState>()
 
 function escapeHtml(t: string): string {
@@ -49,6 +51,9 @@ export function addbotCommand(state: StateStore) {
       return
     }
 
+    // Reset any existing wizard state
+    wizards.delete(chatId)
+
     const chatState = await state.getChatState(chatId)
     chatState.awaitingInput = 'addbot_token'
     await state.saveChatState(chatId, chatState)
@@ -74,6 +79,11 @@ export async function handleAddbotToken(
 ): Promise<boolean> {
   const token = text.trim()
 
+  // Get or create wizard state to track attempts
+  let wizard = wizards.get(chatId) || { token: '', username: '', tokenAttempts: 0 }
+  wizard.tokenAttempts = (wizard.tokenAttempts || 0) + 1
+  wizards.set(chatId, wizard)
+
   let username = ''
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
@@ -81,16 +91,38 @@ export async function handleAddbotToken(
     })
     const data = await res.json() as { ok: boolean; result?: { username?: string } }
     if (!data.ok || !data.result?.username) {
-      await output.sendText(chatId, '❌ Invalid bot token. Please try again.')
+      // Check if max attempts reached
+      if (wizard.tokenAttempts >= MAX_TOKEN_ATTEMPTS) {
+        wizards.delete(chatId)
+        const chatState = await state.getChatState(chatId)
+        chatState.awaitingInput = null
+        await state.saveChatState(chatId, chatState)
+        await output.sendText(chatId, `❌ Invalid bot token. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addbot to start again.`)
+        return true
+      }
+      const remaining = MAX_TOKEN_ATTEMPTS - wizard.tokenAttempts
+      await output.sendText(chatId, `❌ Invalid bot token. Please try again. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining)\n\nType /cancel to cancel.`)
       return true
     }
     username = data.result.username
   } catch {
-    await output.sendText(chatId, '❌ Cannot connect to Telegram API. Please try again.')
+    // Check if max attempts reached
+    if (wizard.tokenAttempts >= MAX_TOKEN_ATTEMPTS) {
+      wizards.delete(chatId)
+      const chatState = await state.getChatState(chatId)
+      chatState.awaitingInput = null
+      await state.saveChatState(chatId, chatState)
+      await output.sendText(chatId, `❌ Cannot connect to Telegram API. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addbot to start again.`)
+      return true
+    }
+    const remaining = MAX_TOKEN_ATTEMPTS - wizard.tokenAttempts
+    await output.sendText(chatId, `❌ Cannot connect to Telegram API. Please try again. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining)\n\nType /cancel to cancel.`)
     return true
   }
 
-  wizards.set(chatId, { token, username })
+  // Success - reset attempts and update wizard state
+  wizard = { token, username, tokenAttempts: 0 }
+  wizards.set(chatId, wizard)
 
   const chatState = await state.getChatState(chatId)
   chatState.awaitingInput = null
@@ -388,4 +420,16 @@ export async function handleAddbotStartCallback(
 
 export function cancelAddbotWizard(chatId: number): void {
   wizards.delete(chatId)
+}
+
+/** Clear addbot wizard state if active (used when other commands are invoked) */
+export async function clearAddbotIfActive(chatId: number, state: StateStore): Promise<boolean> {
+  const chatState = await state.getChatState(chatId)
+  if (chatState.awaitingInput === 'addbot_token' || chatState.awaitingInput === 'addbot_project') {
+    chatState.awaitingInput = null
+    await state.saveChatState(chatId, chatState)
+    wizards.delete(chatId)
+    return true
+  }
+  return false
 }

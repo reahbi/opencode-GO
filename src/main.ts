@@ -9,6 +9,7 @@ import { createFileRegistryAdapter } from './adapters/coordination/fileRegistryA
 import { createFileGroupSettingsAdapter } from './adapters/coordination/fileGroupSettingsAdapter.js'
 import { createChatQueue } from './app/queue/chatQueue.js'
 import { createDebateFlow } from './app/usecases/debateFlow.js'
+import { createTunnelManager } from './app/usecases/tunnelManager.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
 import { logger, setInstancePrefix } from './shared/logger.js'
 import { LIMITS } from './app/policies/limits.js'
@@ -28,6 +29,7 @@ async function main() {
   const openCode = createOpenCodeAdapter(config.openCodeServerUrl, config.openCodeServerUsername, config.openCodeServerPassword)
   const state = createJsonStateStore(config.stateDir)
   const queue = createChatQueue()
+  const tunnel = createTunnelManager()
 
   const botInfo = await bot.api.getMe()
   const botUsername = botInfo.username ?? ''
@@ -70,7 +72,11 @@ async function main() {
     ? createFileGroupSettingsAdapter(config.coordinationDir)
     : createFileGroupSettingsAdapter(config.stateDir)
 
-  // Auto-register this bot instance
+  // Auto-register this bot instance (preserve existing currentAgent if any)
+  const existingBots = await registry.list()
+  const existingEntry = existingBots.find(b => b.instanceName === config.instanceName)
+  const initialAgent = existingEntry?.currentAgent ?? config.defaultAgent ?? null
+
   await registry.register({
     instanceName: config.instanceName,
     botUsername,
@@ -79,12 +85,15 @@ async function main() {
     projectDir: config.defaultProject,
     serverUrl: config.openCodeServerUrl,
     lastSeen: Date.now(),
+    currentAgent: initialAgent,
   })
   logger.info('registry', `Registered as ${config.instanceName} (@${botUsername})`)
 
   // Heartbeat: update lastSeen periodically
   const heartbeatInterval = setInterval(async () => {
     try {
+      const bots = await registry.list()
+      const current = bots.find(b => b.instanceName === config.instanceName)
       await registry.register({
         instanceName: config.instanceName,
         botUsername,
@@ -93,6 +102,7 @@ async function main() {
         projectDir: config.defaultProject,
         serverUrl: config.openCodeServerUrl,
         lastSeen: Date.now(),
+        currentAgent: current?.currentAgent ?? config.defaultAgent ?? null,
       })
     } catch (error) {
       logger.warn('registry', `Heartbeat failed: ${error instanceof Error ? error.message : 'unknown'}`)
@@ -137,6 +147,7 @@ async function main() {
     serverUsername: config.openCodeServerUsername,
     serverPassword: config.openCodeServerPassword ?? undefined,
     debateFlow,
+    tunnel,
   })
 
   bot.catch((err) => {
@@ -161,6 +172,12 @@ async function main() {
   async function shutdown(signal: string) {
     logger.info('bot', `Received ${signal}, shutting down...`)
     clearInterval(heartbeatInterval)
+    try {
+      await tunnel.stopAll()
+      logger.info('tunnel', 'All tunnels stopped')
+    } catch (error) {
+      logger.warn('tunnel', `Tunnel cleanup failed: ${error instanceof Error ? error.message : 'unknown'}`)
+    }
     try {
       await registry.unregister(config.instanceName)
       logger.info('registry', `Unregistered ${config.instanceName}`)
@@ -188,6 +205,7 @@ async function main() {
     { command: 'settings', description: 'Summary, output format, etc.' },
     { command: 'groupsettings', description: 'Group settings (debate, bots)' },
     { command: 'bots', description: 'List registered bots' },
+    { command: 'tunnel', description: 'Create tunnel to localhost' },
     { command: 'help', description: 'Help' },
   ])
 

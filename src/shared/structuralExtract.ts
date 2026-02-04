@@ -61,7 +61,7 @@ export function structuralExtract(markdown: string): string {
   }
 
   if (bullets.length > 0) {
-    parts.push(bullets.slice(0, 15).join('\n'))
+    parts.push(bullets.slice(0, 15).map(escapeHtml).join('\n'))
   }
 
   const result = parts.join('\n\n')

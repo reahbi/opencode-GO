@@ -12,7 +12,7 @@ export function createBot(token: string): BotInstance {
   const bot = new Bot<Context>(token)
   
   bot.api.config.use((prev, method, payload, signal) => {
-    if ('parse_mode' in payload && payload.parse_mode === undefined) {
+    if (!('parse_mode' in payload) || payload.parse_mode === undefined) {
       (payload as Record<string, unknown>).parse_mode = 'HTML'
     }
     return prev(method, payload, signal)
@@ -64,7 +64,11 @@ export function createChatOutputAdapter(bot: BotInstance): ChatOutputPort {
     async sendInteraction(chatId: number, text: string, buttons: Button[]): Promise<OutputHandle> {
       const keyboard = new InlineKeyboard()
       for (const btn of buttons) {
-        keyboard.text(btn.label, btn.callbackData).row()
+        if (btn.url) {
+          keyboard.url(btn.label, btn.url).row()
+        } else if (btn.callbackData) {
+          keyboard.text(btn.label, btn.callbackData).row()
+        }
       }
       const msg = await bot.api.sendMessage(chatId, text, { parse_mode: 'HTML', reply_markup: keyboard })
       return String(msg.message_id)
@@ -74,7 +78,11 @@ export function createChatOutputAdapter(bot: BotInstance): ChatOutputPort {
       const messageId = parseInt(handle, 10)
       const keyboard = new InlineKeyboard()
       for (const btn of buttons) {
-        keyboard.text(btn.label, btn.callbackData).row()
+        if (btn.url) {
+          keyboard.url(btn.label, btn.url).row()
+        } else if (btn.callbackData) {
+          keyboard.text(btn.label, btn.callbackData).row()
+        }
       }
       try {
         await bot.api.editMessageText(chatId, messageId, text, { parse_mode: 'HTML', reply_markup: keyboard })

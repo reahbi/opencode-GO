@@ -1,6 +1,6 @@
 # OPENCODE-GO KNOWLEDGE BASE
 
-**Generated:** 2026-02-03
+**Generated:** 2026-02-04
 
 ## OVERVIEW
 
@@ -28,7 +28,8 @@ src/
 │   │   ├── sessionCommands.ts #   /new /list /resume /abort + exportSessionHistory
 │   │   ├── interactiveFlow.ts #   permission.asked / question.asked round-trip
 │   │   ├── debateFlow.ts      #   /debate /review + bot-to-bot coordination (🧪 testing)
-│   │   └── sessionWatcher.ts  #   SSE watcher + live message updates
+│   │   ├── sessionWatcher.ts  #   SSE watcher + live message updates
+│   │   └── tunnelManager.ts   #   cloudflared subprocess management per chat
 │   ├── queue/
 │   │   └── chatQueue.ts       #   Per-chat promise-chain serialization
 │   └── policies/
@@ -54,9 +55,10 @@ src/
 │   │   │   ├── debate.ts      #   /debate — start bot-to-bot debate (🧪 testing)
 │   │   │   ├── review.ts      #   /review — request code review from peer bot (🧪 testing)
 │   │   │   ├── bots.ts        #   /bots — list registered bots
-│   │   │   └── addbot.ts      #   /addbot — interactive bot setup wizard
+│   │   │   ├── addbot.ts      #   /addbot — interactive bot setup wizard
+│   │   │   └── tunnel.ts      #   /tunnel — cloudflared tunnel to localhost
 │   │   └── ui/
-│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, gs:, sm:, listpage:, listsel:, hist:, dba:, dbr:)
+│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, gs:, sm:, listpage:, listsel:, hist:, dba:, dbr:, tunnel:)
 │   │       └── keyboards.ts   #   InlineKeyboard builders for permissions/questions
 │   ├── opencode/
 │   │   ├── opencodeAdapter.ts #   OpenCodePort impl via SDK v2 client
@@ -114,6 +116,7 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | Group settings | `adapters/telegram/commands/groupsettings.ts` | `gs:` callback prefix, filters bots by chat membership |
 | Debate/Review (🧪) | `app/usecases/debateFlow.ts` + `adapters/coordination/` | Bot-to-bot coordination via filesystem |
 | Bot registry | `adapters/coordination/fileRegistryAdapter.ts` | Shared registry.json in coordination dir |
+| Tunnel management | `app/usecases/tunnelManager.ts` + `adapters/telegram/commands/tunnel.ts` | cloudflared subprocess per chat |
 
 ## CODE MAP
 
@@ -142,6 +145,8 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | `createFileGroupSettingsAdapter` | factory | `adapters/coordination/fileGroupSettingsAdapter.ts` | GroupSettingsPort impl |
 | `groupSettingsCommand` | factory | `adapters/telegram/commands/groupsettings.ts` | Group-shared settings command |
 | `filterBotsInChat` | function | `adapters/telegram/commands/groupsettings.ts` | Filter bots by Telegram API getChatMember |
+| `createTunnelManager` | factory | `app/usecases/tunnelManager.ts` | Manages cloudflared tunnel subprocesses |
+| `tunnelCommand` | factory | `adapters/telegram/commands/tunnel.ts` | /tunnel command with port selection UI |
 
 ## CONVENTIONS
 
@@ -174,10 +179,11 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 - Group settings: `gs:{action}[:value]` (shared across bots in group)
 - Model select: `sm:{providerID}/{modelID}`
 - Debate accept/reject: `dba:{debateId}` / `dbr:{debateId}`
+- Tunnel control: `tunnel:{port|stop|custom}`
 
 ### Logging
 - Context-based prefixes: `logger.info('opencode', 'msg')` → `[OPENCODE] msg`
-- Valid contexts: `telegram`, `opencode`, `session`, `state`, `bot`, `queue`, `interactive`, `summary`
+- Valid contexts: `telegram`, `opencode`, `session`, `state`, `bot`, `queue`, `interactive`, `summary`, `debate`, `review`, `registry`, `tunnel`
 - Debug: only output when `process.env.DEBUG` is truthy
 
 ## ANTI-PATTERNS (THIS PROJECT)
@@ -214,6 +220,83 @@ bun test --watch
 # With coverage report
 bun test --coverage
 ```
+
+## RUNNING THE SYSTEM
+
+**Two processes required**: OpenCode Server + Bot(s). Start server FIRST.
+
+### Step 1: Start OpenCode Server
+
+**WSL/Linux/macOS** (simple):
+```bash
+# With password
+OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
+
+# Without password
+opencode serve --port 4096 &
+```
+
+**Windows** (requires .bat wrapper for password):
+```bash
+# Create server.bat (password gets set inside the batch file)
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=<password>
+opencode serve --port 4096
+BATEOF
+
+# Start minimized
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+```
+
+> **Why .bat for Windows?** PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable in the same process that runs `opencode serve`.
+
+### Step 2: Start Bot(s)
+
+**Single bot** (development):
+```bash
+bun run start
+# or with hot reload
+bun run dev
+```
+
+**Multi-bot** (production with PM2):
+```bash
+# Start all bots defined in ecosystem.config.cjs
+pm2 start ecosystem.config.cjs
+
+# Check status
+pm2 status
+
+# View logs
+pm2 logs
+
+# Stop all
+pm2 stop all
+
+# Restart all
+pm2 restart all
+```
+
+### Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `OPENCODE_SERVER_PASSWORD=xxx opencode serve --port 4096 &` | Start server (WSL) |
+| `pm2 start ecosystem.config.cjs` | Start all bots |
+| `pm2 status` | Check bot status |
+| `pm2 logs --lines 20` | View recent logs |
+| `pm2 restart all` | Restart all bots |
+| `curl -s -u opencode:<pw> http://127.0.0.1:4096/project` | Verify server |
+
+### Troubleshooting Startup
+
+| Issue | Solution |
+|-------|----------|
+| "OpenCode server is not reachable" | Server not running. Start with `opencode serve --port 4096` |
+| 401 Unauthorized | Password mismatch. Check `OPENCODE_SERVER_PASSWORD` in both server and .env |
+| Port 4096 already in use | Kill existing: `kill $(lsof -t -i:4096)` or PowerShell equivalent |
+| Windows password not working | Use .bat wrapper (see above). PowerShell env vars don't inherit. |
 
 ## TESTING
 
@@ -302,3 +385,6 @@ COORDINATION_DIR=        # Shared directory for bot coordination
 - **SSE timeout**: 24 hours (`SSE_TIMEOUT_MS`). Streaming edits throttled at 1 edit/sec.
 - **Interaction TTL**: 5 minutes. Expired interactions are checked lazily on callback, no active GC.
 - **Constants are split**: `shared/constants.ts` (general) and `app/policies/limits.ts` (policy-specific). Check both.
+- **Tunnel feature**: Uses `cloudflared tunnel --url` for quick tunnels. Subprocesses managed per-chat, auto-cleaned on shutdown.
+- **Document handling**: Bot supports file uploads (documents) in addition to images. Files are downloaded, base64 encoded, and sent to AI with caption as prompt.
+- **State file locking**: `jsonStateStore` uses both per-chat locks AND global file lock to prevent cross-chat race conditions during read-modify-write.

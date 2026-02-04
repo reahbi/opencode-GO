@@ -20,7 +20,7 @@ export function groupSettingsMainText(gs: GroupSettings, bots: BotRegistryEntry[
 
   const botLines = bots.map(b => {
     const online = (now - b.lastSeen) < 3 * 60 * 1000 ? '🟢' : '🔴'
-    const agent = b.currentAgent || 'default'
+    const agent = b.currentAgent || 'Not set'
     return `${online} <b>@${escapeHtml(b.botUsername)}</b>\n   ${roleIcon(b.botRole)} ${b.botRole} · 🤖 ${escapeHtml(agent)}`
   })
 
@@ -75,7 +75,7 @@ export function botsSubText(bots: BotRegistryEntry[]): string {
   const lines = ['<b>🤖 Bots</b>', '<i>Bot status in this chat</i>', '']
   for (const b of bots) {
     const online = (now - b.lastSeen) < 3 * 60 * 1000 ? '🟢' : '🔴'
-    const agent = b.currentAgent || 'default'
+    const agent = b.currentAgent || 'Not set'
     lines.push(
       `${online} <b>@${escapeHtml(b.botUsername)}</b>`,
       `   ${roleIcon(b.botRole)} ${b.botRole}`,

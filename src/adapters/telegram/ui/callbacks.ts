@@ -19,6 +19,7 @@ export type ParsedCallback =
   | { type: 'debate_accept'; debateId: string }
   | { type: 'debate_reject'; debateId: string }
   | { type: 'groupsettings'; action: string; value?: string }
+  | { type: 'tunnel'; action: 'stop' | 'custom' | 'start'; port?: number }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -165,6 +166,17 @@ export function parseCallback(data: string): ParsedCallback {
     const debateId = data.slice(4)
     if (!debateId) return { type: 'unknown', raw: data }
     return { type: 'debate_reject', debateId }
+  }
+
+  if (data.startsWith('tunnel:')) {
+    const value = data.slice(7)
+    if (value === 'stop') return { type: 'tunnel', action: 'stop' }
+    if (value === 'custom') return { type: 'tunnel', action: 'custom' }
+    const port = parseInt(value, 10)
+    if (Number.isFinite(port) && port > 0 && port <= 65535) {
+      return { type: 'tunnel', action: 'start', port }
+    }
+    return { type: 'unknown', raw: data }
   }
 
   return { type: 'unknown', raw: data }
