@@ -45,6 +45,8 @@ export function settingsMainKeyboard(): InlineKeyboard {
     .row()
     .text('📝 Output', 'settings:sub_output')
     .text('📜 History Export', 'settings:sub_history')
+    .row()
+    .text('🔊 Voice', 'settings:sub_voice')
 }
 
 // ── Agent & Mode Submenu ──
@@ -152,6 +154,58 @@ export function historySubKeyboard(): InlineKeyboard {
     .text('📜 Set Limit', 'settings:histlimit')
     .row()
     .text('◀️ Back', 'settings:back')
+}
+
+function formatSpeed(speed: number): string {
+  if (speed === 1.0) return '1.0x (기본)'
+  return `${speed}x`
+}
+
+function formatLength(length: number): string {
+  return `${length}자`
+}
+
+export function voiceSubText(s: UserSettings): string {
+  const status = s.voiceMode ? 'ON ✅' : 'OFF'
+  const length = formatLength(s.voiceSummaryLength)
+  const speed = formatSpeed(s.voiceSpeed)
+  const gender = s.voiceGender === 'female' ? '여성 👩' : '남성 👨'
+
+  return [
+    '<b>🔊 Voice</b>',
+    '',
+    `상태: ${status}`,
+    `요약 길이: ${length}`,
+    `속도: ${speed}`,
+    `음성: ${gender}`,
+  ].join('\n')
+}
+
+export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
+  const kb = new InlineKeyboard()
+
+  kb.text(s.voiceMode ? '🔇 끄기' : '🔊 켜기', 'settings:voice_toggle').row()
+
+  const lengths = [500, 800, 1200, 2000]
+  for (const len of lengths) {
+    const label = s.voiceSummaryLength === len ? `✅ ${len}자` : `${len}자`
+    kb.text(label, `settings:voice_len:${len}`)
+  }
+  kb.row()
+
+  const speeds = [1.0, 1.25, 1.5, 2.0]
+  for (const spd of speeds) {
+    const label = s.voiceSpeed === spd ? `✅ ${spd}x` : `${spd}x`
+    kb.text(label, `settings:voice_spd:${spd}`)
+  }
+  kb.row()
+
+  kb.text(s.voiceGender === 'female' ? '✅ 여성' : '여성', 'settings:voice_gender:female')
+  kb.text(s.voiceGender === 'male' ? '✅ 남성' : '남성', 'settings:voice_gender:male')
+  kb.row()
+
+  kb.text('◀️ Back', 'settings:back')
+  return kb
 }
 
 // ── Command ──

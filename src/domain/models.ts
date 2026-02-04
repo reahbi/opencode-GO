@@ -45,7 +45,7 @@ export interface PendingInteraction {
   type: 'permission' | 'question'
   expiresAt: number
   messageHandle?: string
-  questions?: Array<{ text: string; options: string[] }>
+  questions?: Array<{ text: string; options: string[]; multiple?: boolean }>
   collectedAnswers?: (string[] | null)[]
   currentQuestionIndex?: number
   phase?: 'answering' | 'confirm'
@@ -67,6 +67,10 @@ export interface UserSettings {
   historyFormat: 'md' | 'html'
   historyLimit: number | null
   reviewMode?: boolean
+  voiceMode: boolean
+  voiceSummaryLength: number
+  voiceSpeed: number
+  voiceGender: 'female' | 'male'
 }
 
 /** State for cloudflared tunnel */
@@ -75,6 +79,12 @@ export interface TunnelState {
   url: string | null
   port: number
   startedAt: number
+}
+
+export interface LastAssistantResponse {
+  content: string
+  sessionId: string
+  timestamp: number
 }
 
 export interface ChatState {
@@ -90,6 +100,7 @@ export interface ChatState {
   lastAssistantMessageId?: string
   redoAvailable?: boolean
   tunnelState?: TunnelState
+  lastAssistantResponse?: LastAssistantResponse
 }
 
 export function createDefaultUserSettings(): UserSettings {
@@ -100,6 +111,10 @@ export function createDefaultUserSettings(): UserSettings {
     outputMode: 'formatted',
     historyFormat: 'html',
     historyLimit: null,
+    voiceMode: false,
+    voiceSummaryLength: 500,
+    voiceSpeed: 1.0,
+    voiceGender: 'female',
   }
 }
 

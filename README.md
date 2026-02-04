@@ -268,6 +268,14 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 **Image Support** — Send photos directly from your phone. Screenshots of error messages, UI mockups, diagrams — the AI analyzes them and responds accordingly. (Requires vision-capable model)
 
+**Voice Response (🔊)** — Listen to AI summaries instead of reading. Perfect for hands-free updates while commuting. Uses Edge TTS with natural Korean voices.
+
+**Git Status (`/git`)** — Quick git overview with branch, status, and recent commits. Inline buttons for diff and log without leaving Telegram.
+
+**Multi-Select Questions** — When AI asks questions with multiple options, select multiple answers with checkbox-style UI before proceeding.
+
+**Inactivity Warning** — Get notified if your AI session sits idle for 30+ minutes. Never forget about a waiting task again.
+
 **Diagnostics** — Run `bun run doctor` to auto-diagnose configuration issues.
 
 ---
@@ -349,8 +357,9 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute pat
 | `/undo` | Undo last AI response |
 | `/redo` | Redo undone response |
 | `/status` | Check current status |
+| `/git` | Git status, diff, log |
 | `/agents` | Select AI agent/model |
-| `/settings` | Summary mode, Review Mode, output format, etc. |
+| `/settings` | Summary mode, Review Mode, Voice, output format, etc. |
 | `/groupsettings` | Group shared settings (debate rounds, bot status) |
 | `/debate [topic]` | Start Writer↔Reader bot debate (🧪 Testing) |
 | `/review [target]` | Request code review from peer bot (🧪 Testing) |

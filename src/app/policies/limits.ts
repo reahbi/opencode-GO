@@ -14,8 +14,8 @@ export const LIMITS = {
   /** Maximum prompt retries */
   MAX_PROMPT_RETRIES: 2,
 
-  /** Interaction TTL (ms) — 5 minutes */
-  INTERACTION_TTL_MS: 5 * 60 * 1000,
+  /** Interaction TTL (ms) — 10 minutes */
+  INTERACTION_TTL_MS: 10 * 60 * 1000,
 
   /** Server restart max attempts */
   MAX_SERVER_RESTARTS: 5,
@@ -61,4 +61,11 @@ export const LIMITS = {
 
   /** Maximum total characters across all queued messages */
   MAX_QUEUED_CHARS: 10000,
+
+  // ── Inactivity Detection ─────────────────────────────────
+  /** Time without activity before warning (ms) — 30 minutes */
+  INACTIVITY_WARNING_MS: 30 * 60 * 1000,
+
+  /** Interval to check for inactivity (ms) — 5 minutes */
+  INACTIVITY_CHECK_INTERVAL_MS: 5 * 60 * 1000,
 } as const

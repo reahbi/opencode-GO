@@ -11,7 +11,7 @@ const COMMON_PORTS = [
   { port: 4000, label: '4000 (GraphQL)' },
 ]
 
-export function tunnelCommand(state: StateStore, tunnel: TunnelManager) {
+export function tunnelCommand(tunnel: TunnelManager) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
@@ -127,12 +127,14 @@ export async function startTunnelWithFeedback(
 }
 
 export async function handleTunnelPortInput(
-  chatId: number,
+  ctx: Context,
   text: string,
   state: StateStore,
   tunnel: TunnelManager,
-  sendText: (chatId: number, text: string, parseMode?: string) => Promise<unknown>,
 ): Promise<boolean> {
+  const chatId = ctx.chat?.id
+  if (!chatId) return false
+
   const chatState = await state.getChatState(chatId)
   if (chatState.awaitingInput !== 'tunnel_port') return false
 
@@ -141,24 +143,10 @@ export async function handleTunnelPortInput(
 
   const port = parseInt(text.trim(), 10)
   if (!Number.isFinite(port) || port < 1 || port > 65535) {
-    await sendText(chatId, 'Invalid port. Enter a number between 1-65535, or use /tunnel to select.')
+    await ctx.reply('Invalid port. Enter a number between 1-65535, or use /tunnel to select.')
     return true
   }
 
-  const msg = await sendText(chatId, `Starting tunnel on port ${port}...`)
-
-  try {
-    const tunnelState = await tunnel.start(chatId, port)
-
-    if (tunnelState.url) {
-      await sendText(chatId, `<b>Tunnel Active</b>\n\n<code>${tunnelState.url}</code>\n\nPort: ${port}\n\nUse /tunnel stop to close.`, 'HTML')
-    } else {
-      await sendText(chatId, `Tunnel started on port ${port}, but URL not detected.`)
-    }
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : 'Unknown error'
-    await sendText(chatId, `Failed to start tunnel: ${escapeHtml(errMsg)}`)
-  }
-
+  await startTunnelWithFeedback(ctx, chatId, port, tunnel)
   return true
 }

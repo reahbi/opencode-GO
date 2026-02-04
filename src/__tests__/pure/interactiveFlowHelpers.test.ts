@@ -54,10 +54,11 @@ describe('interactiveFlow helpers', () => {
       expect(label).not.toContain('<script>')
     })
 
-    it('uses only first element of answer array', () => {
+    it('shows all elements for multiple selections', () => {
       const label = answerLabel(['First', 'Second'])
       expect(label).toContain('First')
-      expect(label).not.toContain('Second')
+      expect(label).toContain('Second')
+      expect(label).toContain(', ')
     })
   })
 

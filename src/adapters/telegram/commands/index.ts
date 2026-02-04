@@ -21,6 +21,7 @@ import {
   summarySubText, summarySubKeyboard,
   outputSubText, outputSubKeyboard,
   historySubText, historySubKeyboard,
+  voiceSubText, voiceSubKeyboard,
 } from './settings.js'
 import {
   groupSettingsCommand,
@@ -32,16 +33,18 @@ import {
 import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
-import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, clearAddbotIfActive } from './addbot.js'
+import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard } from './addbot.js'
 import { queueCommand, clearQueueCommand, showQueueCommand } from './queue.js'
 import { undoCommand, redoCommand } from './undo.js'
 import { tunnelCommand, startTunnelWithFeedback, handleTunnelPortInput } from './tunnel.js'
+import { gitCommand, handleGitCallback } from './git.js'
 import { createSessionCommands } from '../../../app/usecases/sessionCommands.js'
 import { createPromptFlow } from '../../../app/usecases/promptFlow.js'
 import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
 import { createDebateFlow } from '../../../app/usecases/debateFlow.js'
 import { createSessionWatcher } from '../../../app/usecases/sessionWatcher.js'
 import { createSummaryService } from '../../opencode/summaryService.js'
+import type { VoiceFlow } from '../../../app/usecases/voiceFlow.js'
 import { parseCallback } from '../ui/callbacks.js'
 import type { ModelInfo } from '../../../domain/ports/OpenCodePort.js'
 import { escapeHtml } from '../../../shared/formatResponse.js'
@@ -98,6 +101,7 @@ interface RegisterCommandsDeps {
   serverPassword?: string
   debateFlow?: ReturnType<typeof createDebateFlow>
   tunnel?: import('../../../app/usecases/tunnelManager.js').TunnelManager
+  voiceFlow?: VoiceFlow
 }
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
@@ -154,18 +158,17 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   reg('new', async (ctx) => {
     const chatId = ctx.chat?.id
-    if (chatId) await clearAddbotIfActive(chatId, state)
+    if (chatId) {
+      cancelAddbotWizard(chatId)
+      await deps.tunnel?.stop(chatId)
+    }
     await newCommand(sessionCommands)(ctx)
     if (chatId) await watcher.watch(chatId)
   })
-  reg('list', async (ctx) => {
-    const chatId = ctx.chat?.id
-    if (chatId) await clearAddbotIfActive(chatId, state)
-    await listCommand(sessionCommands)(ctx)
-  })
+  reg('list', listCommand(sessionCommands))
   reg('resume', async (ctx) => {
     const chatId = ctx.chat?.id
-    if (chatId) await clearAddbotIfActive(chatId, state)
+    if (chatId) cancelAddbotWizard(chatId)
     await resumeCommand(sessionCommands)(ctx)
     if (chatId) await watcher.watch(chatId)
   })
@@ -182,21 +185,14 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('showqueue', showQueueCommand(state))
   reg('undo', undoCommand(sessionCommands))
   reg('redo', redoCommand(sessionCommands))
-  reg('help', async (ctx) => {
-    const chatId = ctx.chat?.id
-    if (chatId) await clearAddbotIfActive(chatId, state)
-    await helpCommand(deps.instanceName)(ctx)
-  })
+  reg('help', helpCommand(deps.instanceName))
   reg('start', startCommand(state, openCode, deps.instanceName))
-  reg('status', async (ctx) => {
-    const chatId = ctx.chat?.id
-    if (chatId) await clearAddbotIfActive(chatId, state)
-    await statusCommand(state, openCode, deps.instanceName, deps.tunnel)(ctx)
-  })
+  reg('status', statusCommand(state, openCode, deps.instanceName, deps.tunnel))
+  reg('git', gitCommand(state))
   reg('agents', agentsCommand(state, openCode))
   reg('settings', async (ctx) => {
     const chatId = ctx.chat?.id
-    if (chatId) await clearAddbotIfActive(chatId, state)
+    if (chatId) cancelAddbotWizard(chatId)
     await settingsCommand(state, openCode, deps.instanceName, deps.botRole)(ctx)
   })
 
@@ -215,7 +211,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   }
 
   if (deps.tunnel) {
-    reg('tunnel', tunnelCommand(state, deps.tunnel))
+    reg('tunnel', tunnelCommand(deps.tunnel))
   }
 
   reg('cancel', async (ctx) => {
@@ -223,10 +219,13 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     if (!chatId) return
     cancelAddbotWizard(chatId)
     const chatState = await state.getChatState(chatId)
-    if (chatState.awaitingInput === 'addbot_token' || chatState.awaitingInput === 'addbot_project') {
+    if (chatState.awaitingInput) {
       chatState.awaitingInput = null
+      chatState.awaitingInteractionId = null
       await state.saveChatState(chatId, chatState)
       await ctx.reply('❌ Cancelled.')
+    } else {
+      await ctx.reply('Nothing to cancel.')
     }
   })
 
@@ -263,6 +262,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       case 'question_answer':
         await interactiveFlow.handleQuestionAnswer(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex)
+        break
+      case 'question_toggle':
+        await interactiveFlow.handleQuestionToggle(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex)
+        break
+      case 'question_next':
+        await interactiveFlow.handleQuestionNext(chatId, parsed.interactionId, parsed.questionIndex)
         break
       case 'question_skip':
         await interactiveFlow.handleQuestionSkip(chatId, parsed.interactionId, parsed.questionIndex)
@@ -399,6 +404,41 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
               { parse_mode: 'HTML' }
             )
             break
+          case 'sub_voice':
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          case 'voice_toggle':
+            chatState.settings.voiceMode = !chatState.settings.voiceMode
+            await state.saveChatState(chatId, chatState)
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          case 'voice_len': {
+            const len = parseInt(parsed.value ?? '', 10)
+            if ([300, 500, 800].includes(len)) {
+              chatState.settings.voiceSummaryLength = len
+              await state.saveChatState(chatId, chatState)
+            }
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          }
+          case 'voice_spd': {
+            const spd = parseFloat(parsed.value ?? '')
+            if ([0.75, 1.0, 1.25].includes(spd)) {
+              chatState.settings.voiceSpeed = spd
+              await state.saveChatState(chatId, chatState)
+            }
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          }
+          case 'voice_gender': {
+            const gender = parsed.value as 'female' | 'male'
+            if (gender === 'female' || gender === 'male') {
+              chatState.settings.voiceGender = gender
+              await state.saveChatState(chatId, chatState)
+            }
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          }
           case 'back': {
             let healthy = false
             try { healthy = await openCode.healthCheck() } catch { /* offline */ }
@@ -584,6 +624,16 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         }
         break
       }
+      case 'git': {
+        await handleGitCallback(ctx, parsed.action, state)
+        break
+      }
+      case 'voice': {
+        if (deps.voiceFlow && parsed.action === 'listen') {
+          await deps.voiceFlow.sendVoiceResponse(chatId)
+        }
+        break
+      }
       default:
         break
     }
@@ -597,10 +647,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
     const chatState = await state.getChatState(chatId)
     if (chatState.awaitingInput === 'question') {
-      chatState.awaitingInput = null
-      await state.saveChatState(chatId, chatState)
-      await interactiveFlow.handleFreeTextAnswer(chatId, text)
-      return
+      const handled = await interactiveFlow.handleFreeTextAnswer(chatId, text)
+      if (handled) return
     }
     if (chatState.awaitingInput === 'threshold') {
       chatState.awaitingInput = null
@@ -663,7 +711,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       return
     }
     if (chatState.awaitingInput === 'tunnel_port' && deps.tunnel) {
-      const handled = await handleTunnelPortInput(chatId, text, state, deps.tunnel, output.sendText.bind(output))
+      const handled = await handleTunnelPortInput(ctx, text, state, deps.tunnel)
       if (handled) return
     }
 

@@ -67,7 +67,7 @@ const createOpenCodeWithEvents = (
 describe('sessionWatcher', () => {
   let output: ReturnType<typeof createMockChatOutputPort>
   let state: ReturnType<typeof createMockStateStore>
-  let summary: { summarize: ReturnType<typeof mock> }
+  let summary: { summarize: ReturnType<typeof mock>; summarizeForVoice: ReturnType<typeof mock> }
   let onPermissionAsked: ReturnType<typeof mock>
   let onQuestionAsked: ReturnType<typeof mock>
 
@@ -77,7 +77,10 @@ describe('sessionWatcher', () => {
       activeProjectDirectory: directory,
       activeSessionId: sessionId,
     }))
-    summary = { summarize: mock(() => Promise.resolve('summarized text')) }
+    summary = {
+      summarize: mock(() => Promise.resolve('summarized text')),
+      summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+    }
     onPermissionAsked = mock(() => Promise.resolve())
     onQuestionAsked = mock(() => Promise.resolve())
   })
@@ -453,7 +456,10 @@ describe('sessionWatcher', () => {
           summaryThreshold: 100,
         }),
       }))
-      summary = { summarize: mock(() => Promise.resolve('<b>summarized</b>')) }
+      summary = {
+        summarize: mock(() => Promise.resolve('<b>summarized</b>')),
+        summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+      }
       const openCode = createOpenCodeWithEvents(
         [assistantMessage(), messagePart('x'.repeat(200)), sessionIdle],
         { gate },
@@ -469,7 +475,7 @@ describe('sessionWatcher', () => {
       expect(output.editText).toHaveBeenCalledWith(chatId, 'prompt-1', expect.any(String), 'HTML')
       expect(output.sendFile).toHaveBeenCalledWith(
         chatId,
-        expect.any(Buffer),
+        expect.any(Uint8Array),
         'response.md',
         '📄 Full response',
       )
@@ -503,7 +509,10 @@ describe('sessionWatcher', () => {
           summaryThreshold: 100,
         }),
       }))
-      summary = { summarize: mock(() => Promise.resolve('<b>summarized</b>')) }
+      summary = {
+        summarize: mock(() => Promise.resolve('<b>summarized</b>')),
+        summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+      }
       const openCode = createOpenCodeWithEvents(
         [assistantMessage(), messagePart('x'.repeat(200)), sessionIdle],
         { gate },
@@ -535,7 +544,10 @@ describe('sessionWatcher', () => {
           summaryThreshold: 100,
         }),
       }))
-      summary = { summarize: mock(() => Promise.reject(new Error('summary failed'))) }
+      summary = {
+        summarize: mock(() => Promise.reject(new Error('summary failed'))),
+        summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+      }
       const openCode = createOpenCodeWithEvents(
         [assistantMessage(), messagePart('x'.repeat(200)), sessionIdle],
         { gate },

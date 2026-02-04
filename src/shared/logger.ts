@@ -14,6 +14,7 @@ const PREFIXES = {
   review: '[REVIEW]',
   registry: '[REGISTRY]',
   tunnel: '[TUNNEL]',
+  voice: '[VOICE]',
 } as const
 
 type LogContext = keyof typeof PREFIXES

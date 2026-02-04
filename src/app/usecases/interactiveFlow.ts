@@ -18,7 +18,8 @@ interface InteractiveFlowDeps {
 export function answerLabel(answer: string[] | null): string {
   if (answer === null) return '⏳'
   if (answer.length === 0) return '⏭️ skipped'
-  return `✅ ${escapeHtml(answer[0])}`
+  if (answer.length === 1) return `✅ ${escapeHtml(answer[0])}`
+  return `✅ ${answer.map(a => escapeHtml(a)).join(', ')}`
 }
 
 export function refreshTTL(interaction: PendingInteraction): void {
@@ -78,15 +79,36 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
     const currentQ = questions[currentIdx]
     const buttons: Button[] = []
+    const isMultiple = currentQ?.multiple === true
+    const currentAnswers = answers[currentIdx] ?? []
 
     if (currentQ?.options && currentQ.options.length > 0) {
       for (let i = 0; i < currentQ.options.length; i++) {
-        buttons.push({
-          label: currentQ.options[i],
-          callbackData: `q:${interaction.interactionId}:${currentIdx}:${i}`,
-        })
+        const optionLabel = currentQ.options[i]
+        if (isMultiple) {
+          const isSelected = currentAnswers.includes(optionLabel)
+          const prefix = isSelected ? '✓ ' : '☐ '
+          buttons.push({
+            label: `${prefix}${optionLabel}`,
+            callbackData: `q:${interaction.interactionId}:${currentIdx}:toggle:${i}`,
+          })
+        } else {
+          buttons.push({
+            label: optionLabel,
+            callbackData: `q:${interaction.interactionId}:${currentIdx}:${i}`,
+          })
+        }
       }
     }
+
+    if (isMultiple) {
+      const selectedCount = currentAnswers.length
+      buttons.push({
+        label: selectedCount > 0 ? `Next (${selectedCount} selected) →` : 'Next →',
+        callbackData: `q:${interaction.interactionId}:${currentIdx}:next`,
+      })
+    }
+
     buttons.push({
       label: '✏️ Type answer',
       callbackData: `q:${interaction.interactionId}:${currentIdx}:type`,
@@ -201,6 +223,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       const questions = event.questions.map(q => ({
         text: q.text,
         options: q.options ?? [],
+        multiple: q.multiple,
       }))
 
       if (questions.length === 0) {
@@ -322,6 +345,90 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     } catch (error) {
       logger.error('interactive', 'Failed to handle question answer', { chatId, interactionId, error })
       await deps.output.sendText(chatId, '❌ Failed to process answer')
+    }
+  }
+
+  async function handleQuestionToggle(
+    chatId: number,
+    interactionId: string,
+    questionIndex: number,
+    answerIndex: number,
+  ): Promise<void> {
+    try {
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
+
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
+
+        refreshTTL(interaction)
+        const questions = interaction.questions ?? []
+        const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
+        const currentQ = questions[questionIndex]
+        if (!currentQ) return
+
+        const label = currentQ.options?.[answerIndex] ?? String(answerIndex)
+        const currentAnswers: string[] = answers[questionIndex] ?? []
+        
+        if (currentAnswers.includes(label)) {
+          answers[questionIndex] = currentAnswers.filter((a: string) => a !== label)
+        } else {
+          answers[questionIndex] = [...currentAnswers, label]
+        }
+        interaction.collectedAnswers = answers
+
+        logger.info('interactive', `Q${questionIndex + 1}/${questions.length} toggled: "${label}" (now ${answers[questionIndex]?.length ?? 0} selected)`)
+
+        await deps.state.saveChatState(chatId, chatState)
+        await editOrSendQuestion(chatId, interaction)
+        await deps.state.saveChatState(chatId, chatState)
+      })
+    } catch (error) {
+      logger.error('interactive', 'Failed to handle question toggle', { chatId, interactionId, error })
+      await deps.output.sendText(chatId, '❌ Failed to process selection')
+    }
+  }
+
+  async function handleQuestionNext(
+    chatId: number,
+    interactionId: string,
+    questionIndex: number,
+  ): Promise<void> {
+    try {
+      await deps.state.withChatLock(chatId, async () => {
+        const chatState = await deps.state.getChatState(chatId)
+        const now = Date.now()
+        chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
+        
+        const interaction = findInteraction(chatState, interactionId)
+
+        if (!interaction) {
+          await deps.output.sendText(chatId, 'This interaction has expired.')
+          return
+        }
+
+        refreshTTL(interaction)
+        const questions = interaction.questions ?? []
+        const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
+        
+        if (answers[questionIndex] === null) {
+          answers[questionIndex] = []
+        }
+        interaction.collectedAnswers = answers
+
+        logger.info('interactive', `Q${questionIndex + 1}/${questions.length} confirmed with ${answers[questionIndex]?.length ?? 0} selections`)
+
+        await advanceToNext(chatId, interaction, chatState)
+      })
+    } catch (error) {
+      logger.error('interactive', 'Failed to handle question next', { chatId, interactionId, error })
+      await deps.output.sendText(chatId, '❌ Failed to proceed')
     }
   }
 
@@ -507,17 +614,19 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleFreeTextAnswer(chatId: number, text: string): Promise<void> {
+  async function handleFreeTextAnswer(chatId: number, text: string): Promise<boolean> {
+    let handled = false
     await deps.state.withChatLock(chatId, async () => {
       const chatState = await deps.state.getChatState(chatId)
       const interactionId = chatState.awaitingInteractionId
-      if (!interactionId) {
-        await deps.output.sendText(chatId, '❌ No pending question')
-        return
-      }
 
       chatState.awaitingInput = null
       chatState.awaitingInteractionId = null
+
+      if (!interactionId) {
+        await deps.state.saveChatState(chatId, chatState)
+        return
+      }
 
       const now = Date.now()
       chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
@@ -525,10 +634,10 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
       if (!interaction || now > interaction.expiresAt) {
         await deps.state.saveChatState(chatId, chatState)
-        await deps.output.sendText(chatId, 'This interaction has expired.')
         return
       }
 
+      handled = true
       refreshTTL(interaction)
       const questions = interaction.questions ?? []
       const currentIdx = interaction.currentQuestionIndex ?? 0
@@ -540,6 +649,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
       await advanceToNext(chatId, interaction, chatState)
     })
+    return handled
   }
 
   async function cleanupExpired(chatId: number): Promise<void> {
@@ -568,6 +678,8 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     handleQuestionEvent,
     handlePermissionCallback,
     handleQuestionAnswer,
+    handleQuestionToggle,
+    handleQuestionNext,
     handleQuestionSkip,
     handleQuestionBack,
     handleQuestionType,

@@ -1,6 +1,8 @@
 export type ParsedCallback =
   | { type: 'permission'; interactionId: string; response: 'once' | 'always' | 'reject' }
   | { type: 'question_answer'; interactionId: string; questionIndex: number; answerIndex: number }
+  | { type: 'question_toggle'; interactionId: string; questionIndex: number; answerIndex: number }
+  | { type: 'question_next'; interactionId: string; questionIndex: number }
   | { type: 'question_skip'; interactionId: string; questionIndex: number }
   | { type: 'question_type'; interactionId: string; questionIndex: number }
   | { type: 'question_back'; interactionId: string; questionIndex: number }
@@ -20,6 +22,8 @@ export type ParsedCallback =
   | { type: 'debate_reject'; debateId: string }
   | { type: 'groupsettings'; action: string; value?: string }
   | { type: 'tunnel'; action: 'stop' | 'custom' | 'start'; port?: number }
+  | { type: 'git'; action: string }
+  | { type: 'voice'; action: 'listen' }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -113,6 +117,16 @@ export function parseCallback(data: string): ParsedCallback {
     if (action === 'back') {
       return { type: 'question_back', interactionId, questionIndex }
     }
+    if (action === 'next') {
+      return { type: 'question_next', interactionId, questionIndex }
+    }
+    if (action === 'toggle') {
+      const answerIndex = parseInt(parts[4], 10)
+      if (Number.isFinite(answerIndex) && answerIndex >= 0) {
+        return { type: 'question_toggle', interactionId, questionIndex, answerIndex }
+      }
+      return { type: 'unknown', raw: data }
+    }
 
     const answerIndex = parseInt(action, 10)
     if (Number.isFinite(answerIndex) && answerIndex >= 0) {
@@ -175,6 +189,20 @@ export function parseCallback(data: string): ParsedCallback {
     const port = parseInt(value, 10)
     if (Number.isFinite(port) && port > 0 && port <= 65535) {
       return { type: 'tunnel', action: 'start', port }
+    }
+    return { type: 'unknown', raw: data }
+  }
+
+  if (data.startsWith('git:')) {
+    const action = data.slice(4)
+    if (!action) return { type: 'unknown', raw: data }
+    return { type: 'git', action }
+  }
+
+  if (data.startsWith('voice:')) {
+    const action = data.slice(6)
+    if (action === 'listen') {
+      return { type: 'voice', action: 'listen' }
     }
     return { type: 'unknown', raw: data }
   }

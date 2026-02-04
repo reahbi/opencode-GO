@@ -2,6 +2,7 @@ import { loadEnvConfig } from './config/env.js'
 import { createBot, createChatOutputAdapter } from './adapters/telegram/bot.js'
 import { createAuthMiddleware } from './adapters/telegram/authMiddleware.js'
 import { createGroupMiddleware } from './adapters/telegram/groupMiddleware.js'
+import { createAwaitingInputMiddleware } from './adapters/telegram/awaitingInputMiddleware.js'
 import { createOpenCodeAdapter } from './adapters/opencode/opencodeAdapter.js'
 import { createJsonStateStore } from './adapters/persistence/jsonStateStore.js'
 import { createFileCoordinationAdapter } from './adapters/coordination/fileCoordinationAdapter.js'
@@ -10,6 +11,9 @@ import { createFileGroupSettingsAdapter } from './adapters/coordination/fileGrou
 import { createChatQueue } from './app/queue/chatQueue.js'
 import { createDebateFlow } from './app/usecases/debateFlow.js'
 import { createTunnelManager } from './app/usecases/tunnelManager.js'
+import { createVoiceFlow } from './app/usecases/voiceFlow.js'
+import { createEdgeTtsAdapter } from './adapters/tts/edgeTtsAdapter.js'
+import { createSummaryService } from './adapters/opencode/summaryService.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
 import { logger, setInstancePrefix } from './shared/logger.js'
 import { LIMITS } from './app/policies/limits.js'
@@ -31,11 +35,16 @@ async function main() {
   const queue = createChatQueue()
   const tunnel = createTunnelManager()
 
+  const tts = createEdgeTtsAdapter()
+  const summary = createSummaryService(openCode)
+  const voiceFlow = createVoiceFlow({ summary, tts, output, state })
+
   const botInfo = await bot.api.getMe()
   const botUsername = botInfo.username ?? ''
 
   bot.use(createAuthMiddleware(config.allowedUserIds))
   bot.use(createGroupMiddleware(botUsername, config.groupChatEnabled))
+  bot.use(createAwaitingInputMiddleware(state))
 
   bot.use(async (ctx, next) => {
     const chatId = ctx.chat?.id
@@ -148,6 +157,7 @@ async function main() {
     serverPassword: config.openCodeServerPassword ?? undefined,
     debateFlow,
     tunnel,
+    voiceFlow,
   })
 
   bot.catch((err) => {
@@ -201,6 +211,7 @@ async function main() {
     { command: 'undo', description: 'Undo last AI response' },
     { command: 'redo', description: 'Redo undone response' },
     { command: 'status', description: 'Check current status' },
+    { command: 'git', description: 'Git status, diff, log' },
     { command: 'agents', description: 'Select AI agent/model' },
     { command: 'settings', description: 'Summary, output format, etc.' },
     { command: 'groupsettings', description: 'Group settings (debate, bots)' },

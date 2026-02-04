@@ -8,6 +8,7 @@ import type {
   SessionError,
   SessionIdle,
   SessionRetry,
+  ToolPartUpdated,
 } from '../../domain/events.js'
 
 type RecordLike = Record<string, unknown>
@@ -50,8 +51,11 @@ function mapQuestionInfo(value: unknown, index: number): QuestionInfo {
     }
   }
 
+  const multiple = typeof value.multiple === 'boolean' ? value.multiple : undefined
+
   const question: QuestionInfo = { id: String(index), text }
   if (options) question.options = options
+  if (multiple !== undefined) question.multiple = multiple
   return question
 }
 
@@ -157,25 +161,59 @@ export function mapSdkEvent(event: unknown): OpenCodeEvent | null {
     case 'message.part.updated': {
       const part = isRecord(properties.part) ? properties.part : null
       if (!part) return null
-      if (getString(part.type) !== 'text') return null
 
+      const partType = getString(part.type)
       const sessionId = getString(part.sessionID)
       const partId = getString(part.id)
       const messageId = getString(part.messageID) ?? ''
-      const content = getString(part.text)
-      if (!sessionId || !partId || content === null) return null
 
-      const finished = isRecord(part.time) && typeof part.time.end === 'number'
-      return {
-        type: 'message.part.updated',
-        data: {
-          sessionId,
-          partId,
-          messageId,
-          content,
-          finished,
-        },
+      if (!sessionId || !partId) return null
+
+      if (partType === 'text') {
+        const content = getString(part.text)
+        if (content === null) return null
+
+        const finished = isRecord(part.time) && typeof part.time.end === 'number'
+        return {
+          type: 'message.part.updated',
+          data: {
+            sessionId,
+            partId,
+            messageId,
+            content,
+            finished,
+          },
+        }
       }
+
+      if (partType === 'tool') {
+        const tool = getString(part.tool) ?? 'unknown'
+        const state = isRecord(part.state) ? part.state : null
+        const title = (state && getString(state.title)) ?? tool
+        const stateStatus = state ? getString(state.status) : null
+
+        let status: ToolPartUpdated['status'] = 'pending'
+        if (stateStatus === 'running') status = 'running'
+        else if (stateStatus === 'completed') status = 'completed'
+        else if (stateStatus === 'error') status = 'error'
+        else if (isRecord(part.time) && typeof part.time.start === 'number') {
+          status = typeof part.time.end === 'number' ? 'completed' : 'running'
+        }
+
+        return {
+          type: 'tool.part.updated',
+          data: {
+            sessionId,
+            partId,
+            messageId,
+            tool,
+            title,
+            status,
+          },
+        }
+      }
+
+      return null
     }
 
     default:

@@ -17,8 +17,10 @@ src/
 │   ├── errors.ts              #   AppError hierarchy (8 error classes with codes)
 │   └── ports/
 │       ├── OpenCodePort.ts    #   Session CRUD, prompts, SSE, permission/question reply
-│       ├── ChatOutputPort.ts  #   sendText, editText, sendFile, sendInteraction, editInteraction
+│       ├── ChatOutputPort.ts  #   sendText, editText, sendFile, sendAudio, sendInteraction, editInteraction
 │       ├── StateStore.ts      #   getChatState, saveChatState, withChatLock
+│       ├── TtsPort.ts         #   Text-to-speech synthesis interface
+│       ├── SummaryPort.ts     #   summarize + summarizeForVoice
 │       ├── CoordinationPort.ts #  Bot-to-bot event pub/sub for debate/review
 │       ├── BotRegistryPort.ts #   Bot registration, listing, role lookup
 │       └── GroupSettingsPort.ts # Group-shared settings (debate rounds)
@@ -28,8 +30,9 @@ src/
 │   │   ├── sessionCommands.ts #   /new /list /resume /abort + exportSessionHistory
 │   │   ├── interactiveFlow.ts #   permission.asked / question.asked round-trip
 │   │   ├── debateFlow.ts      #   /debate /review + bot-to-bot coordination (🧪 testing)
-│   │   ├── sessionWatcher.ts  #   SSE watcher + live message updates
-│   │   └── tunnelManager.ts   #   cloudflared subprocess management per chat
+│   │   ├── sessionWatcher.ts  #   SSE watcher + live message updates + inactivity detection
+│   │   ├── tunnelManager.ts   #   cloudflared subprocess management per chat
+│   │   └── voiceFlow.ts       #   Voice TTS response generation
 │   ├── queue/
 │   │   └── chatQueue.ts       #   Per-chat promise-chain serialization
 │   └── policies/
@@ -39,6 +42,7 @@ src/
 │   ├── telegram/
 │   │   ├── bot.ts             #   grammy init, default HTML parse mode, ChatOutputPort impl
 │   │   ├── authMiddleware.ts  #   ALLOWED_USER_IDS check (silent drop on unauthorized)
+│   │   ├── awaitingInputMiddleware.ts # Auto-cancel awaiting input on destructive commands
 │   │   ├── commands/
 │   │   │   ├── index.ts       #   Command router + callback query dispatcher + text handler
 │   │   │   ├── new.ts         #   /new [title]
@@ -58,12 +62,14 @@ src/
 │   │   │   ├── addbot.ts      #   /addbot — interactive bot setup wizard
 │   │   │   └── tunnel.ts      #   /tunnel — cloudflared tunnel to localhost
 │   │   └── ui/
-│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, gs:, sm:, listpage:, listsel:, hist:, dba:, dbr:, tunnel:)
+│   │       ├── callbacks.ts   #   Callback query parser (perm:, q:, agent:, settings:, gs:, sm:, listpage:, listsel:, hist:, dba:, dbr:, tunnel:, git:, voice:)
 │   │       └── keyboards.ts   #   InlineKeyboard builders for permissions/questions
 │   ├── opencode/
 │   │   ├── opencodeAdapter.ts #   OpenCodePort impl via SDK v2 client
-│   │   ├── eventMapper.ts     #   SDK SSE events → domain OpenCodeEvent mapping
-│   │   └── summaryService.ts  #   Creates temp session, prompts lightweight model, deletes
+│   │   ├── eventMapper.ts     #   SDK SSE events → domain OpenCodeEvent mapping (text + tool parts)
+│   │   └── summaryService.ts  #   Creates temp session, prompts lightweight model, deletes (+ voice summary)
+│   ├── tts/
+│   │   └── edgeTtsAdapter.ts  #   TtsPort impl via edge-tts CLI (Korean voices)
 │   ├── persistence/
 │   │   └── jsonStateStore.ts  #   Atomic write (tmp+rename), in-process lock per chatId
 │   └── coordination/
@@ -102,7 +108,7 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Add new Telegram command | `adapters/telegram/commands/` + register in `commands/index.ts` | Follow existing factory pattern |
+| Add new Telegram command | See checklist below | Multiple files need updates |
 | Change prompt/response flow | `app/usecases/promptFlow.ts` | SSE streaming + throttled edits |
 | Handle new OpenCode event | `adapters/opencode/eventMapper.ts` + `domain/events.ts` | Add to discriminated union |
 | Change delivery thresholds | `app/policies/limits.ts` + `shared/constants.ts` | Two places for constants |
@@ -117,6 +123,35 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | Debate/Review (🧪) | `app/usecases/debateFlow.ts` + `adapters/coordination/` | Bot-to-bot coordination via filesystem |
 | Bot registry | `adapters/coordination/fileRegistryAdapter.ts` | Shared registry.json in coordination dir |
 | Tunnel management | `app/usecases/tunnelManager.ts` + `adapters/telegram/commands/tunnel.ts` | cloudflared subprocess per chat |
+| Voice/TTS feature | `app/usecases/voiceFlow.ts` + `adapters/tts/edgeTtsAdapter.ts` | Edge TTS with Korean voices |
+| Multi-select questions | `app/usecases/interactiveFlow.ts` | `question.multiple` field, toggle/next callbacks |
+| Tool part display | `adapters/opencode/eventMapper.ts` + `domain/events.ts` | `tool.part.updated` event type |
+| Inactivity detection | `app/usecases/sessionWatcher.ts` + `app/policies/limits.ts` | 30min warning via `INACTIVITY_WARNING_MS` |
+
+### Adding a New Telegram Command (Checklist)
+
+When adding a new command (e.g., `/git`), update ALL of these files:
+
+1. **Create command handler**: `adapters/telegram/commands/{name}.ts`
+   - Export `{name}Command(deps)` factory function
+   - If using inline buttons, export `handle{Name}Callback(ctx, action, state)` too
+
+2. **Register in index.ts**: `adapters/telegram/commands/index.ts`
+   - Add import at top
+   - Add `reg('{name}', {name}Command(state))` in registerCommands()
+   - If callback buttons: add `case '{name}':` in callback_query handler
+
+3. **Add callback parser** (if using buttons): `adapters/telegram/ui/callbacks.ts`
+   - Add type to `ParsedCallback` union
+   - Add parsing logic in `parseCallback()` function
+
+4. **Update help text**: `adapters/telegram/commands/help.ts`
+   - Add command to appropriate section
+
+5. **Register with BotFather**: `src/main.ts`
+   - Add to `bot.api.setMyCommands([...])` array
+
+**Example**: See `git.ts` for a command with inline keyboard callbacks.
 
 ## CODE MAP
 
@@ -147,6 +182,10 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 | `filterBotsInChat` | function | `adapters/telegram/commands/groupsettings.ts` | Filter bots by Telegram API getChatMember |
 | `createTunnelManager` | factory | `app/usecases/tunnelManager.ts` | Manages cloudflared tunnel subprocesses |
 | `tunnelCommand` | factory | `adapters/telegram/commands/tunnel.ts` | /tunnel command with port selection UI |
+| `gitCommand` | factory | `adapters/telegram/commands/git.ts` | /git command with diff, log, status |
+| `createVoiceFlow` | factory | `app/usecases/voiceFlow.ts` | Voice TTS response generation |
+| `createEdgeTtsAdapter` | factory | `adapters/tts/edgeTtsAdapter.ts` | TtsPort impl via edge-tts CLI |
+| `createAwaitingInputMiddleware` | factory | `adapters/telegram/awaitingInputMiddleware.ts` | Auto-cancel awaiting input on commands |
 
 ## CONVENTIONS
 
@@ -173,17 +212,19 @@ config/     → imports domain/ (for ProjectRef type) + shared/
 
 ### Callback Data Format
 - Permission: `perm:{interactionId}:{once|always|reject}`
-- Question: `q:{interactionId}:{answerIndex|skip}`
+- Question: `q:{interactionId}:{questionIdx}:{answerIndex|skip|type|back|toggle|next}`
 - Agent switch: `agent:{agentName}`
 - Settings: `settings:{action}[:value]}` (per-bot)
 - Group settings: `gs:{action}[:value]` (shared across bots in group)
 - Model select: `sm:{providerID}/{modelID}`
 - Debate accept/reject: `dba:{debateId}` / `dbr:{debateId}`
 - Tunnel control: `tunnel:{port|stop|custom}`
+- Git actions: `git:{diff|diff-full|log|refresh}`
+- Voice: `voice:listen`
 
 ### Logging
 - Context-based prefixes: `logger.info('opencode', 'msg')` → `[OPENCODE] msg`
-- Valid contexts: `telegram`, `opencode`, `session`, `state`, `bot`, `queue`, `interactive`, `summary`, `debate`, `review`, `registry`, `tunnel`
+- Valid contexts: `telegram`, `opencode`, `session`, `state`, `bot`, `queue`, `interactive`, `summary`, `debate`, `review`, `registry`, `tunnel`, `voice`
 - Debug: only output when `process.env.DEBUG` is truthy
 
 ## ANTI-PATTERNS (THIS PROJECT)
@@ -383,8 +424,11 @@ COORDINATION_DIR=        # Shared directory for bot coordination
 - **State migration**: `jsonStateStore.migrateState()` backfills missing fields — update it when changing `ChatState` schema.
 - **Summary service** creates ephemeral sessions: creates → prompts → deletes. Failure to delete leaves orphan sessions.
 - **SSE timeout**: 24 hours (`SSE_TIMEOUT_MS`). Streaming edits throttled at 1 edit/sec.
-- **Interaction TTL**: 5 minutes. Expired interactions are checked lazily on callback, no active GC.
+- **Interaction TTL**: 10 minutes. Expired interactions are checked lazily on callback, no active GC.
+- **Inactivity warning**: 30 minutes idle triggers notification. Check `LIMITS.INACTIVITY_WARNING_MS`.
 - **Constants are split**: `shared/constants.ts` (general) and `app/policies/limits.ts` (policy-specific). Check both.
+- **Voice/TTS**: Uses `edge-tts` CLI with Korean voices (`ko-KR-SunHiNeural`, `ko-KR-InJoonNeural`). Requires edge-tts installed in `/tmp/edge-tts-env/`.
+- **Multi-select questions**: AI can set `question.multiple=true`. UI shows checkboxes with toggle/next pattern.
 - **Tunnel feature**: Uses `cloudflared tunnel --url` for quick tunnels. Subprocesses managed per-chat, auto-cleaned on shutdown.
 - **Document handling**: Bot supports file uploads (documents) in addition to images. Files are downloaded, base64 encoded, and sent to AI with caption as prompt.
 - **State file locking**: `jsonStateStore` uses both per-chat locks AND global file lock to prevent cross-chat race conditions during read-modify-write.

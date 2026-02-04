@@ -56,9 +56,14 @@ export function createChatOutputAdapter(bot: BotInstance): ChatOutputPort {
       }
     },
 
-    async sendFile(chatId: number, content: Buffer, filename: string, caption?: string): Promise<void> {
-      const file = new InputFile(content, filename)
+    async sendFile(chatId: number, content: Uint8Array, filename: string, caption?: string): Promise<void> {
+      const file = new InputFile(Buffer.from(content), filename)
       await bot.api.sendDocument(chatId, file, { caption })
+    },
+
+    async sendAudio(chatId: number, audio: Uint8Array, filename: string, caption?: string): Promise<void> {
+      const file = new InputFile(Buffer.from(audio), filename)
+      await bot.api.sendAudio(chatId, file, { caption })
     },
 
     async sendInteraction(chatId: number, text: string, buttons: Button[]): Promise<OutputHandle> {

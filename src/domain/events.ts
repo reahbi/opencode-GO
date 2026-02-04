@@ -28,6 +28,7 @@ export interface QuestionInfo {
   id: string
   text: string
   options?: string[]
+  multiple?: boolean
 }
 
 /** Session became idle */
@@ -61,6 +62,16 @@ export interface MessageUpdated {
   role: 'user' | 'assistant'
 }
 
+/** Tool part update - for showing tool usage status */
+export interface ToolPartUpdated {
+  sessionId: string
+  partId: string
+  messageId: string
+  tool: string
+  title: string
+  status: 'pending' | 'running' | 'completed' | 'error'
+}
+
 export type OpenCodeEvent =
   | { type: 'agent.output'; data: AgentOutput }
   | { type: 'permission.asked'; data: PermissionAsked }
@@ -71,6 +82,7 @@ export type OpenCodeEvent =
   | { type: 'session.error'; data: SessionError }
   | { type: 'message.updated'; data: MessageUpdated }
   | { type: 'message.part.updated'; data: { sessionId: string; partId: string; messageId: string; content: string; finished: boolean } }
+  | { type: 'tool.part.updated'; data: ToolPartUpdated }
 
 /** Handler callback for domain events */
 export type EventHandler = (event: OpenCodeEvent) => void | Promise<void>

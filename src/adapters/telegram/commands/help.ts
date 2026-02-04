@@ -35,6 +35,9 @@ export function helpCommand(instanceName?: string) {
 /addbot — Add new bot (DM only)
 /cancel — Cancel addbot wizard
 
+<b>Project</b>
+/git — Git status, diff, log
+
 <b>General</b>
 /start — Welcome & status overview
 /status — Current status

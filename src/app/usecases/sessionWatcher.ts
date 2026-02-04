@@ -3,12 +3,13 @@ import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
 import type { OutputHandle, UserSettings, QueuedMessage } from '../../domain/models.js'
-import type { OpenCodeEvent, PermissionAsked, QuestionAsked } from '../../domain/events.js'
+import type { OpenCodeEvent, PermissionAsked, QuestionAsked, ToolPartUpdated } from '../../domain/events.js'
 import type { TunnelManager } from './tunnelManager.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/formatResponse.js'
 import { routeDelivery } from '../policies/deliveryRouter.js'
 import { structuralExtract } from '../../shared/structuralExtract.js'
+import { LIMITS } from '../policies/limits.js'
 
 const STREAM_DISPLAY_LIMIT = 3500
 const EDIT_THROTTLE_MS = 1000
@@ -29,14 +30,20 @@ interface SessionWatcherDeps {
   onPreviewRequest?: (chatId: number, url: string) => Promise<void>
 }
 
+interface ToolPartState {
+  tool: string
+  title: string
+  status: ToolPartUpdated['status']
+}
+
+type DeliveryState = 'idle' | 'pending' | 'delivering' | 'delivered'
+
 interface WatcherEntry {
   directory: string
   sessionId: string
   abort: AbortController
   generation: number
-  /** Telegram message handle for current streaming response */
   liveMsgHandle: OutputHandle | null
-  /** Handle pre-created by promptFlow for user-initiated prompts */
   promptHandle: OutputHandle | null
   lastContent: string
   lastEditTime: number
@@ -46,8 +53,14 @@ interface WatcherEntry {
   typingInterval: ReturnType<typeof setInterval> | null
   liveUpdatesEnabled: boolean
   actorUserId: number | null
-  /** Prevents duplicate busy/retry notifications from REST + SSE race */
   busyNotified: boolean
+  textParts: Map<string, string>
+  toolParts: Map<string, ToolPartState>
+  partOrder: string[]
+  lastActivityTime: number
+  inactivityCheckTimer: ReturnType<typeof setInterval> | null
+  lastWarningTime: number
+  deliveryState: DeliveryState
 }
 
 export interface SessionWatcher {
@@ -68,6 +81,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+const RECONNECT_POLL_INTERVAL_MS = 2000
+
+async function sleepWithChecks(
+  totalMs: number,
+  intervalMs: number,
+  checkFn: () => Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  const startTime = Date.now()
+  while (Date.now() - startTime < totalMs) {
+    if (signal.aborted) return
+    await checkFn()
+    if (signal.aborted) return
+    const remaining = totalMs - (Date.now() - startTime)
+    if (remaining <= 0) return
+    await sleep(Math.min(intervalMs, remaining))
+  }
+}
+
 function hasErrorCode(err: unknown, code: string): boolean {
   if (!(err instanceof Error)) return false
   return err.message.includes(code)
@@ -82,6 +114,47 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     if (content.length <= STREAM_DISPLAY_LIMIT) return escapeHtml(content)
     const truncated = content.slice(0, STREAM_DISPLAY_LIMIT)
     return escapeHtml(truncated) + '\n\n<i>... streaming (will send full response when done)</i>'
+  }
+
+  function getToolStatusIcon(status: ToolPartUpdated['status']): string {
+    switch (status) {
+      case 'pending': return '⏳'
+      case 'running': return '🔄'
+      case 'completed': return '✅'
+      case 'error': return '❌'
+    }
+  }
+
+  function buildStreamingDisplay(entry: WatcherEntry): string {
+    const parts: string[] = []
+
+    for (const partId of entry.partOrder) {
+      if (entry.toolParts.has(partId)) {
+        const tool = entry.toolParts.get(partId)!
+        const icon = getToolStatusIcon(tool.status)
+        parts.push(`${icon} <b>${escapeHtml(tool.title)}</b>`)
+      } else if (entry.textParts.has(partId)) {
+        const text = entry.textParts.get(partId)!
+        if (text.trim()) {
+          parts.push(escapeHtml(text))
+        }
+      }
+    }
+
+    const combined = parts.join('\n\n')
+    if (combined.length <= STREAM_DISPLAY_LIMIT) return combined
+    return combined.slice(0, STREAM_DISPLAY_LIMIT) + '\n\n<i>... streaming (will send full response when done)</i>'
+  }
+
+  function getFullTextContent(entry: WatcherEntry): string {
+    const texts: string[] = []
+    for (const partId of entry.partOrder) {
+      if (entry.textParts.has(partId)) {
+        const text = entry.textParts.get(partId)!
+        if (text.trim()) texts.push(text)
+      }
+    }
+    return texts.join('\n\n')
   }
 
   // ── Delivery (same logic as the original promptFlow) ──────
@@ -178,6 +251,53 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     await deliverSafe(chatId, handle, content)
   }
 
+  // ── Inactivity detection ──────────────────────────────────
+
+  function formatDuration(ms: number): string {
+    const minutes = Math.floor(ms / 60000)
+    if (minutes < 60) return `${minutes}분`
+    const hours = Math.floor(minutes / 60)
+    const remainingMins = minutes % 60
+    return remainingMins > 0 ? `${hours}시간 ${remainingMins}분` : `${hours}시간`
+  }
+
+  function startInactivityCheck(chatId: number, entry: WatcherEntry): void {
+    stopInactivityCheck(entry)
+    entry.lastActivityTime = Date.now()
+    entry.lastWarningTime = 0
+
+    entry.inactivityCheckTimer = setInterval(() => {
+      if (entry.abort.signal.aborted) {
+        stopInactivityCheck(entry)
+        return
+      }
+
+      const now = Date.now()
+      const inactiveDuration = now - entry.lastActivityTime
+      const timeSinceLastWarning = now - entry.lastWarningTime
+
+      if (inactiveDuration >= LIMITS.INACTIVITY_WARNING_MS) {
+        const shouldWarn = entry.lastWarningTime === 0 || timeSinceLastWarning >= LIMITS.INACTIVITY_WARNING_MS
+
+        if (shouldWarn) {
+          entry.lastWarningTime = now
+          const duration = formatDuration(inactiveDuration)
+          const msg = `⚠️ AI가 <b>${duration}</b> 동안 응답이 없습니다.\n작업이 멈췄거나 오류가 발생했을 수 있습니다.\n\n<i>/abort로 중단하거나 계속 기다릴 수 있습니다.</i>`
+          deps.output.sendText(chatId, msg, 'HTML').catch(() => {})
+          logger.warn('watcher', `Inactivity warning for chat ${chatId}: ${duration} since last activity`)
+        }
+      }
+    }, LIMITS.INACTIVITY_CHECK_INTERVAL_MS)
+  }
+
+  function stopInactivityCheck(entry: WatcherEntry): void {
+    if (entry.inactivityCheckTimer) {
+      clearInterval(entry.inactivityCheckTimer)
+      entry.inactivityCheckTimer = null
+    }
+    entry.lastWarningTime = 0
+  }
+
   // ── Per-turn state management ─────────────────────────────
 
   function resetTurnState(entry: WatcherEntry): void {
@@ -189,6 +309,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       clearInterval(entry.typingInterval)
       entry.typingInterval = null
     }
+    stopInactivityCheck(entry)
     entry.liveMsgHandle = null
     entry.promptHandle = null
     entry.lastContent = ''
@@ -196,11 +317,15 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     entry.currentMessageId = null
     entry.assistantMessageIds.clear()
     entry.busyNotified = false
+    entry.textParts.clear()
+    entry.toolParts.clear()
+    entry.partOrder = []
+    entry.deliveryState = 'idle'
   }
 
   // ── Throttled streaming edits ─────────────────────────────
 
-  function throttledEdit(chatId: number, entry: WatcherEntry, content: string): void {
+  function throttledEdit(chatId: number, entry: WatcherEntry, htmlContent: string): void {
     if (!entry.liveUpdatesEnabled) return
 
     if (entry.pendingEditTimer) {
@@ -216,12 +341,12 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
     if (elapsed >= EDIT_THROTTLE_MS) {
       entry.lastEditTime = now
-      deps.output.editText(chatId, handle, truncateForDisplay(content)).catch(() => {})
+      deps.output.editText(chatId, handle, htmlContent).catch(() => {})
     } else {
       entry.pendingEditTimer = setTimeout(() => {
         entry.lastEditTime = Date.now()
         entry.pendingEditTimer = null
-        deps.output.editText(chatId, handle, truncateForDisplay(content)).catch(() => {})
+        deps.output.editText(chatId, handle, htmlContent).catch(() => {})
       }, EDIT_THROTTLE_MS - elapsed)
     }
   }
@@ -286,23 +411,59 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
       case 'message.part.updated': {
         if (suppressDisplay) break
-        const { sessionId: evtSessionId, messageId, content } = event.data
+        const { sessionId: evtSessionId, messageId, partId, content } = event.data
         if (evtSessionId !== entry.sessionId) return
         if (messageId && !entry.assistantMessageIds.has(messageId)) return
+
+        entry.lastActivityTime = Date.now()
 
         if (!entry.liveMsgHandle) {
           await ensureLiveMessage(chatId, entry)
         }
 
-        entry.lastContent = content
-        if (content.length > 0) {
-          throttledEdit(chatId, entry, content)
+        if (!entry.partOrder.includes(partId)) {
+          entry.partOrder.push(partId)
         }
+        entry.textParts.set(partId, content)
+        entry.lastContent = getFullTextContent(entry)
+
+        if (entry.lastContent && entry.deliveryState === 'idle') {
+          entry.deliveryState = 'pending'
+        }
+
+        if (content.length > 0) {
+          throttledEdit(chatId, entry, buildStreamingDisplay(entry))
+        }
+        break
+      }
+
+      case 'tool.part.updated': {
+        if (suppressDisplay) break
+        const { sessionId: evtSessionId, messageId, partId, tool, title, status } = event.data
+        if (evtSessionId !== entry.sessionId) return
+        if (messageId && !entry.assistantMessageIds.has(messageId)) return
+
+        entry.lastActivityTime = Date.now()
+
+        if (!entry.liveMsgHandle) {
+          await ensureLiveMessage(chatId, entry)
+        }
+
+        if (!entry.partOrder.includes(partId)) {
+          entry.partOrder.push(partId)
+        }
+        entry.toolParts.set(partId, { tool, title, status })
+
+        throttledEdit(chatId, entry, buildStreamingDisplay(entry))
         break
       }
 
       case 'session.idle': {
         if (event.data.sessionId !== entry.sessionId) return
+        if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered') {
+          logger.debug('watcher', `Session idle ignored (already ${entry.deliveryState}): ${entry.sessionId}`)
+          break
+        }
         logger.debug('watcher', `Session idle: ${entry.sessionId}`)
 
         if (entry.pendingEditTimer) {
@@ -314,10 +475,25 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           entry.typingInterval = null
         }
 
-        if (!suppressDisplay && entry.lastContent && entry.liveMsgHandle) {
-          try {
-            const state = await deps.state.getChatState(chatId)
+        try {
+          const state = await deps.state.getChatState(chatId)
+
+          if (!suppressDisplay && entry.lastContent && entry.liveMsgHandle) {
+            entry.deliveryState = 'delivering'
             await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
+
+            const MAX_STORED_RESPONSE_LENGTH = 30_000
+            state.lastAssistantResponse = {
+              content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
+              sessionId: entry.sessionId,
+              timestamp: Date.now(),
+            }
+
+            if (state.settings.voiceMode) {
+              await deps.output.sendInteraction(chatId, '🎧', [
+                { label: '음성으로 듣기', callbackData: 'voice:listen' },
+              ])
+            }
 
             const tunnelState = deps.tunnel?.get(chatId)
             if (tunnelState?.isActive && tunnelState.url) {
@@ -326,27 +502,29 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
                 { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
               ])
             }
-          } catch (err) {
-            logger.error('watcher', `Final delivery failed: ${err instanceof Error ? err.message : 'unknown'}`)
-            if (entry.liveMsgHandle) {
-              try {
-                await deps.output.editText(chatId, entry.liveMsgHandle, `❌ Delivery error: ${escapeHtml(err instanceof Error ? err.message : 'Unknown')}`)
-              } catch { /* give up */ }
-            }
+            entry.deliveryState = 'delivered'
           }
-        }
 
-        resetTurnState(entry)
+          resetTurnState(entry)
 
-        // Drain queued messages
-        if (deps.onQueueDrain) {
-          const state = await deps.state.getChatState(chatId)
           const queued = [...state.queuedMessages]
           if (queued.length > 0) {
             state.queuedMessages = []
-            await deps.state.saveChatState(chatId, state)
+          }
+          await deps.state.saveChatState(chatId, state)
+
+          if (deps.onQueueDrain && queued.length > 0) {
             void deps.onQueueDrain(chatId, queued)
           }
+        } catch (err) {
+          logger.error('watcher', `Idle handling failed: ${err instanceof Error ? err.message : 'unknown'}`)
+          entry.deliveryState = 'pending'
+          if (entry.liveMsgHandle) {
+            try {
+              await deps.output.editText(chatId, entry.liveMsgHandle, `❌ Delivery error: ${escapeHtml(err instanceof Error ? err.message : 'Unknown')}`)
+            } catch { /* give up */ }
+          }
+          resetTurnState(entry)
         }
         break
       }
@@ -384,6 +562,11 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
       case 'session.busy': {
         if (event.data.sessionId !== entry.sessionId) return
+
+        if (!entry.inactivityCheckTimer) {
+          startInactivityCheck(chatId, entry)
+        }
+
         if (suppressDisplay) break
         if (entry.promptHandle || entry.liveMsgHandle) {
           entry.busyNotified = true
@@ -455,6 +638,73 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     }
   }
 
+  async function checkAndDeliverIfIdle(chatId: number, entry: WatcherEntry): Promise<void> {
+    if (entry.abort.signal.aborted) return
+    if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered') return
+
+    try {
+      const statuses = await deps.openCode.getSessionStatuses(entry.directory)
+      const status = statuses[entry.sessionId]
+
+      if (!status || status.type === 'idle') {
+        if (entry.deliveryState === 'pending' && entry.lastContent && entry.liveMsgHandle) {
+          entry.deliveryState = 'delivering'
+          logger.info('watcher', `Reconnect idle check: delivering pending response for session ${entry.sessionId}`)
+
+          try {
+            const state = await deps.state.getChatState(chatId)
+            const debateActive = deps.isDebateActive?.(chatId) ?? false
+
+            if (!debateActive) {
+              await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
+
+              const MAX_STORED_RESPONSE_LENGTH = 30_000
+              state.lastAssistantResponse = {
+                content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
+                sessionId: entry.sessionId,
+                timestamp: Date.now(),
+              }
+
+              if (state.settings.voiceMode) {
+                await deps.output.sendInteraction(chatId, '🎧', [
+                  { label: '음성으로 듣기', callbackData: 'voice:listen' },
+                ])
+              }
+
+              const tunnelState = deps.tunnel?.get(chatId)
+              if (tunnelState?.isActive && tunnelState.url) {
+                await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                  { label: '🌐 Open Preview', url: tunnelState.url },
+                  { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                ])
+              }
+            }
+
+            entry.deliveryState = 'delivered'
+            resetTurnState(entry)
+
+            const queued = [...state.queuedMessages]
+            if (queued.length > 0) {
+              state.queuedMessages = []
+            }
+            await deps.state.saveChatState(chatId, state)
+
+            if (deps.onQueueDrain && queued.length > 0) {
+              void deps.onQueueDrain(chatId, queued)
+            }
+          } catch (err) {
+            logger.error('watcher', `Reconnect delivery failed: ${err instanceof Error ? err.message : 'unknown'}`)
+            entry.deliveryState = 'pending'
+          }
+        } else if (entry.deliveryState === 'idle' && !entry.lastContent) {
+          await deliverLastResponse(chatId, entry)
+        }
+      }
+    } catch (err) {
+      logger.warn('watcher', `checkAndDeliverIfIdle failed: ${err instanceof Error ? err.message : 'unknown'}`)
+    }
+  }
+
   async function checkInitialSessionStatus(chatId: number, entry: WatcherEntry): Promise<void> {
     try {
       const statuses = await deps.openCode.getSessionStatuses(entry.directory)
@@ -507,15 +757,40 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           (event) => handleEvent(chatId, entry, gen, event),
           entry.abort.signal,
         )
-        // Stream ended normally (server closed connection)
         if (entry.abort.signal.aborted) return
+
+        await checkAndDeliverIfIdle(chatId, entry)
+        if (entry.abort.signal.aborted) return
+
         logger.debug('watcher', `SSE disconnected for chat ${chatId}, reconnecting in ${backoffMs}ms`)
-        await sleep(backoffMs)
+
+        await sleepWithChecks(
+          backoffMs,
+          RECONNECT_POLL_INTERVAL_MS,
+          () => checkAndDeliverIfIdle(chatId, entry),
+          entry.abort.signal,
+        )
+
+        await checkAndDeliverIfIdle(chatId, entry)
+
         backoffMs = Math.min(backoffMs * 1.5, RECONNECT_MAX_MS)
       } catch (err) {
         if (entry.abort.signal.aborted) return
+
+        await checkAndDeliverIfIdle(chatId, entry)
+        if (entry.abort.signal.aborted) return
+
         logger.warn('watcher', `SSE error for chat ${chatId}: ${err instanceof Error ? err.message : 'unknown'}, reconnecting in ${backoffMs}ms`)
-        await sleep(backoffMs)
+
+        await sleepWithChecks(
+          backoffMs,
+          RECONNECT_POLL_INTERVAL_MS,
+          () => checkAndDeliverIfIdle(chatId, entry),
+          entry.abort.signal,
+        )
+
+        await checkAndDeliverIfIdle(chatId, entry)
+
         backoffMs = Math.min(backoffMs * 1.5, RECONNECT_MAX_MS)
       }
     }
@@ -550,6 +825,13 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       liveUpdatesEnabled: true,
       actorUserId: null,
       busyNotified: false,
+      textParts: new Map(),
+      toolParts: new Map(),
+      partOrder: [],
+      lastActivityTime: 0,
+      inactivityCheckTimer: null,
+      lastWarningTime: 0,
+      deliveryState: 'idle',
     }
 
     watchers.set(chatId, entry)
@@ -564,6 +846,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     if (existing) {
       if (existing.pendingEditTimer) clearTimeout(existing.pendingEditTimer)
       if (existing.typingInterval) clearInterval(existing.typingInterval)
+      stopInactivityCheck(existing)
       existing.abort.abort()
       watchers.delete(chatId)
       logger.info('watcher', `Stopped watching for chat ${chatId}`)
