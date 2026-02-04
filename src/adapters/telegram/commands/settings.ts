@@ -165,8 +165,13 @@ function formatLength(length: number): string {
   return `${length}자`
 }
 
+function formatLanguage(lang: 'ko' | 'en'): string {
+  return lang === 'ko' ? '한국어 🇰🇷' : 'English 🇺🇸'
+}
+
 export function voiceSubText(s: UserSettings): string {
   const status = s.voiceMode ? 'ON ✅' : 'OFF'
+  const lang = formatLanguage(s.voiceLanguage)
   const length = formatLength(s.voiceSummaryLength)
   const speed = formatSpeed(s.voiceSpeed)
   const gender = s.voiceGender === 'female' ? '여성 👩' : '남성 👨'
@@ -174,21 +179,26 @@ export function voiceSubText(s: UserSettings): string {
   return [
     '<b>🔊 Voice</b>',
     '',
-    `상태: ${status}`,
-    `요약 길이: ${length}`,
-    `속도: ${speed}`,
-    `음성: ${gender}`,
+    `Status: ${status}`,
+    `Language: ${lang}`,
+    `Length: ${length}`,
+    `Speed: ${speed}`,
+    `Voice: ${gender}`,
   ].join('\n')
 }
 
 export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
   const kb = new InlineKeyboard()
 
-  kb.text(s.voiceMode ? '🔇 끄기' : '🔊 켜기', 'settings:voice_toggle').row()
+  kb.text(s.voiceMode ? '🔇 OFF' : '🔊 ON', 'settings:voice_toggle').row()
+
+  kb.text(s.voiceLanguage === 'ko' ? '✅ 한국어' : '한국어', 'settings:voice_lang:ko')
+  kb.text(s.voiceLanguage === 'en' ? '✅ English' : 'English', 'settings:voice_lang:en')
+  kb.row()
 
   const lengths = [500, 800, 1200, 2000]
   for (const len of lengths) {
-    const label = s.voiceSummaryLength === len ? `✅ ${len}자` : `${len}자`
+    const label = s.voiceSummaryLength === len ? `✅ ${len}` : `${len}`
     kb.text(label, `settings:voice_len:${len}`)
   }
   kb.row()
@@ -200,8 +210,8 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
   }
   kb.row()
 
-  kb.text(s.voiceGender === 'female' ? '✅ 여성' : '여성', 'settings:voice_gender:female')
-  kb.text(s.voiceGender === 'male' ? '✅ 남성' : '남성', 'settings:voice_gender:male')
+  kb.text(s.voiceGender === 'female' ? '✅ 👩' : '👩', 'settings:voice_gender:female')
+  kb.text(s.voiceGender === 'male' ? '✅ 👨' : '👨', 'settings:voice_gender:male')
   kb.row()
 
   kb.text('◀️ Back', 'settings:back')

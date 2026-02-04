@@ -10,5 +10,6 @@ export interface SummaryPort {
     content: string,
     model: { providerID: string; modelID: string },
     maxLength: number,
+    language: 'ko' | 'en',
   ): Promise<string>
 }

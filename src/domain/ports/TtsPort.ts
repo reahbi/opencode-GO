@@ -1,6 +1,7 @@
 export interface TtsOptions {
   gender: 'female' | 'male'
   speed: number
+  language: 'ko' | 'en'
 }
 
 export interface TtsPort {

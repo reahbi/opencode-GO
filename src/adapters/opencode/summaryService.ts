@@ -60,7 +60,7 @@ Rules:
 ${truncateInput(content)}`
 }
 
-function buildVoiceSummaryPrompt(content: string, maxLength: number): string {
+function buildVoiceSummaryPromptKo(content: string, maxLength: number): string {
   const minLength = Math.min(Math.floor(maxLength * 0.7), maxLength - 100)
   return `You are a senior engineer listening to work updates while driving.
 Summarize this AI response into a conversational audio script.
@@ -85,6 +85,36 @@ Example good output (note the detail level):
 
 Example bad output (too short, DO NOT do this):
 "작업 완료됐어요. 함수 추가했습니다."
+
+---
+${truncateInput(content)}`
+}
+
+function buildVoiceSummaryPromptEn(content: string, maxLength: number): string {
+  const minLength = Math.min(Math.floor(maxLength * 0.7), maxLength - 100)
+  return `You are a senior engineer listening to work updates while driving.
+Summarize this AI response into a conversational audio script.
+
+CRITICAL RULES:
+- Output PLAIN TEXT ONLY — no HTML, no markdown, no special formatting
+- No code blocks, no file paths with slashes, no technical symbols
+- Write as if speaking to a colleague: natural, conversational English
+- No bullet points or list markers — use flowing sentences
+- Spell out abbreviations (e.g., "TypeScript" not "TS")
+- LENGTH: Aim for ${minLength}-${maxLength} characters. Use the full length to provide useful detail.
+
+STRUCTURE (speak naturally, not as a list):
+1. Start with the outcome: success, failure, or needs input
+2. Explain what was done in detail (2-4 sentences)
+3. Mention key files or components that were changed
+4. If there are errors or questions, explain them clearly
+5. End with any next steps if relevant
+
+Example good output (note the detail level):
+"The task completed successfully. First, I added three utility functions to helper.ts: date formatting, string conversion, and array utilities. Each function includes proper type definitions, and I updated index.ts to export them. Finally, I wrote five unit tests and all of them passed. Next step would be applying these functions to the actual components."
+
+Example bad output (too short, DO NOT do this):
+"Task done. Added functions."
 
 ---
 ${truncateInput(content)}`
@@ -197,8 +227,10 @@ export function createSummaryService(openCode: OpenCodePort): SummaryPort {
       return runSummarySession(directory, prompt, model, LIMITS.SUMMARY_HTML_HARD_CAP, '\n\n<i>... (truncated)</i>')
     },
 
-    async summarizeForVoice(directory, content, model, maxLength) {
-      const prompt = buildVoiceSummaryPrompt(content, maxLength)
+    async summarizeForVoice(directory, content, model, maxLength, language) {
+      const prompt = language === 'en'
+        ? buildVoiceSummaryPromptEn(content, maxLength)
+        : buildVoiceSummaryPromptKo(content, maxLength)
       return runSummarySession(directory, prompt, model, maxLength, '...')
     },
   }

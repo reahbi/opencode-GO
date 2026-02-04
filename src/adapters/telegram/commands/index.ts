@@ -412,9 +412,18 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             await state.saveChatState(chatId, chatState)
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
+          case 'voice_lang': {
+            const lang = parsed.value as 'ko' | 'en'
+            if (lang === 'ko' || lang === 'en') {
+              chatState.settings.voiceLanguage = lang
+              await state.saveChatState(chatId, chatState)
+            }
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          }
           case 'voice_len': {
             const len = parseInt(parsed.value ?? '', 10)
-            if ([300, 500, 800].includes(len)) {
+            if ([500, 800, 1200, 2000].includes(len)) {
               chatState.settings.voiceSummaryLength = len
               await state.saveChatState(chatId, chatState)
             }
@@ -423,7 +432,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           }
           case 'voice_spd': {
             const spd = parseFloat(parsed.value ?? '')
-            if ([0.75, 1.0, 1.25].includes(spd)) {
+            if ([1.0, 1.25, 1.5, 2.0].includes(spd)) {
               chatState.settings.voiceSpeed = spd
               await state.saveChatState(chatId, chatState)
             }

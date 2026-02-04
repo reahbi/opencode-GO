@@ -6,8 +6,14 @@ import { randomUUID } from 'crypto'
 import type { TtsPort, TtsOptions } from '../../domain/ports/TtsPort.js'
 
 const VOICE_MAP = {
-  female: 'ko-KR-SunHiNeural',
-  male: 'ko-KR-InJoonNeural',
+  ko: {
+    female: 'ko-KR-SunHiNeural',
+    male: 'ko-KR-InJoonNeural',
+  },
+  en: {
+    female: 'en-US-JennyNeural',
+    male: 'en-US-GuyNeural',
+  },
 } as const
 
 const EDGE_TTS_PATH = '/tmp/edge-tts-env/bin/edge-tts'
@@ -20,7 +26,8 @@ function speedToRate(speed: number): string {
 export function createEdgeTtsAdapter(): TtsPort {
   return {
     async synthesize(text: string, options: TtsOptions): Promise<Uint8Array> {
-      const voice = VOICE_MAP[options.gender]
+      const lang = options.language || 'ko'
+      const voice = VOICE_MAP[lang][options.gender]
       const rate = speedToRate(options.speed)
       
       const id = randomUUID()

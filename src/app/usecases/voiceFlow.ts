@@ -74,6 +74,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
         content,
         settings.summaryModel!,
         settings.voiceSummaryLength,
+        settings.voiceLanguage,
       )
 
       logger.debug('voice', `Voice summary generated: ${voiceSummary.length} chars`)
@@ -81,6 +82,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       const audioData = await deps.tts.synthesize(voiceSummary, {
         gender: settings.voiceGender,
         speed: settings.voiceSpeed,
+        language: settings.voiceLanguage,
       })
 
       logger.debug('voice', `Audio synthesized: ${audioData.length} bytes`)
