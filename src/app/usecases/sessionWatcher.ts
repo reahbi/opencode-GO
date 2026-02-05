@@ -2,7 +2,7 @@ import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
-import type { OutputHandle, UserSettings, QueuedMessage } from '../../domain/models.js'
+import type { OutputHandle, UserSettings, QueuedMessage, ChatState } from '../../domain/models.js'
 import type { OpenCodeEvent, PermissionAsked, QuestionAsked, ToolPartUpdated } from '../../domain/events.js'
 import type { TunnelManager } from './tunnelManager.js'
 import { logger } from '../../shared/logger.js'
@@ -107,6 +107,37 @@ function hasErrorCode(err: unknown, code: string): boolean {
 
 export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
   const watchers = new Map<number, WatcherEntry>()
+
+  // ── Voice response helpers ────────────────────────────────
+
+  function generateResponseId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+  }
+
+  function addVoiceResponse(state: ChatState, content: string): string {
+    const responseId = generateResponseId()
+    const now = Date.now()
+
+    if (!state.voiceResponses) {
+      state.voiceResponses = []
+    }
+
+    state.voiceResponses = state.voiceResponses.filter(
+      r => now - r.createdAt < LIMITS.VOICE_HISTORY_TTL_MS,
+    )
+
+    state.voiceResponses.push({
+      id: responseId,
+      content: content.slice(0, 30_000),
+      createdAt: now,
+    })
+
+    if (state.voiceResponses.length > LIMITS.VOICE_HISTORY_MAX) {
+      state.voiceResponses = state.voiceResponses.slice(-LIMITS.VOICE_HISTORY_MAX)
+    }
+
+    return responseId
+  }
 
   // ── Display helpers ───────────────────────────────────────
 
@@ -413,7 +444,14 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         if (suppressDisplay) break
         const { sessionId: evtSessionId, messageId, partId, content } = event.data
         if (evtSessionId !== entry.sessionId) return
-        if (messageId && !entry.assistantMessageIds.has(messageId)) return
+
+        if (messageId && !entry.assistantMessageIds.has(messageId)) {
+          entry.assistantMessageIds.add(messageId)
+          if (entry.currentMessageId !== messageId) {
+            entry.currentMessageId = messageId
+            logger.debug('watcher', `Auto-registered message ${messageId} from part.updated`)
+          }
+        }
 
         entry.lastActivityTime = Date.now()
 
@@ -441,7 +479,14 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         if (suppressDisplay) break
         const { sessionId: evtSessionId, messageId, partId, tool, title, status } = event.data
         if (evtSessionId !== entry.sessionId) return
-        if (messageId && !entry.assistantMessageIds.has(messageId)) return
+
+        if (messageId && !entry.assistantMessageIds.has(messageId)) {
+          entry.assistantMessageIds.add(messageId)
+          if (entry.currentMessageId !== messageId) {
+            entry.currentMessageId = messageId
+            logger.debug('watcher', `Auto-registered message ${messageId} from tool.part.updated`)
+          }
+        }
 
         entry.lastActivityTime = Date.now()
 
@@ -478,31 +523,44 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         try {
           const state = await deps.state.getChatState(chatId)
 
-          if (!suppressDisplay && entry.lastContent && entry.liveMsgHandle) {
-            entry.deliveryState = 'delivering'
-            await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
-
-            const MAX_STORED_RESPONSE_LENGTH = 30_000
-            state.lastAssistantResponse = {
-              content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
-              sessionId: entry.sessionId,
-              timestamp: Date.now(),
+          if (!suppressDisplay && entry.lastContent) {
+            let deliveryHandle = entry.liveMsgHandle
+            if (!deliveryHandle) {
+              try {
+                deliveryHandle = await deps.output.sendText(chatId, '📋 Loading response...')
+                logger.debug('watcher', `Created fallback handle for delivery in chat ${chatId}`)
+              } catch (handleErr) {
+                logger.error('watcher', `Failed to create fallback handle: ${handleErr}`)
+              }
             }
 
-            if (state.settings.voiceMode) {
-              await deps.output.sendInteraction(chatId, '🎧', [
-                { label: '음성으로 듣기', callbackData: 'voice:listen' },
-              ])
-            }
+            if (deliveryHandle) {
+              entry.deliveryState = 'delivering'
+              await sendFinalResponse(chatId, deliveryHandle, entry.lastContent, state.settings, entry.directory)
 
-            const tunnelState = deps.tunnel?.get(chatId)
-            if (tunnelState?.isActive && tunnelState.url) {
-              await deps.output.sendInteraction(chatId, '🔗 Preview available', [
-                { label: '🌐 Open Preview', url: tunnelState.url },
-                { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
-              ])
+              const MAX_STORED_RESPONSE_LENGTH = 30_000
+              state.lastAssistantResponse = {
+                content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
+                sessionId: entry.sessionId,
+                timestamp: Date.now(),
+              }
+
+              if (state.settings.voiceMode) {
+                const responseId = addVoiceResponse(state, entry.lastContent)
+                await deps.output.sendInteraction(chatId, '🎧', [
+                  { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
+                ])
+              }
+
+              const tunnelState = deps.tunnel?.get(chatId)
+              if (tunnelState?.isActive && tunnelState.url) {
+                await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                  { label: '🌐 Open Preview', url: tunnelState.url },
+                  { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                ])
+              }
+              entry.deliveryState = 'delivered'
             }
-            entry.deliveryState = 'delivered'
           }
 
           resetTurnState(entry)
@@ -647,16 +705,27 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       const status = statuses[entry.sessionId]
 
       if (!status || status.type === 'idle') {
-        if (entry.deliveryState === 'pending' && entry.lastContent && entry.liveMsgHandle) {
-          entry.deliveryState = 'delivering'
-          logger.info('watcher', `Reconnect idle check: delivering pending response for session ${entry.sessionId}`)
+        if (entry.deliveryState === 'pending' && entry.lastContent) {
+          let deliveryHandle = entry.liveMsgHandle
+          if (!deliveryHandle) {
+            try {
+              deliveryHandle = await deps.output.sendText(chatId, '📋 Loading response...')
+              logger.debug('watcher', `Created fallback handle for reconnect delivery in chat ${chatId}`)
+            } catch (handleErr) {
+              logger.error('watcher', `Failed to create fallback handle on reconnect: ${handleErr}`)
+            }
+          }
 
-          try {
-            const state = await deps.state.getChatState(chatId)
-            const debateActive = deps.isDebateActive?.(chatId) ?? false
+          if (deliveryHandle) {
+            entry.deliveryState = 'delivering'
+            logger.info('watcher', `Reconnect idle check: delivering pending response for session ${entry.sessionId}`)
 
-            if (!debateActive) {
-              await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
+            try {
+              const state = await deps.state.getChatState(chatId)
+              const debateActive = deps.isDebateActive?.(chatId) ?? false
+
+              if (!debateActive) {
+                await sendFinalResponse(chatId, deliveryHandle, entry.lastContent, state.settings, entry.directory)
 
               const MAX_STORED_RESPONSE_LENGTH = 30_000
               state.lastAssistantResponse = {
@@ -666,8 +735,9 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
               }
 
               if (state.settings.voiceMode) {
+                const responseId = addVoiceResponse(state, entry.lastContent)
                 await deps.output.sendInteraction(chatId, '🎧', [
-                  { label: '음성으로 듣기', callbackData: 'voice:listen' },
+                  { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
                 ])
               }
 
@@ -692,9 +762,10 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
             if (deps.onQueueDrain && queued.length > 0) {
               void deps.onQueueDrain(chatId, queued)
             }
-          } catch (err) {
-            logger.error('watcher', `Reconnect delivery failed: ${err instanceof Error ? err.message : 'unknown'}`)
-            entry.deliveryState = 'pending'
+            } catch (err) {
+              logger.error('watcher', `Reconnect delivery failed: ${err instanceof Error ? err.message : 'unknown'}`)
+              entry.deliveryState = 'pending'
+            }
           }
         } else if (entry.deliveryState === 'idle' && !entry.lastContent) {
           await deliverLastResponse(chatId, entry)

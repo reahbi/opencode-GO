@@ -88,6 +88,12 @@ export interface LastAssistantResponse {
   timestamp: number
 }
 
+export interface VoiceResponse {
+  id: string
+  content: string
+  createdAt: number
+}
+
 export interface ChatState {
   activeProjectDirectory: string | null
   activeSessionId: string | null
@@ -102,13 +108,14 @@ export interface ChatState {
   redoAvailable?: boolean
   tunnelState?: TunnelState
   lastAssistantResponse?: LastAssistantResponse
+  voiceResponses?: VoiceResponse[]
 }
 
 export function createDefaultUserSettings(): UserSettings {
   return {
-    summaryMode: false,
-    summaryModel: null,
-    summaryThreshold: 6000,
+    summaryMode: true,
+    summaryModel: { providerID: 'google', modelID: 'antigravity-gemini-3-flash' },
+    summaryThreshold: 3000,
     outputMode: 'formatted',
     historyFormat: 'html',
     historyLimit: null,
@@ -131,6 +138,7 @@ export function createDefaultChatState(): ChatState {
     awaitingInput: null,
     awaitingInteractionId: null,
     queuedMessages: [],
+    voiceResponses: [],
   }
 }
 

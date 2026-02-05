@@ -165,8 +165,27 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     await deps.state.saveChatState(chatId, chatState)
 
     if (interaction.messageHandle) {
-      const total = interaction.questions?.length ?? 1
-      const summary = total > 1 ? `✅ ${total} questions answered` : '✅ Answer submitted'
+      const questions = interaction.questions ?? []
+      const total = questions.length
+      let summary: string
+
+      if (total === 1) {
+        const answer = answers[0] ?? []
+        const answerText = answer.length === 0
+          ? '⏭️ skipped'
+          : escapeHtml(answer.join(', '))
+        summary = `✅ <b>Answered:</b> ${answerText}`
+      } else {
+        const lines = [`✅ <b>${total} questions answered</b>\n`]
+        for (let i = 0; i < total; i++) {
+          const q = questions[i]
+          const a = answers[i] ?? []
+          lines.push(`<b>${i + 1}.</b> ${escapeHtml(q?.text ?? '?')}`)
+          lines.push(`   → ${answerLabel(a)}\n`)
+        }
+        summary = lines.join('\n')
+      }
+
       try {
         await deps.output.editInteraction(chatId, interaction.messageHandle, summary, [])
       } catch {

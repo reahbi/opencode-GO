@@ -1,6 +1,7 @@
 # OPENCODE-GO KNOWLEDGE BASE
 
 **Generated:** 2026-02-04
+**Directory:** `opencode-telegram` (NOT `Claude-telegram`)
 
 ## OVERVIEW
 

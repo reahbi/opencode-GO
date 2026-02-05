@@ -4,6 +4,7 @@ import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { UserSettings } from '../../domain/models.js'
 import { logger } from '../../shared/logger.js'
+import { LIMITS } from '../policies/limits.js'
 
 interface VoiceFlowDeps {
   summary: SummaryPort
@@ -14,22 +15,30 @@ interface VoiceFlowDeps {
 
 const inFlightRequests = new Map<string, Promise<void>>()
 
-function makeRequestKey(chatId: number, sessionId: string, timestamp: number): string {
-  return `${chatId}:${sessionId}:${timestamp}`
+function makeRequestKey(chatId: number, responseId: string): string {
+  return `${chatId}:${responseId}`
 }
 
 export interface VoiceFlow {
-  sendVoiceResponse(chatId: number): Promise<void>
+  sendVoiceResponse(chatId: number, responseId: string): Promise<void>
 }
 
 export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
 
-  async function sendVoiceResponse(chatId: number): Promise<void> {
+  async function sendVoiceResponse(chatId: number, responseId: string): Promise<void> {
     const chatState = await deps.state.getChatState(chatId)
-    const { settings, lastAssistantResponse, activeProjectDirectory } = chatState
+    const { settings, activeProjectDirectory, voiceResponses } = chatState
 
-    if (!lastAssistantResponse) {
-      await deps.output.sendText(chatId, '❌ 음성으로 변환할 응답이 없습니다.')
+    const voiceResponse = voiceResponses?.find(r => r.id === responseId)
+
+    if (!voiceResponse) {
+      await deps.output.sendText(chatId, '❌ 이 음성 버튼은 만료되었습니다. 새 응답에서 다시 시도해주세요.')
+      return
+    }
+
+    const now = Date.now()
+    if (now - voiceResponse.createdAt > LIMITS.VOICE_HISTORY_TTL_MS) {
+      await deps.output.sendText(chatId, '❌ 이 음성 버튼은 만료되었습니다. 새 응답에서 다시 시도해주세요.')
       return
     }
 
@@ -43,14 +52,14 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       return
     }
 
-    const requestKey = makeRequestKey(chatId, lastAssistantResponse.sessionId, lastAssistantResponse.timestamp)
+    const requestKey = makeRequestKey(chatId, responseId)
     const existing = inFlightRequests.get(requestKey)
     if (existing) {
       logger.debug('voice', `Deduping voice request for ${requestKey}`)
       return existing
     }
 
-    const promise = doSendVoiceResponse(chatId, lastAssistantResponse.content, settings, activeProjectDirectory)
+    const promise = doSendVoiceResponse(chatId, voiceResponse.content, settings, activeProjectDirectory)
     inFlightRequests.set(requestKey, promise)
 
     try {

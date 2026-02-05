@@ -76,6 +76,7 @@ describe('sessionWatcher', () => {
     state = createMockStateStore(buildChatState({
       activeProjectDirectory: directory,
       activeSessionId: sessionId,
+      settings: buildUserSettings({ summaryMode: false, summaryModel: null }),
     }))
     summary = {
       summarize: mock(() => Promise.resolve('summarized text')),
@@ -121,8 +122,12 @@ describe('sessionWatcher', () => {
     watcher.stop(chatId)
   })
 
-  it('ignores message parts that are not from tracked assistant messages', async () => {
-    const openCode = createOpenCodeWithEvents([messagePart('ignored', 'msg-x')])
+  it('ignores message parts from different session', async () => {
+    const differentSessionPart: OpenCodeEvent = {
+      type: 'message.part.updated',
+      data: { sessionId: 'different-session', partId: 'part-1', messageId: 'msg-x', content: 'ignored', finished: false },
+    }
+    const openCode = createOpenCodeWithEvents([differentSessionPart])
     const watcher = createSessionWatcher({ openCode, state, output, summary, onPermissionAsked, onQuestionAsked })
 
     await watcher.watch(chatId)

@@ -28,13 +28,25 @@ export function settingsMainText(
   const server = opts.healthy ? '🟢 Online' : '🔴 Offline'
   const session = opts.hasSession ? 'active' : 'None'
   const agent = opts.activeAgent || 'default'
-  const review = resolveReviewMode(s, opts.botRole) ? '🔒 ON' : 'OFF'
+  const review = resolveReviewMode(s, opts.botRole) ? '🔒' : 'OFF'
+
+  const summaryStatus = s.summaryMode ? '✅' : 'OFF'
+  const summaryModel = s.summaryModel ? s.summaryModel.modelID.split('/').pop() : '-'
+  const outputFmt = s.outputMode === 'formatted' ? 'Fmt' : 'Raw'
+  const histFmt = s.historyFormat === 'html' ? 'HTML' : 'MD'
+  const histLimit = s.historyLimit ? `${s.historyLimit}` : 'All'
+  const voiceStatus = s.voiceMode ? '✅' : 'OFF'
+  const voiceLang = s.voiceLanguage === 'ko' ? '🇰🇷' : '🇺🇸'
 
   return [
     header,
     '',
     `${server} · Session: ${session}`,
-    `🤖 ${agent} · Review: ${review}`,
+    '',
+    `<b>🤖 Agent:</b> ${agent} · Review: ${review}`,
+    `<b>📊 Summary:</b> ${summaryStatus} · Model: ${summaryModel}`,
+    `<b>📝 Output:</b> ${outputFmt} · <b>📜 History:</b> ${histFmt}/${histLimit}`,
+    `<b>🔊 Voice:</b> ${voiceStatus} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
   ].join('\n')
 }
 

@@ -13,6 +13,7 @@ export interface SessionPageItem {
   title: string
   id: string
   isActive: boolean
+  isBusy: boolean
 }
 
 export interface SessionPageData {
@@ -184,7 +185,11 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     const state = await deps.state.getChatState(chatId)
     if (!state.activeProjectDirectory) return null
 
-    const sessions = await deps.openCode.listSessions(state.activeProjectDirectory)
+    const [sessions, statuses] = await Promise.all([
+      deps.openCode.listSessions(state.activeProjectDirectory),
+      deps.openCode.getSessionStatuses(state.activeProjectDirectory),
+    ])
+
     if (sessions.length === 0) {
       return { items: [], page: 1, totalPages: 1, totalSessions: 0 }
     }
@@ -203,6 +208,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
         title: s.title || 'Untitled',
         id: s.id,
         isActive: s.id === state.activeSessionId,
+        isBusy: statuses[s.id]?.type === 'busy',
       })),
       page: safePage,
       totalPages,

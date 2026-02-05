@@ -68,4 +68,11 @@ export const LIMITS = {
 
   /** Interval to check for inactivity (ms) — 5 minutes */
   INACTIVITY_CHECK_INTERVAL_MS: 5 * 60 * 1000,
+
+  // ── Voice Response History ─────────────────────────────────
+  /** Maximum number of voice responses to keep per chat */
+  VOICE_HISTORY_MAX: 50,
+
+  /** Voice response TTL (ms) — 24 hours */
+  VOICE_HISTORY_TTL_MS: 24 * 60 * 60 * 1000,
 } as const

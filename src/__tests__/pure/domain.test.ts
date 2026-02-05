@@ -12,9 +12,9 @@ describe('domain/models', () => {
     it('returns valid UserSettings with correct defaults', () => {
       const settings = createDefaultUserSettings()
       
-      expect(settings.summaryMode).toBe(false)
-      expect(settings.summaryModel).toBe(null)
-      expect(settings.summaryThreshold).toBe(6000)
+      expect(settings.summaryMode).toBe(true)
+      expect(settings.summaryModel).toEqual({ providerID: 'google', modelID: 'antigravity-gemini-3-flash' })
+      expect(settings.summaryThreshold).toBe(3000)
       expect(settings.outputMode).toBe('formatted')
       expect(settings.historyFormat).toBe('html')
       expect(settings.historyLimit).toBe(null)

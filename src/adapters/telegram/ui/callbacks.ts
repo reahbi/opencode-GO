@@ -23,7 +23,7 @@ export type ParsedCallback =
   | { type: 'groupsettings'; action: string; value?: string }
   | { type: 'tunnel'; action: 'stop' | 'custom' | 'start'; port?: number }
   | { type: 'git'; action: string }
-  | { type: 'voice'; action: 'listen' }
+  | { type: 'voice'; action: 'listen'; responseId: string }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -200,9 +200,9 @@ export function parseCallback(data: string): ParsedCallback {
   }
 
   if (data.startsWith('voice:')) {
-    const action = data.slice(6)
-    if (action === 'listen') {
-      return { type: 'voice', action: 'listen' }
+    const parts = data.split(':')
+    if (parts[1] === 'listen' && parts[2]) {
+      return { type: 'voice', action: 'listen', responseId: parts[2] }
     }
     return { type: 'unknown', raw: data }
   }

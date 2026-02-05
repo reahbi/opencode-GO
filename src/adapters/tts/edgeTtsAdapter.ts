@@ -1,8 +1,9 @@
 import { spawn } from 'child_process'
-import { readFile, unlink, writeFile } from 'fs/promises'
+import { readFile, unlink, writeFile, access } from 'fs/promises'
 import { join } from 'path'
-import { tmpdir } from 'os'
+import { tmpdir, homedir } from 'os'
 import { randomUUID } from 'crypto'
+import { existsSync } from 'fs'
 import type { TtsPort, TtsOptions } from '../../domain/ports/TtsPort.js'
 
 const VOICE_MAP = {
@@ -16,7 +17,30 @@ const VOICE_MAP = {
   },
 } as const
 
-const EDGE_TTS_PATH = '/tmp/edge-tts-env/bin/edge-tts'
+function resolveEdgeTtsPath(): string {
+  if (process.env.EDGE_TTS_PATH) {
+    return process.env.EDGE_TTS_PATH
+  }
+  
+  const home = homedir()
+  const candidates = [
+    join(home, '.local', 'edge-tts-env', 'bin', 'edge-tts'),
+    '/tmp/edge-tts-env/bin/edge-tts',
+    join(home, '.local', 'bin', 'edge-tts'),
+    '/usr/local/bin/edge-tts',
+    '/usr/bin/edge-tts',
+  ]
+  
+  for (const path of candidates) {
+    if (existsSync(path)) {
+      return path
+    }
+  }
+  
+  return candidates[0]
+}
+
+const EDGE_TTS_PATH = resolveEdgeTtsPath()
 
 function speedToRate(speed: number): string {
   const percent = Math.round((speed - 1) * 100)

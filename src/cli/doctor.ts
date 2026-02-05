@@ -212,6 +212,24 @@ async function main(): Promise<void> {
         });
       }
     }
+
+    // Check 7: edge-tts for voice synthesis
+    const s7 = spinner();
+    const edgeTtsPath = process.env.EDGE_TTS_PATH || `${process.env.HOME}/.local/edge-tts-env/bin/edge-tts`;
+    s7.start('Checking edge-tts (voice synthesis)...');
+    try {
+      await access(edgeTtsPath);
+      s7.stop(`edge-tts: installed (${edgeTtsPath})`);
+      results.push({ name: 'edge-tts', passed: true, message: `installed` });
+    } catch {
+      s7.stop('edge-tts: not installed');
+      results.push({
+        name: 'edge-tts',
+        passed: false,
+        message: 'not installed (voice feature will not work)',
+        fix: `python3 -m venv ~/.local/edge-tts-env && ~/.local/edge-tts-env/bin/pip install edge-tts`,
+      });
+    }
   }
 
   // Summary

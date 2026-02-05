@@ -639,7 +639,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'voice': {
         if (deps.voiceFlow && parsed.action === 'listen') {
-          await deps.voiceFlow.sendVoiceResponse(chatId)
+          await deps.voiceFlow.sendVoiceResponse(chatId, parsed.responseId)
         }
         break
       }

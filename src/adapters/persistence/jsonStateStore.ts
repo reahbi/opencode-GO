@@ -96,6 +96,9 @@ export function createJsonStateStore(dataDir?: string): StateStore {
         pi => migratePendingInteraction(pi as unknown as Record<string, unknown>)
       )
     }
+    if (!state.voiceResponses) {
+      state.voiceResponses = []
+    }
     return state
   }
 
