@@ -70,5 +70,5 @@ export function structuralExtract(markdown: string): string {
     return result.slice(0, MAX_EXTRACT_LENGTH - 3) + '...'
   }
 
-  return result || markdown.slice(0, MAX_EXTRACT_LENGTH)
+  return result || escapeHtml(markdown.slice(0, MAX_EXTRACT_LENGTH))
 }

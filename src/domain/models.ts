@@ -92,6 +92,7 @@ export interface VoiceResponse {
   id: string
   content: string
   createdAt: number
+  directory: string
 }
 
 export interface ChatState {

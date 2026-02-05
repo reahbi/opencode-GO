@@ -4,6 +4,7 @@ import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { UserSettings } from '../../domain/models.js'
 import { logger } from '../../shared/logger.js'
+import { escapeHtml } from '../../shared/formatResponse.js'
 import { LIMITS } from '../policies/limits.js'
 
 interface VoiceFlowDeps {
@@ -27,7 +28,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
 
   async function sendVoiceResponse(chatId: number, responseId: string): Promise<void> {
     const chatState = await deps.state.getChatState(chatId)
-    const { settings, activeProjectDirectory, voiceResponses } = chatState
+    const { settings, voiceResponses } = chatState
 
     const voiceResponse = voiceResponses?.find(r => r.id === responseId)
 
@@ -39,11 +40,6 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
     const now = Date.now()
     if (now - voiceResponse.createdAt > LIMITS.VOICE_HISTORY_TTL_MS) {
       await deps.output.sendText(chatId, '❌ 이 음성 버튼은 만료되었습니다. 새 응답에서 다시 시도해주세요.')
-      return
-    }
-
-    if (!activeProjectDirectory) {
-      await deps.output.sendText(chatId, '❌ 활성 프로젝트가 없습니다.')
       return
     }
 
@@ -59,7 +55,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       return existing
     }
 
-    const promise = doSendVoiceResponse(chatId, voiceResponse.content, settings, activeProjectDirectory)
+    const promise = doSendVoiceResponse(chatId, voiceResponse.content, settings, voiceResponse.directory)
     inFlightRequests.set(requestKey, promise)
 
     try {
@@ -103,14 +99,14 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       logger.error('voice', `Voice generation failed: ${message}`)
 
       try {
-        const fallbackSummary = content.slice(0, settings.voiceSummaryLength)
+        const fallbackSummary = escapeHtml(content.slice(0, settings.voiceSummaryLength))
         await deps.output.editText(
           chatId,
           statusHandle,
           `❌ 음성 생성 실패\n\n<b>텍스트 요약:</b>\n${fallbackSummary}${content.length > settings.voiceSummaryLength ? '...' : ''}`,
         )
       } catch {
-        await deps.output.editText(chatId, statusHandle, `❌ 음성 생성 실패: ${message}`)
+        await deps.output.editText(chatId, statusHandle, `❌ 음성 생성 실패: ${escapeHtml(message)}`)
       }
     }
   }

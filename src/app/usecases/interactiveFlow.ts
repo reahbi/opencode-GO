@@ -6,7 +6,20 @@ import type { PermissionAsked, QuestionAsked } from '../../domain/events.js'
 import { LIMITS } from '../policies/limits.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
-import { randomUUID } from 'node:crypto'
+
+// Use globalThis.crypto.randomUUID() instead of node:crypto to maintain Clean Architecture
+// (app/ layer should not import Node.js built-in modules directly)
+function generateUUID(): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID()
+  }
+  // Fallback for environments without WebCrypto
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
 
 interface InteractiveFlowDeps {
   openCode: OpenCodePort
@@ -208,7 +221,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         return
       }
 
-      const interactionId = randomUUID()
+      const interactionId = generateUUID()
       const interaction: PendingInteraction = {
         interactionId,
         sessionId: event.sessionId,
@@ -238,7 +251,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
   async function handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number): Promise<void> {
     try {
-      const interactionId = randomUUID()
+      const interactionId = generateUUID()
       const questions = event.questions.map(q => ({
         text: q.text,
         options: q.options ?? [],

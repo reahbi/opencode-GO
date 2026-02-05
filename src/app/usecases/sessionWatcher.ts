@@ -114,7 +114,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
   }
 
-  function addVoiceResponse(state: ChatState, content: string): string {
+  function addVoiceResponse(state: ChatState, content: string, directory: string): string {
     const responseId = generateResponseId()
     const now = Date.now()
 
@@ -130,6 +130,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       id: responseId,
       content: content.slice(0, 30_000),
       createdAt: now,
+      directory,
     })
 
     if (state.voiceResponses.length > LIMITS.VOICE_HISTORY_MAX) {
@@ -546,18 +547,26 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
               }
 
               if (state.settings.voiceMode) {
-                const responseId = addVoiceResponse(state, entry.lastContent)
-                await deps.output.sendInteraction(chatId, '🎧', [
-                  { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
-                ])
+                const responseId = addVoiceResponse(state, entry.lastContent, entry.directory)
+                try {
+                  await deps.output.sendInteraction(chatId, '🎧', [
+                    { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
+                  ])
+                } catch (voiceErr) {
+                  logger.warn('watcher', `Failed to send voice button: ${voiceErr instanceof Error ? voiceErr.message : 'unknown'}`)
+                }
               }
 
               const tunnelState = deps.tunnel?.get(chatId)
               if (tunnelState?.isActive && tunnelState.url) {
-                await deps.output.sendInteraction(chatId, '🔗 Preview available', [
-                  { label: '🌐 Open Preview', url: tunnelState.url },
-                  { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
-                ])
+                try {
+                  await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                    { label: '🌐 Open Preview', url: tunnelState.url },
+                    { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                  ])
+                } catch (tunnelErr) {
+                  logger.warn('watcher', `Failed to send tunnel button: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                }
               }
               entry.deliveryState = 'delivered'
             }
@@ -727,41 +736,49 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
               if (!debateActive) {
                 await sendFinalResponse(chatId, deliveryHandle, entry.lastContent, state.settings, entry.directory)
 
-              const MAX_STORED_RESPONSE_LENGTH = 30_000
-              state.lastAssistantResponse = {
-                content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
-                sessionId: entry.sessionId,
-                timestamp: Date.now(),
+                const MAX_STORED_RESPONSE_LENGTH = 30_000
+                state.lastAssistantResponse = {
+                  content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
+                  sessionId: entry.sessionId,
+                  timestamp: Date.now(),
+                }
+
+                if (state.settings.voiceMode) {
+                  const responseId = addVoiceResponse(state, entry.lastContent, entry.directory)
+                  try {
+                    await deps.output.sendInteraction(chatId, '🎧', [
+                      { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
+                    ])
+                  } catch (voiceErr) {
+                    logger.warn('watcher', `Failed to send voice button on reconnect: ${voiceErr instanceof Error ? voiceErr.message : 'unknown'}`)
+                  }
+                }
+
+                const tunnelState = deps.tunnel?.get(chatId)
+                if (tunnelState?.isActive && tunnelState.url) {
+                  try {
+                    await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                      { label: '🌐 Open Preview', url: tunnelState.url },
+                      { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                    ])
+                  } catch (tunnelErr) {
+                    logger.warn('watcher', `Failed to send tunnel button on reconnect: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                  }
+                }
               }
 
-              if (state.settings.voiceMode) {
-                const responseId = addVoiceResponse(state, entry.lastContent)
-                await deps.output.sendInteraction(chatId, '🎧', [
-                  { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
-                ])
+              entry.deliveryState = 'delivered'
+              resetTurnState(entry)
+
+              const queued = [...state.queuedMessages]
+              if (queued.length > 0) {
+                state.queuedMessages = []
               }
+              await deps.state.saveChatState(chatId, state)
 
-              const tunnelState = deps.tunnel?.get(chatId)
-              if (tunnelState?.isActive && tunnelState.url) {
-                await deps.output.sendInteraction(chatId, '🔗 Preview available', [
-                  { label: '🌐 Open Preview', url: tunnelState.url },
-                  { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
-                ])
+              if (deps.onQueueDrain && queued.length > 0) {
+                void deps.onQueueDrain(chatId, queued)
               }
-            }
-
-            entry.deliveryState = 'delivered'
-            resetTurnState(entry)
-
-            const queued = [...state.queuedMessages]
-            if (queued.length > 0) {
-              state.queuedMessages = []
-            }
-            await deps.state.saveChatState(chatId, state)
-
-            if (deps.onQueueDrain && queued.length > 0) {
-              void deps.onQueueDrain(chatId, queued)
-            }
             } catch (err) {
               logger.error('watcher', `Reconnect delivery failed: ${err instanceof Error ? err.message : 'unknown'}`)
               entry.deliveryState = 'pending'

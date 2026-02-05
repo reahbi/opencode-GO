@@ -15,9 +15,9 @@ export function buildSessionListKeyboard(data: SessionPageData): InlineKeyboard 
   const kb = new InlineKeyboard()
 
   for (const item of data.items) {
-    const busy = item.isBusy ? ' 🔄' : ''
-    const active = item.isActive ? ' ✦' : ''
-    const label = `${item.globalIndex}. ${item.title.slice(0, 35)}${busy}${active}`
+    const busy = item.isBusy ? '🔄 ' : ''
+    const active = item.isActive ? '✦ ' : ''
+    const label = `${busy}${active}${item.globalIndex}. ${item.title.slice(0, 30)}`
     kb.text(label, `ls:${item.id}`).row()
   }
 

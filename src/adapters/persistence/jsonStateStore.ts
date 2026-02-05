@@ -98,6 +98,13 @@ export function createJsonStateStore(dataDir?: string): StateStore {
     }
     if (!state.voiceResponses) {
       state.voiceResponses = []
+    } else {
+      state.voiceResponses = state.voiceResponses
+        .map(r => ({
+          ...r,
+          directory: r.directory ?? state.activeProjectDirectory ?? '',
+        }))
+        .filter(r => r.directory !== '')
     }
     return state
   }
