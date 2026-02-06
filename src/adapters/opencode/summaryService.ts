@@ -60,67 +60,36 @@ Rules:
 ${truncateInput(content)}`
 }
 
-function buildVoiceSummaryPromptKo(content: string, maxLength: number): string {
-  return `Convert this AI coding assistant response into a spoken summary in Korean.
-This will be read aloud by text-to-speech, so write for listening.
+function buildVoiceSummaryPrompt(content: string, maxLength: number, language: 'ko' | 'en'): string {
+  const langName = language === 'ko' ? 'Korean' : 'English'
+  const goodExample = language === 'ko'
+    ? '"작업이 성공적으로 완료됐어요. 이번에 진행한 내용을 설명드릴게요. 먼저 인증 모듈을 전면 리팩토링했습니다. 기존에는 auth.ts 파일 하나에 모든 로직이 있었는데, 이걸 세 개의 파일로 분리했어요. authService.ts에는 로그인과 로그아웃 핵심 로직을, tokenManager.ts에는 JWT 토큰 생성과 검증 로직을, 그리고 authMiddleware.ts에는 Express 미들웨어를 넣었습니다. 이렇게 분리한 이유는 테스트하기 쉽게 만들고, 나중에 OAuth 같은 다른 인증 방식을 추가할 때 확장성을 확보하기 위해서예요. 토큰 만료 시간은 기존 1시간에서 24시간으로 늘렸고, 리프레시 토큰도 새로 구현했습니다. 테스트는 총 12개를 작성했는데 모두 통과했습니다. 다음으로 해주셔야 할 건 환경 변수에 JWT_SECRET 값을 설정하시는 거예요."'
+    : '"The task completed successfully. First, I completely refactored the authentication module. Previously, all the logic was in a single auth.ts file, but I split it into three separate files. authService.ts now contains the core login and logout logic, tokenManager.ts handles JWT token generation and validation, and authMiddleware.ts has the Express middleware. The reason for this separation is to make testing easier and to ensure extensibility when adding other auth methods like OAuth later. I changed the token expiration from 1 hour to 24 hours and implemented refresh tokens as well. I wrote 12 tests total and they all pass. The next thing you need to do is set the JWT_SECRET environment variable."'
+
+  return `Convert this AI coding assistant response into a spoken summary in ${langName}.
+This text will be read aloud by text-to-speech. Write for listening, not reading.
+
+OUTPUT LANGUAGE: ${langName} only. All output must be in ${langName}.
 
 CRITICAL RULES:
-- Output PLAIN TEXT ONLY — no HTML, no markdown, no formatting
+- PLAIN TEXT ONLY — no HTML, no markdown, no formatting, no special symbols
 - No code blocks, no file paths with slashes, no technical symbols
-- Natural conversational Korean — 반말/존댓말 혼용 OK, 자연스럽게
-- No bullet points — use flowing, connected sentences
+- Natural, conversational tone — write as spoken language
+- No bullet points or lists — use flowing, connected sentences
 - Spell out abbreviations (TypeScript not TS, JavaScript not JS)
-- START IMMEDIATELY with the content. NO greetings, NO introductions, NO "여보세요", NO "안녕하세요", NO "네", NO filler words at the start
-- LENGTH: approximately ${maxLength} characters. 완전성을 최우선으로 — 모든 핵심 포인트, 결정, 결과를 빠짐없이 포함하세요. 내용이 많으면 ${maxLength * 2}자까지 늘려도 됩니다. 단순한 내용이면 짧게 해도 괜찮습니다. 절대로 분량 채우기용 filler를 넣지 마세요.
+- START IMMEDIATELY with the substance. ABSOLUTELY NO greetings, introductions, or filler at the start. No "Hello", no "Hi", no "So", no "여보세요", no "안녕하세요", no "네"
+- LENGTH: approximately ${maxLength} characters. Prioritize COMPLETENESS — include all key points, decisions, and outcomes. Go up to ${maxLength * 2} if needed for completeness. Shorter is fine for simple content. Never pad with filler.
 
 WHAT TO INCLUDE (cover ALL that apply):
-- Result: 성공/실패/입력 필요 여부와 그 이유
-- Changes: 어떤 파일들을 어떻게 수정했는지 구체적으로
-- Logic: 왜 그런 방식으로 구현했는지 배경 설명
-- Details: 함수명, 컴포넌트명, 설정값 등 구체적인 내용
-- Errors: 발생한 에러나 경고가 있다면 상세히
-- Next: 다음 단계나 사용자가 해야 할 일
+- Result: success, failure, or needs input — and why
+- Changes: which files were modified and how, specifically
+- Logic: why this approach was chosen
+- Details: function names, component names, config values
+- Errors: any errors or warnings, in detail
+- Next steps: what the user needs to do
 
-GOOD first sentence: "작업이 성공적으로 완료됐어요."
-BAD first sentence: "여보세요, 네 안녕하세요. 작업 상황을 말씀드릴게요."
-
-Example:
-"작업이 성공적으로 완료됐어요. 이번에 진행한 내용을 설명드릴게요. 먼저 인증 모듈을 전면 리팩토링했습니다. 기존에는 auth.ts 파일 하나에 모든 로직이 있었는데, 이걸 세 개의 파일로 분리했어요. authService.ts에는 로그인과 로그아웃 핵심 로직을, tokenManager.ts에는 JWT 토큰 생성과 검증 로직을, 그리고 authMiddleware.ts에는 Express 미들웨어를 넣었습니다. 이렇게 분리한 이유는 테스트하기 쉽게 만들고, 나중에 OAuth 같은 다른 인증 방식을 추가할 때 확장성을 확보하기 위해서예요. 토큰 만료 시간은 기존 1시간에서 24시간으로 늘렸고, 리프레시 토큰도 새로 구현했습니다. 타입 정의도 types 폴더에 AuthUser, TokenPayload 인터페이스를 추가했고요. 테스트는 총 12개를 작성했는데 모두 통과했습니다. 다음으로 해주셔야 할 건 환경 변수에 JWT_SECRET 값을 설정하시는 거예요."
-
-DO NOT write short summaries like: "작업 완료. 파일 수정함." — This is unacceptable.
-
----
-${truncateInput(content)}`
-}
-
-function buildVoiceSummaryPromptEn(content: string, maxLength: number): string {
-  return `Convert this AI coding assistant response into a spoken summary in English.
-This will be read aloud by text-to-speech, so write for listening.
-
-CRITICAL RULES:
-- Output PLAIN TEXT ONLY — no HTML, no markdown, no formatting
-- No code blocks, no file paths with slashes, no technical symbols
-- Natural conversational English
-- No bullet points — use flowing, connected sentences
-- Spell out abbreviations (TypeScript not TS, JavaScript not JS)
-- START IMMEDIATELY with the content. NO greetings, NO "Hello", NO "Hi there", NO "So", NO filler words at the start
-- LENGTH: approximately ${maxLength} characters. Prioritize COMPLETENESS — cover all key points, decisions, and outcomes without omission. If the content requires more space, go up to ${maxLength * 2} characters. If the content is simple, shorter is fine. Never pad with filler to reach the target.
-
-WHAT TO INCLUDE (cover ALL that apply):
-- Result: Whether it succeeded, failed, or needs input, and why
-- Changes: Which files were modified and how, specifically
-- Logic: Why this approach was chosen, the reasoning behind it
-- Details: Function names, component names, config values, specifics
-- Errors: Any errors or warnings that occurred, in detail
-- Next: Next steps or what the user needs to do
-
-GOOD first sentence: "The task completed successfully."
-BAD first sentence: "Hello! So, let me tell you about what happened."
-
-Example:
-"The task completed successfully. First, I completely refactored the authentication module. Previously, all the logic was in a single auth.ts file, but I split it into three separate files. authService.ts now contains the core login and logout logic, tokenManager.ts handles JWT token generation and validation, and authMiddleware.ts has the Express middleware. The reason for this separation is to make testing easier and to ensure extensibility when adding other auth methods like OAuth later. I changed the token expiration from 1 hour to 24 hours and implemented refresh tokens as well. I also added type definitions in the types folder with AuthUser and TokenPayload interfaces. I wrote 12 tests total and they all pass. The next thing you need to do is set the JWT_SECRET environment variable."
-
-DO NOT write short summaries like: "Task done. Files modified." — This is unacceptable.
+Example of good output:
+${goodExample}
 
 ---
 ${truncateInput(content)}`
@@ -234,9 +203,7 @@ export function createSummaryService(openCode: OpenCodePort): SummaryPort {
     },
 
     async summarizeForVoice(directory, content, model, targetLength, language, hardCap) {
-      const prompt = language === 'en'
-        ? buildVoiceSummaryPromptEn(content, targetLength)
-        : buildVoiceSummaryPromptKo(content, targetLength)
+      const prompt = buildVoiceSummaryPrompt(content, targetLength, language)
       return runSummarySession(directory, prompt, model, hardCap, '...')
     },
   }
