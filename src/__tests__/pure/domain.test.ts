@@ -18,6 +18,7 @@ describe('domain/models', () => {
       expect(settings.outputMode).toBe('formatted')
       expect(settings.historyFormat).toBe('html')
       expect(settings.historyLimit).toBe(null)
+      expect(settings.userExpertise).toBe('developer')
     })
 
     it('returns a new object each time', () => {
