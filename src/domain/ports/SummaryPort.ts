@@ -9,7 +9,8 @@ export interface SummaryPort {
     directory: string,
     content: string,
     model: { providerID: string; modelID: string },
-    maxLength: number,
+    targetLength: number,
     language: 'ko' | 'en',
+    hardCap: number,
   ): Promise<string>
 }

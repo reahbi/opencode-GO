@@ -68,6 +68,7 @@ export interface UserSettings {
   historyLimit: number | null
   reviewMode?: boolean
   voiceMode: boolean
+  voiceAutoMode: boolean
   voiceSummaryLength: number
   voiceSpeed: number
   voiceGender: 'female' | 'male'
@@ -121,7 +122,8 @@ export function createDefaultUserSettings(): UserSettings {
     historyFormat: 'html',
     historyLimit: null,
     voiceMode: false,
-    voiceSummaryLength: 500,
+    voiceAutoMode: false,
+    voiceSummaryLength: 800,
     voiceSpeed: 1.0,
     voiceGender: 'female',
     voiceLanguage: 'ko',

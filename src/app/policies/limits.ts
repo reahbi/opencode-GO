@@ -75,4 +75,10 @@ export const LIMITS = {
 
   /** Voice response TTL (ms) — 24 hours */
   VOICE_HISTORY_TTL_MS: 24 * 60 * 60 * 1000,
+
+  /** Safety cap for voice summary text length */
+  VOICE_SUMMARY_HARD_CAP: 5000,
+
+  /** Minimum content length for auto voice trigger */
+  VOICE_AUTO_MIN_CONTENT: 200,
 } as const
