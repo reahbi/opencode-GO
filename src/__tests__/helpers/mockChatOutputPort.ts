@@ -11,7 +11,7 @@ export function createMockChatOutputPort(overrides: Partial<ChatOutputPort> = {}
 
   const sendFile: ChatOutputPort['sendFile'] = mock(() => Promise.resolve())
 
-  const sendAudio: ChatOutputPort['sendAudio'] = mock(() => Promise.resolve())
+  const sendVoice: ChatOutputPort['sendVoice'] = mock(() => Promise.resolve())
 
   const sendInteraction: ChatOutputPort['sendInteraction'] = mock(
     (_chatId: number, _text: string, _buttons: Button[]) =>
@@ -26,7 +26,7 @@ export function createMockChatOutputPort(overrides: Partial<ChatOutputPort> = {}
     sendText,
     editText,
     sendFile,
-    sendAudio,
+    sendVoice,
     sendInteraction,
     editInteraction,
     sendTypingAction,

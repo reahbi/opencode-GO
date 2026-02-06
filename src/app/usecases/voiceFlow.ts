@@ -110,7 +110,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
 
       logger.debug('voice', `Audio synthesized: ${audioData.length} bytes`)
 
-      await deps.output.sendAudio(chatId, audioData, 'voice-summary.mp3')
+      await deps.output.sendVoice(chatId, audioData, 'voice-summary.mp3')
       await deps.output.editText(chatId, statusHandle, '✅ 음성 전송 완료')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error'
