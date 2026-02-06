@@ -301,7 +301,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
     if (settings.summaryMode && settings.summaryModel && content.length > settings.summaryThreshold) {
       try {
-        const rawSummary = await deps.summary.summarize(directory, content, settings.summaryModel)
+        const rawSummary = await deps.summary.summarize(directory, content, settings.summaryModel, settings.userExpertise)
         const safeSummary = sanitizeTelegramHtml(rawSummary)
         try {
           await deps.output.editText(chatId, handle, safeSummary, 'HTML')

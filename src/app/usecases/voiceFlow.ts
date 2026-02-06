@@ -98,6 +98,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
         settings.voiceSummaryLength,
         settings.voiceLanguage,
         LIMITS.VOICE_SUMMARY_HARD_CAP,
+        settings.userExpertise,
       )
 
       logger.debug('voice', `Voice summary generated: ${voiceSummary.length} chars`)
