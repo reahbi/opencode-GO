@@ -246,7 +246,7 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 **Smart Delivery** — Short responses inline, long responses auto-chunked, very long responses sent as `.md` files.
 
-**Response Summary** — Long AI responses are automatically summarized by a lightweight model. Quickly grasp the key points on mobile.
+**Response Summary** — Long AI responses are automatically summarized by a lightweight model. Quickly grasp the key points on mobile. Summary style adapts to your expertise level.
 
 **Agent Switching** — Use `/agents` to select the right AI model for the situation.
 
@@ -268,7 +268,12 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 **Image Support** — Send photos directly from your phone. Screenshots of error messages, UI mockups, diagrams — the AI analyzes them and responds accordingly. (Requires vision-capable model)
 
-**Voice Response (🔊)** — Listen to AI summaries instead of reading. Perfect for hands-free updates while commuting. Uses Edge TTS with natural Korean voices.
+**Voice Response (🔊)** — Listen to AI summaries instead of reading. Auto-voice mode sends MP3 automatically when AI finishes — no button tap needed. Uses Edge TTS with Korean/English voices.
+
+**Expertise Level (🎮/👨‍💻/🌱)** — Tailor both text summaries and voice responses to your skill level. Choose from three modes in `/settings`:
+- **Vibe Coder** — No jargon. Explains what changed from your perspective: "login stays longer", "the settings page has a new option".
+- **Developer** — Full technical detail: file names, function signatures, architecture reasoning, test results.
+- **Beginner** — Technical terms with brief explanations: "middleware, which processes requests in between". Helps you learn while you build.
 
 **Git Status (`/git`)** — Quick git overview with branch, status, and recent commits. Inline buttons for diff and log without leaving Telegram.
 
