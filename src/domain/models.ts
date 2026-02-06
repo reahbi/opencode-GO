@@ -73,6 +73,7 @@ export interface UserSettings {
   voiceSpeed: number
   voiceGender: 'female' | 'male'
   voiceLanguage: 'ko' | 'en'
+  userExpertise: 'vibe' | 'developer' | 'beginner'
 }
 
 /** State for cloudflared tunnel */
@@ -127,6 +128,7 @@ export function createDefaultUserSettings(): UserSettings {
     voiceSpeed: 1.0,
     voiceGender: 'female',
     voiceLanguage: 'ko',
+    userExpertise: 'developer',
   }
 }
 
