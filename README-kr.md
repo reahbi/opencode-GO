@@ -18,6 +18,17 @@
 
 </div>
 
+<div align="center">
+<br>
+<img src="docs/images/ddd.jpeg" alt="DDD - 운전 주도 개발" width="500">
+
+### DDD: Drive-Driven Development
+
+*"Auth 모듈 리팩터 해줘." — 타이핑한 거 아닙니다. 말한 겁니다.*
+*양손은 핸들, 눈은 전방. AI는 이미 커밋을 푸시하고 있습니다.* 🚗
+
+</div>
+
 ---
 
 ### 🎮 포켓몬 고처럼, 어디서든 코딩하세요
@@ -224,7 +235,7 @@ pm2 logs
 
 **스마트 딜리버리** — 짧은 응답은 인라인, 긴 응답은 자동 분할, 아주 긴 응답은 `.md` 파일로 전송합니다.
 
-**응답 요약** — 긴 AI 응답을 경량 모델이 자동으로 요약해줍니다. 모바일에서 핵심만 빠르게 파악하세요.
+**응답 요약** — 긴 AI 응답을 경량 모델이 자동으로 요약해줍니다. 모바일에서 핵심만 빠르게 파악하세요. 요약 스타일은 전문성 수준에 따라 자동 조절됩니다.
 
 **에이전트 전환** — `/agents` 명령으로 상황에 맞는 AI 모델을 선택합니다.
 
@@ -245,6 +256,19 @@ pm2 logs
 **대화 기록 내보내기** — `/history`로 대화 기록을 아름다운 HTML 파일로 내보냅니다. 구문 강조와 깔끔한 타이포그래피로 어떤 기기에서든 과거 세션을 확인할 수 있습니다.
 
 **이미지 전송** — 핸드폰에서 찍은 사진을 바로 전송하세요. 에러 메시지 스크린샷, UI 목업, 다이어그램 — AI가 분석하고 답변합니다. (비전 지원 모델 필요)
+
+**음성 응답 (🔊)** — AI 요약을 읽는 대신 들으세요. 자동 음성 모드를 켜면 AI 작업 완료 시 MP3가 자동 전송됩니다 — 버튼 누를 필요 없습니다. Edge TTS 기반 한국어/영어 음성을 지원합니다.
+
+**전문성 수준 (🎮/👨‍💻/🌱)** — 텍스트 요약과 음성 응답을 본인의 수준에 맞게 조절하세요. `/settings`에서 세 가지 모드 중 선택할 수 있습니다:
+- **바이브 코더** — 전문 용어 없이 사용자 관점에서 설명합니다: "로그인이 더 오래 유지됩니다", "설정 페이지에 새 옵션이 생겼습니다".
+- **개발자** — 파일명, 함수 시그니처, 아키텍처 논리, 테스트 결과 등 전체 기술 디테일을 포함합니다.
+- **입문자** — 기술 용어에 간단한 설명을 덧붙입니다: "미들웨어, 즉 요청을 중간에서 처리하는 것". 개발하면서 배울 수 있습니다.
+
+**Git 상태 (`/git`)** — 브랜치, 상태, 최근 커밋을 한눈에 확인합니다. 텔레그램을 벗어나지 않고 인라인 버튼으로 diff와 log를 볼 수 있습니다.
+
+**멀티 선택 질문** — AI가 여러 옵션이 있는 질문을 할 때, 체크박스 스타일 UI로 여러 답을 선택한 뒤 진행할 수 있습니다.
+
+**비활성 경고** — AI 세션이 30분 이상 유휴 상태이면 알림을 받습니다. 대기 중인 작업을 잊어버리는 일이 없습니다.
 
 **진단 도구** — `bun run doctor`로 설정 문제를 자동 진단합니다.
 
@@ -495,7 +519,7 @@ bun run start    # Production
 2. Send `/new` to create a session
 3. Send a message — it goes straight to the AI
 
-**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode | Multi-agent selection | PM2 multi-instance deployment | Group chat with @mention routing | Multi-bot collaboration (Writer/Reader roles, 🧪 testing) | `/debate` and `/review` between bots | Bot registry (`/bots`, `/addbot`) | Group settings (`/groupsettings`) | Review Mode toggle in `/settings`
+**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode with expertise adaptation | Multi-agent selection | PM2 multi-instance deployment | Group chat with @mention routing | Multi-bot collaboration (Writer/Reader roles, 🧪 testing) | `/debate` and `/review` between bots | Bot registry (`/bots`, `/addbot`) | Group settings (`/groupsettings`) | Review Mode toggle in `/settings` | Voice response with auto-voice mode | Expertise level selector (Vibe/Developer/Beginner)
 
 **Multi-Bot Mode (Optional)**
 

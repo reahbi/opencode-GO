@@ -37,7 +37,7 @@ interface ToolPartState {
   status: ToolPartUpdated['status']
 }
 
-type DeliveryState = 'idle' | 'pending' | 'delivering' | 'delivered'
+type DeliveryState = 'idle' | 'pending' | 'delivering' | 'delivered' | 'done'
 
 interface WatcherEntry {
   directory: string
@@ -62,6 +62,8 @@ interface WatcherEntry {
   inactivityCheckTimer: ReturnType<typeof setInterval> | null
   lastWarningTime: number
   deliveryState: DeliveryState
+  turnGeneration: number
+  lastDeliveredTurnGen: number
 }
 
 export interface SessionWatcher {
@@ -389,7 +391,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     entry.textParts.clear()
     entry.toolParts.clear()
     entry.partOrder = []
-    entry.deliveryState = 'idle'
+    entry.deliveryState = 'done'
   }
 
   // ── Throttled streaming edits ─────────────────────────────
@@ -542,11 +544,13 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
       case 'session.idle': {
         if (event.data.sessionId !== entry.sessionId) return
-        if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered') {
+        if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered' || entry.deliveryState === 'done') {
           logger.debug('watcher', `Session idle ignored (already ${entry.deliveryState}): ${entry.sessionId}`)
           break
         }
         logger.debug('watcher', `Session idle: ${entry.sessionId}`)
+
+        const turnGen = entry.turnGeneration
 
         if (entry.pendingEditTimer) {
           clearTimeout(entry.pendingEditTimer)
@@ -582,20 +586,24 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
                 timestamp: Date.now(),
               }
 
-              await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
+              // Guard: only send voice/tunnel if still in same turn
+              if (entry.turnGeneration === turnGen) {
+                await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
 
-              const tunnelState = deps.tunnel?.get(chatId)
-              if (tunnelState?.isActive && tunnelState.url) {
-                try {
-                  await deps.output.sendInteraction(chatId, '🔗 Preview available', [
-                    { label: '🌐 Open Preview', url: tunnelState.url },
-                    { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
-                  ])
-                } catch (tunnelErr) {
-                  logger.warn('watcher', `Failed to send tunnel button: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                const tunnelState = deps.tunnel?.get(chatId)
+                if (tunnelState?.isActive && tunnelState.url) {
+                  try {
+                    await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                      { label: '🌐 Open Preview', url: tunnelState.url },
+                      { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                    ])
+                  } catch (tunnelErr) {
+                    logger.warn('watcher', `Failed to send tunnel button: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                  }
                 }
               }
               entry.deliveryState = 'delivered'
+              entry.lastDeliveredTurnGen = turnGen
             }
           }
 
@@ -713,6 +721,9 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
   // ── Initial status check on watch ──────────────────────────
 
   async function deliverLastResponse(chatId: number, entry: WatcherEntry): Promise<void> {
+    if (entry.lastDeliveredTurnGen >= entry.turnGeneration) return
+    if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered' || entry.deliveryState === 'done') return
+
     try {
       const messages = await deps.openCode.getSessionMessages(entry.sessionId, entry.directory)
       if (messages.length === 0) return
@@ -734,7 +745,9 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
   async function checkAndDeliverIfIdle(chatId: number, entry: WatcherEntry): Promise<void> {
     if (entry.abort.signal.aborted) return
-    if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered') return
+    if (entry.deliveryState === 'delivering' || entry.deliveryState === 'delivered' || entry.deliveryState === 'done') return
+
+    const turnGen = entry.turnGeneration
 
     try {
       const statuses = await deps.openCode.getSessionStatuses(entry.directory)
@@ -770,22 +783,25 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
                   timestamp: Date.now(),
                 }
 
-                await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
+                if (entry.turnGeneration === turnGen) {
+                  await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
 
-                const tunnelState = deps.tunnel?.get(chatId)
-                if (tunnelState?.isActive && tunnelState.url) {
-                  try {
-                    await deps.output.sendInteraction(chatId, '🔗 Preview available', [
-                      { label: '🌐 Open Preview', url: tunnelState.url },
-                      { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
-                    ])
-                  } catch (tunnelErr) {
-                    logger.warn('watcher', `Failed to send tunnel button on reconnect: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                  const tunnelState = deps.tunnel?.get(chatId)
+                  if (tunnelState?.isActive && tunnelState.url) {
+                    try {
+                      await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                        { label: '🌐 Open Preview', url: tunnelState.url },
+                        { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                      ])
+                    } catch (tunnelErr) {
+                      logger.warn('watcher', `Failed to send tunnel button on reconnect: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                    }
                   }
                 }
               }
 
               entry.deliveryState = 'delivered'
+              entry.lastDeliveredTurnGen = turnGen
               resetTurnState(entry)
 
               const queued = [...state.queuedMessages]
@@ -802,8 +818,9 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
               entry.deliveryState = 'pending'
             }
           }
-        } else if (entry.deliveryState === 'idle' && !entry.lastContent) {
+        } else if (entry.deliveryState === 'idle' && !entry.lastContent && entry.lastDeliveredTurnGen < entry.turnGeneration) {
           await deliverLastResponse(chatId, entry)
+          entry.lastDeliveredTurnGen = entry.turnGeneration
         }
       }
     } catch (err) {
@@ -812,13 +829,21 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
   }
 
   async function checkInitialSessionStatus(chatId: number, entry: WatcherEntry): Promise<void> {
+    const turnGen = entry.turnGeneration
+
     try {
       const statuses = await deps.openCode.getSessionStatuses(entry.directory)
       const status = statuses[entry.sessionId]
 
       if (!status || status.type === 'idle') {
+        if (entry.turnGeneration !== turnGen) return
+        if (entry.deliveryState !== 'idle') return
+        if (entry.lastDeliveredTurnGen >= entry.turnGeneration) return
+        if (entry.promptHandle) return
+
         logger.info('watcher', `Initial status check: session ${entry.sessionId} is ${status ? 'idle' : `not in status map (${Object.keys(statuses).length} returned)`}`)
         await deliverLastResponse(chatId, entry)
+        entry.lastDeliveredTurnGen = entry.turnGeneration
         return
       }
 
@@ -938,6 +963,8 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       inactivityCheckTimer: null,
       lastWarningTime: 0,
       deliveryState: 'idle',
+      turnGeneration: 0,
+      lastDeliveredTurnGen: -1,
     }
 
     watchers.set(chatId, entry)
@@ -989,6 +1016,16 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
   function setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean }): void {
     const entry = watchers.get(chatId)
     if (!entry) return
+
+    entry.turnGeneration++
+    entry.deliveryState = 'idle'
+    entry.lastContent = ''
+    entry.textParts.clear()
+    entry.toolParts.clear()
+    entry.partOrder = []
+    entry.currentMessageId = null
+    entry.busyNotified = false
+
     if (ctx.actorUserId !== undefined) entry.actorUserId = ctx.actorUserId
     if (ctx.liveUpdatesEnabled !== undefined) entry.liveUpdatesEnabled = ctx.liveUpdatesEnabled
   }

@@ -18,6 +18,17 @@
 
 </div>
 
+<div align="center">
+<br>
+<img src="docs/images/ddd.jpeg" alt="DDD - Drive-Driven Development" width="500">
+
+### DDD: Drive-Driven Development
+
+*"Refactor the auth module." — You didn't type that. You said it.*
+*Hands on the wheel, eyes on the road. Your AI heard you, and it's already pushing commits.* 🚗
+
+</div>
+
 ---
 
 ### 🎮 Like Pokémon Go, but for coding
