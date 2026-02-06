@@ -27,6 +27,7 @@ interface SessionWatcherDeps {
   isDebateActive?: (chatId: number) => boolean
   onQueueDrain?: (chatId: number, messages: QueuedMessage[]) => Promise<void>
   tunnel?: TunnelManager
+  voiceFlow?: { sendVoiceResponseDirect(chatId: number, content: string, directory: string): Promise<void> }
   onPreviewRequest?: (chatId: number, url: string) => Promise<void>
 }
 
@@ -138,6 +139,34 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     }
 
     return responseId
+  }
+
+  async function handleVoiceResponse(
+    chatId: number,
+    state: ChatState,
+    content: string,
+    directory: string,
+  ): Promise<void> {
+    if (!state.settings.voiceMode) return
+
+    const responseId = addVoiceResponse(state, content, directory)
+
+    if (state.settings.voiceAutoMode && content.length >= LIMITS.VOICE_AUTO_MIN_CONTENT) {
+      if (deps.voiceFlow) {
+        deps.voiceFlow.sendVoiceResponseDirect(chatId, content, directory).catch(err => {
+          logger.warn('watcher', `Auto-voice failed: ${err instanceof Error ? err.message : 'unknown'}`)
+        })
+      }
+      return
+    }
+
+    try {
+      await deps.output.sendInteraction(chatId, '🎧', [
+        { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
+      ])
+    } catch (voiceErr) {
+      logger.warn('watcher', `Failed to send voice button: ${voiceErr instanceof Error ? voiceErr.message : 'unknown'}`)
+    }
   }
 
   // ── Display helpers ───────────────────────────────────────
@@ -553,16 +582,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
                 timestamp: Date.now(),
               }
 
-              if (state.settings.voiceMode) {
-                const responseId = addVoiceResponse(state, entry.lastContent, entry.directory)
-                try {
-                  await deps.output.sendInteraction(chatId, '🎧', [
-                    { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
-                  ])
-                } catch (voiceErr) {
-                  logger.warn('watcher', `Failed to send voice button: ${voiceErr instanceof Error ? voiceErr.message : 'unknown'}`)
-                }
-              }
+              await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
 
               const tunnelState = deps.tunnel?.get(chatId)
               if (tunnelState?.isActive && tunnelState.url) {
@@ -750,16 +770,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
                   timestamp: Date.now(),
                 }
 
-                if (state.settings.voiceMode) {
-                  const responseId = addVoiceResponse(state, entry.lastContent, entry.directory)
-                  try {
-                    await deps.output.sendInteraction(chatId, '🎧', [
-                      { label: '음성으로 듣기', callbackData: `voice:listen:${responseId}` },
-                    ])
-                  } catch (voiceErr) {
-                    logger.warn('watcher', `Failed to send voice button on reconnect: ${voiceErr instanceof Error ? voiceErr.message : 'unknown'}`)
-                  }
-                }
+                await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
 
                 const tunnelState = deps.tunnel?.get(chatId)
                 if (tunnelState?.isActive && tunnelState.url) {

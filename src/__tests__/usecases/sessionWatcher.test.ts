@@ -80,7 +80,7 @@ describe('sessionWatcher', () => {
     }))
     summary = {
       summarize: mock(() => Promise.resolve('summarized text')),
-      summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+      summarizeForVoice: mock((_directory, _content, _model, _targetLength, _language, _hardCap) => Promise.resolve('voice summary')),
     }
     onPermissionAsked = mock(() => Promise.resolve())
     onQuestionAsked = mock(() => Promise.resolve())
@@ -465,7 +465,7 @@ describe('sessionWatcher', () => {
       }))
       summary = {
         summarize: mock(() => Promise.resolve('<b>summarized</b>')),
-        summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+        summarizeForVoice: mock((_directory, _content, _model, _targetLength, _language, _hardCap) => Promise.resolve('voice summary')),
       }
       const openCode = createOpenCodeWithEvents(
         [assistantMessage(), messagePart('x'.repeat(200)), sessionIdle],
@@ -518,7 +518,7 @@ describe('sessionWatcher', () => {
       }))
       summary = {
         summarize: mock(() => Promise.resolve('<b>summarized</b>')),
-        summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+        summarizeForVoice: mock((_directory, _content, _model, _targetLength, _language, _hardCap) => Promise.resolve('voice summary')),
       }
       const openCode = createOpenCodeWithEvents(
         [assistantMessage(), messagePart('x'.repeat(200)), sessionIdle],
@@ -553,7 +553,7 @@ describe('sessionWatcher', () => {
       }))
       summary = {
         summarize: mock(() => Promise.reject(new Error('summary failed'))),
-        summarizeForVoice: mock(() => Promise.resolve('voice summary')),
+        summarizeForVoice: mock((_directory, _content, _model, _targetLength, _language, _hardCap) => Promise.resolve('voice summary')),
       }
       const openCode = createOpenCodeWithEvents(
         [assistantMessage(), messagePart('x'.repeat(200)), sessionIdle],
