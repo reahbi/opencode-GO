@@ -36,6 +36,7 @@ export function settingsMainText(
   const histFmt = s.historyFormat === 'html' ? 'HTML' : 'MD'
   const histLimit = s.historyLimit ? `${s.historyLimit}` : 'All'
   const voiceStatus = s.voiceMode ? '✅' : 'OFF'
+  const voiceAuto = s.voiceAutoMode ? '🔄' : ''
   const voiceLang = s.voiceLanguage === 'ko' ? '🇰🇷' : '🇺🇸'
 
   return [
@@ -46,7 +47,7 @@ export function settingsMainText(
     `<b>🤖 Agent:</b> ${agent} · Review: ${review}`,
     `<b>📊 Summary:</b> ${summaryStatus} · Model: ${summaryModel}`,
     `<b>📝 Output:</b> ${outputFmt} · <b>📜 History:</b> ${histFmt}/${histLimit}`,
-    `<b>🔊 Voice:</b> ${voiceStatus} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
+    `<b>🔊 Voice:</b> ${voiceStatus} ${voiceAuto} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
   ].join('\n')
 }
 
@@ -192,6 +193,7 @@ export function voiceSubText(s: UserSettings): string {
     '<b>🔊 Voice</b>',
     '',
     `Status: ${status}`,
+    `Auto: ${s.voiceAutoMode ? 'ON 🔄' : 'OFF'}`,
     `Language: ${lang}`,
     `Length: ${length}`,
     `Speed: ${speed}`,
@@ -203,6 +205,7 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
   const kb = new InlineKeyboard()
 
   kb.text(s.voiceMode ? '🔇 OFF' : '🔊 ON', 'settings:voice_toggle').row()
+  kb.text(s.voiceAutoMode ? '🔄 Auto OFF' : '🔄 Auto ON', 'settings:voice_auto').row()
 
   kb.text(s.voiceLanguage === 'ko' ? '✅ 한국어' : '한국어', 'settings:voice_lang:ko')
   kb.text(s.voiceLanguage === 'en' ? '✅ English' : 'English', 'settings:voice_lang:en')

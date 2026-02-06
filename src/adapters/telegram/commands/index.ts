@@ -142,6 +142,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
     },
     tunnel: deps.tunnel,
+    voiceFlow: deps.voiceFlow,
   })
   
   promptFlow = createPromptFlow({
@@ -409,6 +410,11 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           case 'voice_toggle':
             chatState.settings.voiceMode = !chatState.settings.voiceMode
+            await state.saveChatState(chatId, chatState)
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            break
+          case 'voice_auto':
+            chatState.settings.voiceAutoMode = !chatState.settings.voiceAutoMode
             await state.saveChatState(chatId, chatState)
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
