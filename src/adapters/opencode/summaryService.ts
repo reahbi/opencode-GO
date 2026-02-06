@@ -70,7 +70,7 @@ CRITICAL RULES:
 - Speak naturally as if talking to a colleague — conversational Korean
 - No bullet points — use flowing, connected sentences
 - Spell out abbreviations (TypeScript not TS, JavaScript not JS)
-- LENGTH: MUST be ${maxLength} characters or more. This is a hard requirement.
+- LENGTH: approximately ${maxLength} characters. 완전성을 최우선으로 — 모든 핵심 포인트, 결정, 결과를 빠짐없이 포함하세요. 내용이 많으면 ${maxLength * 2}자까지 늘려도 됩니다. 단순한 내용이면 짧게 해도 괜찮습니다. 절대로 분량 채우기용 filler를 넣지 마세요.
 
 WHAT TO INCLUDE (cover ALL that apply):
 - Result: 성공/실패/입력 필요 여부와 그 이유
@@ -99,7 +99,7 @@ CRITICAL RULES:
 - Speak naturally as if talking to a colleague — conversational English
 - No bullet points — use flowing, connected sentences
 - Spell out abbreviations (TypeScript not TS, JavaScript not JS)
-- LENGTH: MUST be ${maxLength} characters or more. This is a hard requirement.
+- LENGTH: approximately ${maxLength} characters. Prioritize COMPLETENESS — cover all key points, decisions, and outcomes without omission. If the content requires more space, go up to ${maxLength * 2} characters. If the content is simple, shorter is fine. Never pad with filler to reach the target.
 
 WHAT TO INCLUDE (cover ALL that apply):
 - Result: Whether it succeeded, failed, or needs input, and why
@@ -225,11 +225,11 @@ export function createSummaryService(openCode: OpenCodePort): SummaryPort {
       return runSummarySession(directory, prompt, model, LIMITS.SUMMARY_HTML_HARD_CAP, '\n\n<i>... (truncated)</i>')
     },
 
-    async summarizeForVoice(directory, content, model, maxLength, language) {
+    async summarizeForVoice(directory, content, model, targetLength, language, hardCap) {
       const prompt = language === 'en'
-        ? buildVoiceSummaryPromptEn(content, maxLength)
-        : buildVoiceSummaryPromptKo(content, maxLength)
-      return runSummarySession(directory, prompt, model, maxLength, '...')
+        ? buildVoiceSummaryPromptEn(content, targetLength)
+        : buildVoiceSummaryPromptKo(content, targetLength)
+      return runSummarySession(directory, prompt, model, hardCap, '...')
     },
   }
 }

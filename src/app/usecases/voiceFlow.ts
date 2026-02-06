@@ -22,6 +22,7 @@ function makeRequestKey(chatId: number, responseId: string): string {
 
 export interface VoiceFlow {
   sendVoiceResponse(chatId: number, responseId: string): Promise<void>
+  sendVoiceResponseDirect(chatId: number, content: string, directory: string): Promise<void>
 }
 
 export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
@@ -65,6 +66,22 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
     }
   }
 
+  async function sendVoiceResponseDirect(chatId: number, content: string, directory: string): Promise<void> {
+    try {
+      const chatState = await deps.state.getChatState(chatId)
+      const { settings } = chatState
+
+      if (!settings.summaryModel) {
+        logger.warn('voice', `Auto-voice skipped for chat ${chatId}: summary model not configured`)
+        return
+      }
+
+      await doSendVoiceResponse(chatId, content, settings, directory)
+    } catch (err) {
+      logger.warn('voice', `Auto-voice direct send failed: ${err instanceof Error ? err.message : 'unknown'}`)
+    }
+  }
+
   async function doSendVoiceResponse(
     chatId: number,
     content: string,
@@ -80,6 +97,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
         settings.summaryModel!,
         settings.voiceSummaryLength,
         settings.voiceLanguage,
+        LIMITS.VOICE_SUMMARY_HARD_CAP,
       )
 
       logger.debug('voice', `Voice summary generated: ${voiceSummary.length} chars`)
@@ -99,11 +117,11 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       logger.error('voice', `Voice generation failed: ${message}`)
 
       try {
-        const fallbackSummary = escapeHtml(content.slice(0, settings.voiceSummaryLength))
+        const fallbackSummary = escapeHtml(content.slice(0, LIMITS.VOICE_SUMMARY_HARD_CAP))
         await deps.output.editText(
           chatId,
           statusHandle,
-          `❌ 음성 생성 실패\n\n<b>텍스트 요약:</b>\n${fallbackSummary}${content.length > settings.voiceSummaryLength ? '...' : ''}`,
+          `❌ 음성 생성 실패\n\n<b>텍스트 요약:</b>\n${fallbackSummary}${content.length > LIMITS.VOICE_SUMMARY_HARD_CAP ? '...' : ''}`,
         )
       } catch {
         await deps.output.editText(chatId, statusHandle, `❌ 음성 생성 실패: ${escapeHtml(message)}`)
@@ -111,5 +129,5 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
     }
   }
 
-  return { sendVoiceResponse }
+  return { sendVoiceResponse, sendVoiceResponseDirect }
 }
