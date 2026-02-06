@@ -45,7 +45,7 @@ export function settingsMainText(
     `${server} · Session: ${session}`,
     '',
     `<b>🤖 Agent:</b> ${agent} · Review: ${review}`,
-    `<b>📊 Summary:</b> ${summaryStatus} · Model: ${summaryModel}`,
+    `<b>📊 Summary:</b> ${summaryStatus} · ${formatExpertise(s.userExpertise)} · Model: ${summaryModel}`,
     `<b>📝 Output:</b> ${outputFmt} · <b>📜 History:</b> ${histFmt}/${histLimit}`,
     `<b>🔊 Voice:</b> ${voiceStatus} ${voiceAuto} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
   ].join('\n')
@@ -117,15 +117,20 @@ export function summarySubText(s: UserSettings): string {
     `Status: ${status}`,
     `Model: <code>${model}</code>`,
     `Trigger: ${threshold}+ chars`,
+    `Level: ${formatExpertise(s.userExpertise)}`,
   ].join('\n')
 }
 
-export function summarySubKeyboard(): InlineKeyboard {
+export function summarySubKeyboard(s: UserSettings): InlineKeyboard {
   return new InlineKeyboard()
     .text('📊 Toggle Summary', 'settings:summary')
     .row()
     .text('🤖 Select Model', 'settings:model')
     .text('📏 Set Threshold', 'settings:threshold')
+    .row()
+    .text(s.userExpertise === 'vibe' ? '✅ 🎮 Vibe' : '🎮 Vibe', 'settings:expertise:vibe')
+    .text(s.userExpertise === 'developer' ? '✅ 👨‍💻 Dev' : '👨‍💻 Dev', 'settings:expertise:developer')
+    .text(s.userExpertise === 'beginner' ? '✅ 🌱 Begin' : '🌱 Begin', 'settings:expertise:beginner')
     .row()
     .text('◀️ Back', 'settings:back')
 }
@@ -182,6 +187,14 @@ function formatLanguage(lang: 'ko' | 'en'): string {
   return lang === 'ko' ? '한국어 🇰🇷' : 'English 🇺🇸'
 }
 
+function formatExpertise(expertise: 'vibe' | 'developer' | 'beginner'): string {
+  switch (expertise) {
+    case 'vibe': return '🎮 Vibe'
+    case 'developer': return '👨‍💻 Dev'
+    case 'beginner': return '🌱 Beginner'
+  }
+}
+
 export function voiceSubText(s: UserSettings): string {
   const status = s.voiceMode ? 'ON ✅' : 'OFF'
   const lang = formatLanguage(s.voiceLanguage)
@@ -198,6 +211,7 @@ export function voiceSubText(s: UserSettings): string {
     `Length: ${length}`,
     `Speed: ${speed}`,
     `Voice: ${gender}`,
+    `Level: ${formatExpertise(s.userExpertise)}`,
   ].join('\n')
 }
 
@@ -227,6 +241,11 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
 
   kb.text(s.voiceGender === 'female' ? '✅ 👩' : '👩', 'settings:voice_gender:female')
   kb.text(s.voiceGender === 'male' ? '✅ 👨' : '👨', 'settings:voice_gender:male')
+  kb.row()
+
+  kb.text(s.userExpertise === 'vibe' ? '✅ 🎮 Vibe' : '🎮 Vibe', 'settings:expertise:vibe')
+  kb.text(s.userExpertise === 'developer' ? '✅ 👨‍💻 Dev' : '👨‍💻 Dev', 'settings:expertise:developer')
+  kb.text(s.userExpertise === 'beginner' ? '✅ 🌱 Begin' : '🌱 Begin', 'settings:expertise:beginner')
   kb.row()
 
   kb.text('◀️ Back', 'settings:back')

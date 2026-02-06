@@ -325,7 +325,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           }
           case 'sub_summary':
-            await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard() })
+            await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             break
           case 'sub_output':
             await ctx.editMessageText(outputSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: outputSubKeyboard() })
@@ -356,7 +356,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'summary':
             chatState.settings.summaryMode = !chatState.settings.summaryMode
             await state.saveChatState(chatId, chatState)
-            await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard() })
+            await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             break
           case 'threshold':
             chatState.awaitingInput = 'threshold'
@@ -366,6 +366,26 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
               { parse_mode: 'HTML' }
             )
             break
+          case 'expertise': {
+            const level = parsed.value as 'vibe' | 'developer' | 'beginner'
+            if (level === 'vibe' || level === 'developer' || level === 'beginner') {
+              chatState.settings.userExpertise = level
+              await state.saveChatState(chatId, chatState)
+            }
+            try {
+              const msg = ctx.callbackQuery?.message
+              const text = msg && 'text' in msg ? msg.text : ''
+              if (text?.includes('Voice')) {
+                await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+              } else {
+                await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
+              }
+            } catch {
+              await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
+            }
+            break
+          }
+
           case 'model': {
             try {
               const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
@@ -377,7 +397,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
               kb.text('◀️ Back', 'settings:sub_summary')
               await ctx.editMessageText('🤖 Select summary model:', { parse_mode: 'HTML', reply_markup: kb })
             } catch {
-              await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: summarySubKeyboard() })
+              await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             }
             break
           }
@@ -611,7 +631,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           }
           await state.saveChatState(chatId, chatState)
         }
-        await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard() })
+        await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
         break
       }
       case 'tunnel': {
