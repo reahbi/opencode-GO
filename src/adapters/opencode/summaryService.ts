@@ -61,60 +61,58 @@ ${truncateInput(content)}`
 }
 
 function buildVoiceSummaryPromptKo(content: string, maxLength: number): string {
-  const minLength = Math.min(Math.floor(maxLength * 0.7), maxLength - 100)
-  return `You are a senior engineer listening to work updates while driving.
-Summarize this AI response into a conversational audio script.
+  return `You are a senior engineer explaining work progress to a colleague over the phone.
+Convert this AI response into a detailed spoken explanation in Korean.
 
 CRITICAL RULES:
-- Output PLAIN TEXT ONLY — no HTML, no markdown, no special formatting
+- Output PLAIN TEXT ONLY — no HTML, no markdown, no formatting
 - No code blocks, no file paths with slashes, no technical symbols
-- Write as if speaking to a colleague: natural, conversational Korean
-- No bullet points or list markers — use flowing sentences
-- Spell out abbreviations (e.g., "TypeScript" not "TS")
-- LENGTH: Aim for ${minLength}-${maxLength} characters. Use the full length to provide useful detail.
+- Speak naturally as if talking to a colleague — conversational Korean
+- No bullet points — use flowing, connected sentences
+- Spell out abbreviations (TypeScript not TS, JavaScript not JS)
+- LENGTH: MUST be ${maxLength} characters or more. This is a hard requirement.
 
-STRUCTURE (speak naturally, not as a list):
-1. Start with the outcome: success, failure, or needs input
-2. Explain what was done in detail (2-4 sentences)
-3. Mention key files or components that were changed
-4. If there are errors or questions, explain them clearly
-5. End with any next steps if relevant
+WHAT TO INCLUDE (cover ALL that apply):
+- Result: 성공/실패/입력 필요 여부와 그 이유
+- Changes: 어떤 파일들을 어떻게 수정했는지 구체적으로
+- Logic: 왜 그런 방식으로 구현했는지 배경 설명
+- Details: 함수명, 컴포넌트명, 설정값 등 구체적인 내용
+- Errors: 발생한 에러나 경고가 있다면 상세히
+- Next: 다음 단계나 사용자가 해야 할 일
 
-Example good output (note the detail level):
-"작업이 성공적으로 완료됐어요. 먼저 helper.ts 파일에 날짜 포맷팅, 문자열 변환, 그리고 배열 유틸리티 함수 세 개를 추가했습니다. 각 함수에 타입 정의도 포함시켰고, index.ts에서 익스포트하도록 수정했어요. 마지막으로 유닛 테스트 다섯 개를 작성해서 모두 통과했습니다. 다음 단계로 이 함수들을 실제 컴포넌트에 적용하면 됩니다."
+Example (notice the detail and length):
+"작업이 성공적으로 완료됐어요. 이번에 진행한 내용을 설명드릴게요. 먼저 인증 모듈을 전면 리팩토링했습니다. 기존에는 auth.ts 파일 하나에 모든 로직이 있었는데, 이걸 세 개의 파일로 분리했어요. authService.ts에는 로그인과 로그아웃 핵심 로직을, tokenManager.ts에는 JWT 토큰 생성과 검증 로직을, 그리고 authMiddleware.ts에는 Express 미들웨어를 넣었습니다. 이렇게 분리한 이유는 테스트하기 쉽게 만들고, 나중에 OAuth 같은 다른 인증 방식을 추가할 때 확장성을 확보하기 위해서예요. 토큰 만료 시간은 기존 1시간에서 24시간으로 늘렸고, 리프레시 토큰도 새로 구현했습니다. 타입 정의도 types 폴더에 AuthUser, TokenPayload 인터페이스를 추가했고요. 테스트는 총 12개를 작성했는데 모두 통과했습니다. 다음으로 해주셔야 할 건 환경 변수에 JWT_SECRET 값을 설정하시는 거예요."
 
-Example bad output (too short, DO NOT do this):
-"작업 완료됐어요. 함수 추가했습니다."
+DO NOT write short summaries like: "작업 완료. 파일 수정함." — This is unacceptable.
 
 ---
 ${truncateInput(content)}`
 }
 
 function buildVoiceSummaryPromptEn(content: string, maxLength: number): string {
-  const minLength = Math.min(Math.floor(maxLength * 0.7), maxLength - 100)
-  return `You are a senior engineer listening to work updates while driving.
-Summarize this AI response into a conversational audio script.
+  return `You are a senior engineer explaining work progress to a colleague over the phone.
+Convert this AI response into a detailed spoken explanation in English.
 
 CRITICAL RULES:
-- Output PLAIN TEXT ONLY — no HTML, no markdown, no special formatting
+- Output PLAIN TEXT ONLY — no HTML, no markdown, no formatting
 - No code blocks, no file paths with slashes, no technical symbols
-- Write as if speaking to a colleague: natural, conversational English
-- No bullet points or list markers — use flowing sentences
-- Spell out abbreviations (e.g., "TypeScript" not "TS")
-- LENGTH: Aim for ${minLength}-${maxLength} characters. Use the full length to provide useful detail.
+- Speak naturally as if talking to a colleague — conversational English
+- No bullet points — use flowing, connected sentences
+- Spell out abbreviations (TypeScript not TS, JavaScript not JS)
+- LENGTH: MUST be ${maxLength} characters or more. This is a hard requirement.
 
-STRUCTURE (speak naturally, not as a list):
-1. Start with the outcome: success, failure, or needs input
-2. Explain what was done in detail (2-4 sentences)
-3. Mention key files or components that were changed
-4. If there are errors or questions, explain them clearly
-5. End with any next steps if relevant
+WHAT TO INCLUDE (cover ALL that apply):
+- Result: Whether it succeeded, failed, or needs input, and why
+- Changes: Which files were modified and how, specifically
+- Logic: Why this approach was chosen, the reasoning behind it
+- Details: Function names, component names, config values, specifics
+- Errors: Any errors or warnings that occurred, in detail
+- Next: Next steps or what the user needs to do
 
-Example good output (note the detail level):
-"The task completed successfully. First, I added three utility functions to helper.ts: date formatting, string conversion, and array utilities. Each function includes proper type definitions, and I updated index.ts to export them. Finally, I wrote five unit tests and all of them passed. Next step would be applying these functions to the actual components."
+Example (notice the detail and length):
+"The task completed successfully. Let me walk you through what was done. First, I completely refactored the authentication module. Previously, all the logic was in a single auth.ts file, but I split it into three separate files. authService.ts now contains the core login and logout logic, tokenManager.ts handles JWT token generation and validation, and authMiddleware.ts has the Express middleware. The reason for this separation is to make testing easier and to ensure extensibility when adding other auth methods like OAuth later. I changed the token expiration from 1 hour to 24 hours and implemented refresh tokens as well. I also added type definitions in the types folder with AuthUser and TokenPayload interfaces. I wrote 12 tests total and they all pass. The next thing you need to do is set the JWT_SECRET environment variable."
 
-Example bad output (too short, DO NOT do this):
-"Task done. Added functions."
+DO NOT write short summaries like: "Task done. Files modified." — This is unacceptable.
 
 ---
 ${truncateInput(content)}`
