@@ -189,6 +189,14 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     return texts.join('\n\n')
   }
 
+  function startTypingIndicator(chatId: number, entry: WatcherEntry): void {
+    if (!entry.liveUpdatesEnabled || entry.typingInterval) return
+    deps.output.sendTypingAction(chatId).catch(() => {})
+    entry.typingInterval = setInterval(() => {
+      deps.output.sendTypingAction(chatId).catch(() => {})
+    }, LIMITS.TYPING_INTERVAL_MS)
+  }
+
   // ── Delivery (same logic as the original promptFlow) ──────
 
   async function deliverFormatted(
@@ -392,6 +400,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     if (entry.promptHandle) {
       entry.liveMsgHandle = entry.promptHandle
       entry.promptHandle = null
+      startTypingIndicator(chatId, entry)
       return
     }
 
@@ -399,9 +408,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     try {
       const handle = await deps.output.sendText(chatId, '📡 Session activity detected...')
       entry.liveMsgHandle = handle
-      entry.typingInterval = setInterval(() => {
-        deps.output.sendTypingAction(chatId).catch(() => {})
-      }, 5000)
+      startTypingIndicator(chatId, entry)
     } catch (err) {
       logger.error('watcher', `Failed to create live message for chat ${chatId}: ${err}`)
     }

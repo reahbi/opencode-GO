@@ -117,6 +117,7 @@ describe('sessionWatcher', () => {
 
     await waitFor(() => expect(output.editText).toHaveBeenCalled())
     expect(output.sendText).not.toHaveBeenCalled()
+    expect(output.sendTypingAction).toHaveBeenCalled()
     expect(output.editText).toHaveBeenCalledWith(chatId, 'prompt-1', expect.any(String))
 
     watcher.stop(chatId)
@@ -281,6 +282,7 @@ describe('sessionWatcher', () => {
     await flushPromises()
 
     expect(output.editText).not.toHaveBeenCalled()
+    expect(output.sendTypingAction).not.toHaveBeenCalled()
     watcher.stop(chatId)
   })
 
