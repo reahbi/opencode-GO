@@ -24,8 +24,8 @@
 
 ### DDD: Drive-Driven Development
 
-*"Refactor the auth module." — You didn't type that. You said it.*
-*Hands on the wheel, eyes on the road. Your AI heard you, and it's already pushing commits.* 🚗
+*"Run the tests and fix whatever fails." — You didn't type that. You said it.*
+*Hands on the wheel, eyes on the road. Your AI heard you, and it's already pushing fixes.* 🚗
 
 </div>
 
