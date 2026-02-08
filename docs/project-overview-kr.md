@@ -6,7 +6,7 @@
 
 **기술 스택**: Bun + TypeScript (strict) + grammy + @opencode-ai/sdk  
 **아키텍처**: Clean Architecture (Hexagonal / Ports & Adapters)  
-**버전**: v2.1 / **라이선스**: MIT
+**버전**: v0.1.0 / **라이선스**: MIT
 
 ### 시스템 구조
 
