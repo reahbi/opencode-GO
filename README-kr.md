@@ -1,3 +1,5 @@
+[🇺🇸 English](README.md)
+
 # OpenCode-Go
 
 **폰 하나로 AI 코딩 에이전트를 원격 조종하세요.**
@@ -97,16 +99,39 @@ OpenCode-Go는 **두 개의 독립된 프로세스**로 구성됩니다. 둘 다
 
 `.env` 파일에서 `DEFAULT_PROJECT` 경로와 포트를 확인한 뒤, 해당 프로젝트 디렉토리에서 OpenCode 서버를 시작합니다.
 
+**WSL/Linux/macOS:**
 ```bash
-# .env의 DEFAULT_PROJECT 디렉토리에서 실행
-# 포트는 .env의 OPENCODE_SERVER_URL에서 확인 (기본값: 4096)
-cd /path/to/your/project
-opencode serve --port 4096
+# 비밀번호 설정 (권장)
+OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
+
+# 비밀번호 없이
+opencode serve --port 4096 &
 ```
+
+**Windows** (.bat 래퍼 필요 — 비밀번호 사용 시):
+```bash
+# server.bat 생성
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=your-password
+opencode serve --port 4096
+BATEOF
+
+# 최소화 상태로 실행
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+```
+
+> [!NOTE]
+> **왜 Windows에서 .bat 파일이 필요한가?** PowerShell의 `Start-Process`는 환경 변수를 자식 프로세스에 전달하지 않습니다. .bat 파일은 `opencode serve`를 실행하는 동일 프로세스 내에서 변수를 설정합니다.
 
 서버가 정상 시작되면 다음 메시지가 출력됩니다:
 ```
 opencode server listening on http://127.0.0.1:4096
+```
+
+비밀번호를 설정한 경우 연결 확인:
+```bash
+curl -s -u opencode:your-password http://127.0.0.1:4096/project
 ```
 
 ### 2단계: OpenCode-Go 텔레그램 봇 시작
@@ -382,6 +407,8 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `BOT_ROLE` | | `standalone` | 봇 역할: `standalone`, `writer`, `reader` |
 | `GROUP_CHAT_ENABLED` | | `false` | 그룹 채팅 지원 (`true`/`false`) |
 | `COORDINATION_DIR` | | — | 봇 간 조정용 공유 디렉토리 (멀티봇 필수) |
+| `DEFAULT_AGENT` | | — | 기본 AI 에이전트 이름 (OpenCode 서버의 에이전트명과 일치해야 함) |
+| `DEFAULT_CUSTOM_AGENT` | | — | 기본 커스텀 에이전트 ID (`/makeagent`로 생성) |
 | `DEBUG` | | — | truthy 값 설정 시 디버그 로그 활성화 |
 
 ---
@@ -461,6 +488,7 @@ bun run doctor    # 6가지 설정 항목을 자동으로 진단합니다
 | [Bun 설치](docs/setup/bun.md) | Bun 런타임 설치 + PATH 문제 해결 |
 | [명령어 사용법](docs/commands.md) | 전체 명령어 상세 설명 |
 | [PM2 배포](docs/deploy.md) | 프로덕션 배포 + 멀티 인스턴스 |
+| [멀티봇 가이드](docs/multibot-kr.md) | 멀티봇 설정, 역할, 토론, 리뷰 기능 |
 | [문제 해결](docs/troubleshooting.md) | 자주 묻는 문제 + `bun run doctor` |
 | [AGENTS.md](AGENTS.md) | AI 에이전트용 프로젝트 지식 베이스 |
 

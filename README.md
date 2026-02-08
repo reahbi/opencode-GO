@@ -1,3 +1,5 @@
+[🇰🇷 한국어](README-kr.md)
+
 # OpenCode-Go
 
 **Control your AI coding agent remotely — right from your phone.**
@@ -405,6 +407,8 @@ Detailed usage: [Commands Guide](docs/commands.md)
 | `BOT_ROLE` | | `standalone` | Bot role: `standalone`, `writer`, `reader` |
 | `GROUP_CHAT_ENABLED` | | `false` | Group chat support (`true`/`false`) |
 | `COORDINATION_DIR` | | — | Shared directory for bot coordination (required for multi-bot) |
+| `DEFAULT_AGENT` | | — | Default AI agent name (must match an agent from OpenCode server) |
+| `DEFAULT_CUSTOM_AGENT` | | — | Default custom agent ID (from `/makeagent`) |
 | `DEBUG` | | — | Enable debug logs when set to truthy value |
 
 ---
@@ -484,6 +488,7 @@ For common issues and solutions, see the [Troubleshooting Guide](docs/troublesho
 | [Bun Installation](docs/setup/bun.md) | Bun runtime installation + PATH troubleshooting |
 | [Commands Usage](docs/commands.md) | Full command reference |
 | [PM2 Deployment](docs/deploy.md) | Production deployment + multi-instance |
+| [Multi-Bot Guide](docs/multibot.md) | Multi-bot setup, roles, debate, and review features |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues + `bun run doctor` |
 | [AGENTS.md](AGENTS.md) | AI agent project knowledge base |
 

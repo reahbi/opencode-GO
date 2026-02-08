@@ -1,7 +1,7 @@
 # OPENCODE-GO KNOWLEDGE BASE
 
 **Generated:** 2026-02-04
-**Directory:** `opencode-telegram` (NOT `Claude-telegram`)
+**Directory:** `ope-go`
 
 ## OVERVIEW
 
@@ -413,6 +413,8 @@ INSTANCE_NAME=           # Bot identifier for logs/registry
 STATE_DIR=               # Per-bot state directory (must be unique)
 GROUP_CHAT_ENABLED=      # true | false
 COORDINATION_DIR=        # Shared directory for bot coordination
+DEFAULT_AGENT=           # Agent name from OpenCode server (e.g., claude-sonnet)
+DEFAULT_CUSTOM_AGENT=    # Custom agent ID from /makeagent
 ```
 
 ## NOTES
