@@ -101,10 +101,11 @@ export interface ChatState {
   activeProjectDirectory: string | null
   activeSessionId: string | null
   activeAgent: string | null
+  customAgentId?: string | null
   lastPrompt: string | null
   pendingInteractions: PendingInteraction[]
   settings: UserSettings
-  awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | 'tunnel_port' | null
+  awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | 'makeagent_describe' | 'makeagent_name' | 'makeagent_edit' | 'tunnel_port' | 'addhookbot_token' | 'addhookbot_chatid' | null
   awaitingInteractionId: string | null
   queuedMessages: QueuedMessage[]
   lastAssistantMessageId?: string
@@ -137,6 +138,7 @@ export function createDefaultChatState(): ChatState {
     activeProjectDirectory: null,
     activeSessionId: null,
     activeAgent: null,
+    customAgentId: null,
     lastPrompt: null,
     pendingInteractions: [],
     settings: createDefaultUserSettings(),
@@ -166,6 +168,15 @@ export interface BotRegistryEntry {
   serverUrl: string
   lastSeen: number
   currentAgent?: string | null
+}
+
+export interface CustomAgent {
+  id: string
+  name: string
+  description: string
+  systemPrompt: string
+  createdAt: number
+  updatedAt: number
 }
 
 /** Image attachment for multimodal prompts */
