@@ -349,4 +349,109 @@ describe('createCompletionWatcher', () => {
       h.mockNotify.mock.calls.some(([n]) => n.type === 'stall'),
     ).toBe(false)
   })
+
+  it('uses composite key so same sessionId is independent per directory', async () => {
+    const mockNotify = jest.fn<(n: HookNotification) => Promise<void>>().mockResolvedValue(undefined)
+    const notificationPort: HookNotificationPort = { notify: mockNotify }
+
+    const mockGetSessionStatuses = jest.fn().mockResolvedValue({
+      's-shared': { type: 'busy' },
+    })
+
+    const sseHandlers = new Map<string, (e: OpenCodeEvent) => void>()
+    const mockStreamEvents = jest.fn().mockImplementation(
+      async (dir: string, handler: (e: OpenCodeEvent) => void, signal: AbortSignal) => {
+        sseHandlers.set(dir, handler)
+        await new Promise<void>(r => signal.addEventListener('abort', () => r(), { once: true }))
+      },
+    )
+
+    const openCode = createMockOpenCodePort()
+    openCode.streamEvents = mockStreamEvents as typeof openCode.streamEvents
+    openCode.getSessionStatuses = mockGetSessionStatuses as typeof openCode.getSessionStatuses
+
+    const watcher = createCompletionWatcher({ openCode, notificationPort })
+    activeWatchers.push(watcher)
+
+    const projA: Project = { directory: '/repo/a', name: 'A' }
+    const projB: Project = { directory: '/repo/b', name: 'B' }
+    await watcher.startWatching([projA, projB])
+
+    // Both projects seeded with s-shared as busy
+    expect(watcher.getStatus().projects.find(p => p.directory === '/repo/a')?.busyCount).toBe(1)
+    expect(watcher.getStatus().projects.find(p => p.directory === '/repo/b')?.busyCount).toBe(1)
+
+    // Wait for SSE handlers to be registered for both projects
+    await waitFor(() => sseHandlers.size >= 2)
+
+    // Emit idle for s-shared only in project A's SSE stream
+    sseHandlers.get('/repo/a')!({ type: 'session.idle', data: { sessionId: 's-shared' } })
+    await sleepTick()
+
+    // Project A should have 0 busy, Project B still has 1
+    await waitFor(() => watcher.getStatus().projects.find(p => p.directory === '/repo/a')?.busyCount === 0)
+    expect(watcher.getStatus().projects.find(p => p.directory === '/repo/b')?.busyCount).toBe(1)
+  })
+
+  it('reconnect reconciliation detects session went idle while disconnected', async () => {
+    jest.useFakeTimers()
+    const mockNotify = jest.fn<(n: HookNotification) => Promise<void>>().mockResolvedValue(undefined)
+    const notificationPort: HookNotificationPort = { notify: mockNotify }
+
+    let statusCallCount = 0
+    const mockGetSessionStatuses = jest.fn().mockImplementation(() => {
+      statusCallCount++
+      // Calls 1-2: busy (seedBusySessions + first reconcileOnReconnect)
+      if (statusCallCount <= 2) {
+        return Promise.resolve({ 's-1': { type: 'busy' } })
+      }
+      // Call 3+: idle (session completed while disconnected)
+      return Promise.resolve({ 's-1': { type: 'idle' } })
+    })
+
+    let streamCallCount = 0
+    const mockStreamEvents = jest.fn().mockImplementation(
+      async (_dir: string, _handler: (e: OpenCodeEvent) => void, signal: AbortSignal) => {
+        streamCallCount++
+        if (streamCallCount === 1) {
+          // First connection: resolve immediately to simulate disconnect
+          return
+        }
+        // Subsequent connections: stay open
+        await new Promise<void>(r => {
+          if (signal.aborted) return r()
+          signal.addEventListener('abort', () => r(), { once: true })
+        })
+      },
+    )
+
+    const openCode = createMockOpenCodePort()
+    openCode.streamEvents = mockStreamEvents as typeof openCode.streamEvents
+    openCode.getSessionStatuses = mockGetSessionStatuses as typeof openCode.getSessionStatuses
+
+    const watcher = createCompletionWatcher({ openCode, notificationPort })
+    activeWatchers.push(watcher)
+
+    await watcher.startWatching([project])
+
+    // Wait for first SSE connection and disconnect
+    await waitFor(() => streamCallCount >= 1)
+
+    // Advance past the 1-second reconnect backoff
+    jest.advanceTimersByTime(1500)
+
+    // Wait for reconciliation to detect the session went idle
+    await waitFor(() =>
+      mockNotify.mock.calls.some(([n]) => n.type === 'completion'),
+    )
+
+    expect(mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'completion',
+        sessionId: 's-1',
+        directory: project.directory,
+        projectName: project.name,
+      }),
+    )
+  })
 })
