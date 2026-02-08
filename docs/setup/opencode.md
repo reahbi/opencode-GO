@@ -1,3 +1,5 @@
+[🇰🇷 한국어](opencode-kr.md)
+
 # OpenCode Server Setup Guide
 
 OpenCode-Go communicates with the OpenCode AI coding assistant server to perform tasks. This document guides you through installing and configuring the OpenCode server.
@@ -34,9 +36,33 @@ In this case, you must update `OPENCODE_SERVER_URL` in OpenCode-Go's `.env` file
 
 ## Authentication Setup (Optional)
 
-For security, you can set a username and password for the OpenCode server.
-1. Specify the username and password when starting the server.
-2. Match `OPENCODE_SERVER_USERNAME` and `OPENCODE_SERVER_PASSWORD` in OpenCode-Go's `.env` file with the server settings.
+For security, you can set a password for the OpenCode server using the `OPENCODE_SERVER_PASSWORD` environment variable.
+
+**WSL/Linux/macOS:**
+```bash
+OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
+```
+
+**Windows** (requires .bat wrapper):
+```bash
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=your-password
+opencode serve --port 4096
+BATEOF
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+```
+
+Then update OpenCode-Go's `.env` file to match:
+```
+OPENCODE_SERVER_USERNAME=opencode
+OPENCODE_SERVER_PASSWORD=your-password
+```
+
+Verify the connection:
+```bash
+curl -s -u opencode:your-password http://127.0.0.1:4096/project
+```
 
 ## Using a Remote Server
 

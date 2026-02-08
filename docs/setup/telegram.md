@@ -1,3 +1,5 @@
+[🇰🇷 한국어](telegram-kr.md)
+
 # Telegram Bot Setup Guide
 
 This document explains how to create a Telegram bot for controlling OpenCode-Go and obtain the necessary credentials.

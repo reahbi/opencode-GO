@@ -1,3 +1,5 @@
+[🇺🇸 English](opencode.md)
+
 # OpenCode 서버 설정 가이드
 
 OpenCode-Go는 OpenCode AI 코딩 어시스턴트 서버와 통신하여 작업을 수행합니다. 이 문서는 OpenCode 서버를 설치하고 설정하는 방법을 안내합니다.
@@ -34,9 +36,33 @@ opencode serve --port 8080
 
 ## 인증 설정 (선택 사항)
 
-보안을 위해 OpenCode 서버에 사용자명과 비밀번호를 설정할 수 있습니다.
-1. 서버 시작 시 사용자명과 비밀번호를 지정합니다.
-2. OpenCode-Go의 `.env` 파일에서 `OPENCODE_SERVER_USERNAME`과 `OPENCODE_SERVER_PASSWORD` 항목을 서버 설정과 일치시키십시오.
+보안을 위해 `OPENCODE_SERVER_PASSWORD` 환경 변수를 사용하여 OpenCode 서버에 비밀번호를 설정할 수 있습니다.
+
+**WSL/Linux/macOS:**
+```bash
+OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
+```
+
+**Windows** (.bat 래퍼 필요):
+```bash
+cat > server.bat << 'BATEOF'
+@echo off
+set OPENCODE_SERVER_PASSWORD=your-password
+opencode serve --port 4096
+BATEOF
+powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+```
+
+OpenCode-Go의 `.env` 파일도 일치시키십시오:
+```
+OPENCODE_SERVER_USERNAME=opencode
+OPENCODE_SERVER_PASSWORD=your-password
+```
+
+연결 확인:
+```bash
+curl -s -u opencode:your-password http://127.0.0.1:4096/project
+```
 
 ## 원격 서버 사용
 

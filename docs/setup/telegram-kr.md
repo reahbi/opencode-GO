@@ -1,3 +1,5 @@
+[🇺🇸 English](telegram.md)
+
 # 텔레그램 봇 설정 가이드
 
 이 문서는 OpenCode-Go를 제어하기 위한 텔레그램 봇(Telegram Bot)을 생성하고 필요한 정보를 획득하는 방법을 설명합니다.
