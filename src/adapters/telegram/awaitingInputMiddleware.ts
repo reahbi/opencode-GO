@@ -9,8 +9,13 @@ export const AWAITING_INPUT_LABELS: Record<NonNullable<ChatState['awaitingInput'
   debaterounds: 'Debate rounds input',
   addbot_token: 'Bot token input',
   addbot_project: 'Project selection',
+  makeagent_describe: 'Custom agent description input',
+  makeagent_name: 'Custom agent naming input',
+  makeagent_edit: 'Custom agent prompt edit input',
+  addhookbot_token: 'Hook bot token input',
+  addhookbot_chatid: 'Hook bot chat ID input',
   question: 'Question response',
-}
+} as const
 
 const NON_DESTRUCTIVE_COMMANDS = new Set([
   'help',
