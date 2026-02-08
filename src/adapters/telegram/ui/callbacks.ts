@@ -17,13 +17,24 @@ export type ParsedCallback =
   | { type: 'settings_agent'; agentName: string }
   | { type: 'addbot_role'; role: 'writer' | 'reader' }
   | { type: 'addbot_project'; projectDir: string }
+  | { type: 'addbot_agent'; agentId: string }
   | { type: 'addbot_start'; instanceName: string }
+  | { type: 'makeagent_save' }
+  | { type: 'makeagent_regen' }
+  | { type: 'makeagent_edit' }
+  | { type: 'makeagent_cancel' }
+  | { type: 'settings_custom_agent'; agentId: string }
+  | { type: 'settings_remove_agent' }
   | { type: 'debate_accept'; debateId: string }
   | { type: 'debate_reject'; debateId: string }
   | { type: 'groupsettings'; action: string; value?: string }
   | { type: 'tunnel'; action: 'stop' | 'custom' | 'start'; port?: number }
   | { type: 'git'; action: string }
   | { type: 'voice'; action: 'listen'; responseId: string }
+  | { type: 'addhookbot_project'; projectDir: string; action: 'select' | 'deselect' }
+  | { type: 'addhookbot_all' }
+  | { type: 'addhookbot_done' }
+  | { type: 'addhookbot_start'; action: 'start' | 'skip' }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -156,10 +167,28 @@ export function parseCallback(data: string): ParsedCallback {
     return { type: 'addbot_project', projectDir }
   }
 
+  if (data.startsWith('addbot_agent:')) {
+    const agentId = data.slice('addbot_agent:'.length)
+    if (!agentId) return { type: 'unknown', raw: data }
+    return { type: 'addbot_agent', agentId }
+  }
+
   if (data.startsWith('addbot_start:')) {
     const instanceName = data.slice('addbot_start:'.length)
     if (!instanceName) return { type: 'unknown', raw: data }
     return { type: 'addbot_start', instanceName }
+  }
+
+  if (data === 'ma:save') return { type: 'makeagent_save' }
+  if (data === 'ma:regen') return { type: 'makeagent_regen' }
+  if (data === 'ma:edit') return { type: 'makeagent_edit' }
+  if (data === 'ma:cancel') return { type: 'makeagent_cancel' }
+
+  if (data === 'sca:remove') return { type: 'settings_remove_agent' }
+  if (data.startsWith('sca:')) {
+    const agentId = data.slice(4)
+    if (!agentId) return { type: 'unknown', raw: data }
+    return { type: 'settings_custom_agent', agentId }
   }
 
   if (data.startsWith('gs:')) {
@@ -203,6 +232,30 @@ export function parseCallback(data: string): ParsedCallback {
     const parts = data.split(':')
     if (parts[1] === 'listen' && parts[2]) {
       return { type: 'voice', action: 'listen', responseId: parts[2] }
+    }
+    return { type: 'unknown', raw: data }
+  }
+
+  if (data.startsWith('ahb_proj:')) {
+    const rest = data.slice('ahb_proj:'.length)
+    const sepIdx = rest.lastIndexOf(':')
+    if (sepIdx > 0) {
+      const projectDir = rest.slice(0, sepIdx)
+      const action = rest.slice(sepIdx + 1)
+      if ((action === 'select' || action === 'deselect') && projectDir) {
+        return { type: 'addhookbot_project', projectDir, action }
+      }
+    }
+    return { type: 'unknown', raw: data }
+  }
+
+  if (data === 'ahb:all') return { type: 'addhookbot_all' }
+  if (data === 'ahb:done') return { type: 'addhookbot_done' }
+
+  if (data.startsWith('ahb_start:')) {
+    const action = data.slice('ahb_start:'.length)
+    if (action === 'start' || action === 'skip') {
+      return { type: 'addhookbot_start', action }
     }
     return { type: 'unknown', raw: data }
   }
