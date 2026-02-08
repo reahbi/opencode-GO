@@ -33,6 +33,7 @@ export function helpCommand(instanceName?: string) {
 /review [target] — Request code review
 /bots — List registered bots
 /addbot — Add new bot (DM only)
+/addhookbot — Setup hook bot for notifications
 /cancel — Cancel addbot wizard
 
 <b>Project</b>

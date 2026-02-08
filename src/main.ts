@@ -7,6 +7,7 @@ import { createOpenCodeAdapter } from './adapters/opencode/opencodeAdapter.js'
 import { createJsonStateStore } from './adapters/persistence/jsonStateStore.js'
 import { createFileCoordinationAdapter } from './adapters/coordination/fileCoordinationAdapter.js'
 import { createFileRegistryAdapter } from './adapters/coordination/fileRegistryAdapter.js'
+import { createFileCustomAgentAdapter } from './adapters/coordination/fileCustomAgentAdapter.js'
 import { createFileGroupSettingsAdapter } from './adapters/coordination/fileGroupSettingsAdapter.js'
 import { createChatQueue } from './app/queue/chatQueue.js'
 import { createDebateFlow } from './app/usecases/debateFlow.js'
@@ -59,6 +60,10 @@ async function main() {
         chatState.activeAgent = config.defaultAgent
         changed = true
       }
+      if (!chatState.customAgentId && config.defaultCustomAgent) {
+        chatState.customAgentId = config.defaultCustomAgent
+        changed = true
+      }
       if (changed) await state.saveChatState(chatId, chatState)
     }
     return next()
@@ -75,6 +80,7 @@ async function main() {
   const registryDir = config.coordinationDir || config.stateDir
   await fs.mkdir(registryDir, { recursive: true })
   const registry = createFileRegistryAdapter(registryDir)
+  const customAgents = createFileCustomAgentAdapter(registryDir)
 
   // Group settings: shared between bots via coordination dir
   const groupSettings = config.coordinationDir
@@ -151,6 +157,7 @@ async function main() {
     coordination,
     botRole: config.botRole,
     registry,
+    customAgents,
     groupSettings,
     serverUrl: config.openCodeServerUrl,
     serverUsername: config.openCodeServerUsername,
@@ -216,7 +223,9 @@ async function main() {
     { command: 'settings', description: 'Summary, output format, etc.' },
     { command: 'groupsettings', description: 'Group settings (debate, bots)' },
     { command: 'bots', description: 'List registered bots' },
+    { command: 'makeagent', description: 'Create a custom system-prompt agent' },
     { command: 'tunnel', description: 'Create tunnel to localhost' },
+    { command: 'addhookbot', description: 'Setup hook bot for session notifications' },
     { command: 'help', description: 'Help' },
   ])
 

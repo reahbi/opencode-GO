@@ -18,6 +18,7 @@ import {
   settingsCommand, resolveReviewMode,
   settingsMainText, settingsMainKeyboard,
   agentSubText, agentSubKeyboard,
+  customAgentSubText, customAgentSubKeyboard,
   summarySubText, summarySubKeyboard,
   outputSubText, outputSubKeyboard,
   historySubText, historySubKeyboard,
@@ -33,7 +34,27 @@ import {
 import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
-import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard } from './addbot.js'
+import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, handleAddbotAgentCallback } from './addbot.js'
+import {
+  addhookbotCommand,
+  handleAddhookbotToken,
+  handleAddhookbotAllCallback,
+  handleAddhookbotProjectCallback as handleAddhookbotProjectCb,
+  handleAddhookbotDoneCallback,
+  handleAddhookbotChatId,
+  handleAddhookbotStartCallback,
+  cancelAddhookbotWizard,
+} from './addhookbot.js'
+import {
+  makeagentCommand,
+  handleMakeagentDescribe,
+  handleMakeagentName,
+  handleMakeagentEdit,
+  cancelMakeagentWizard,
+  startMakeagentSave,
+  regenerateMakeagentDraft,
+  startMakeagentEdit,
+} from './makeagent.js'
 import { queueCommand, clearQueueCommand, showQueueCommand } from './queue.js'
 import { undoCommand, redoCommand } from './undo.js'
 import { tunnelCommand, startTunnelWithFeedback, handleTunnelPortInput } from './tunnel.js'
@@ -95,6 +116,7 @@ interface RegisterCommandsDeps {
   coordination?: import('../../../domain/ports/CoordinationPort.js').CoordinationPort
   botRole?: 'writer' | 'reader' | 'standalone'
   registry?: import('../../../domain/ports/BotRegistryPort.js').BotRegistryPort
+  customAgents?: import('../../../domain/ports/CustomAgentPort.js').CustomAgentPort
   groupSettings?: import('../../../domain/ports/GroupSettingsPort.js').GroupSettingsPort
   serverUrl?: string
   serverUsername?: string
@@ -106,6 +128,31 @@ interface RegisterCommandsDeps {
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
   const { bot, openCode, state, output, queue } = deps
+
+  async function getCustomAgentName(customAgentId: string | null | undefined): Promise<string | null> {
+    if (!customAgentId || !deps.customAgents) return null
+    const agent = await deps.customAgents.get(customAgentId)
+    return agent?.name ?? null
+  }
+
+  async function renderSettingsMain(
+    chatState: Awaited<ReturnType<StateStore['getChatState']>>,
+    healthy: boolean,
+    instanceNameOverride?: string,
+  ): Promise<{ text: string; keyboard: ReturnType<typeof settingsMainKeyboard> }> {
+    const customAgentName = await getCustomAgentName(chatState.customAgentId)
+    return {
+      text: settingsMainText(chatState.settings, {
+        healthy,
+        hasSession: !!chatState.activeSessionId,
+        activeAgent: chatState.activeAgent,
+        customAgentName,
+        instanceName: instanceNameOverride,
+        botRole: deps.botRole,
+      }),
+      keyboard: settingsMainKeyboard(),
+    }
+  }
 
   // Helper to update agent in registry when agent changes
   async function updateRegistryAgent(agentName: string | null): Promise<void> {
@@ -148,6 +195,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   promptFlow = createPromptFlow({
     openCode, state, output, watcher,
     botRole: deps.botRole,
+    customAgents: deps.customAgents,
   })
 
   const mentionCommandMap = new Map<string, (ctx: Context) => Promise<void>>()
@@ -161,6 +209,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     const chatId = ctx.chat?.id
     if (chatId) {
       cancelAddbotWizard(chatId)
+      cancelAddhookbotWizard(chatId)
+      cancelMakeagentWizard(chatId)
       await deps.tunnel?.stop(chatId)
     }
     await newCommand(sessionCommands)(ctx)
@@ -169,7 +219,11 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('list', listCommand(sessionCommands))
   reg('resume', async (ctx) => {
     const chatId = ctx.chat?.id
-    if (chatId) cancelAddbotWizard(chatId)
+    if (chatId) {
+      cancelAddbotWizard(chatId)
+      cancelAddhookbotWizard(chatId)
+      cancelMakeagentWizard(chatId)
+    }
     await resumeCommand(sessionCommands)(ctx)
     if (chatId) await watcher.watch(chatId)
   })
@@ -191,10 +245,21 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('status', statusCommand(state, openCode, deps.instanceName, deps.tunnel))
   reg('git', gitCommand(state))
   reg('agents', agentsCommand(state, openCode))
+  if (deps.customAgents) {
+    reg('makeagent', makeagentCommand(state, output))
+  }
   reg('settings', async (ctx) => {
     const chatId = ctx.chat?.id
-    if (chatId) cancelAddbotWizard(chatId)
-    await settingsCommand(state, openCode, deps.instanceName, deps.botRole)(ctx)
+    if (chatId) {
+      cancelAddbotWizard(chatId)
+      cancelAddhookbotWizard(chatId)
+      cancelMakeagentWizard(chatId)
+    }
+    await settingsCommand(state, openCode, {
+      instanceName: deps.instanceName,
+      botRole: deps.botRole,
+      customAgents: deps.customAgents,
+    })(ctx)
   })
 
   if (deps.debateFlow) {
@@ -205,6 +270,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   if (deps.registry) {
     reg('bots', botsCommand(deps.registry))
     reg('addbot', addbotCommand(state))
+    reg('addhookbot', addhookbotCommand(state))
   }
 
   if (deps.groupSettings && deps.registry && deps.instanceName) {
@@ -219,6 +285,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     const chatId = ctx.chat?.id
     if (!chatId) return
     cancelAddbotWizard(chatId)
+    cancelAddhookbotWizard(chatId)
+    cancelMakeagentWizard(chatId)
     const chatState = await state.getChatState(chatId)
     if (chatState.awaitingInput) {
       chatState.awaitingInput = null
@@ -309,6 +377,37 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         }
         break
       }
+      case 'settings_custom_agent': {
+        if (!deps.customAgents) break
+        const chatState = await state.getChatState(chatId)
+        const selected = await deps.customAgents.get(parsed.agentId)
+        if (!selected) {
+          await output.sendText(chatId, '❌ Custom agent not found.')
+          break
+        }
+        chatState.customAgentId = selected.id
+        await state.saveChatState(chatId, chatState)
+
+        const agents = await deps.customAgents.list()
+        await ctx.editMessageText(
+          customAgentSubText(agents, selected),
+          { parse_mode: 'HTML', reply_markup: customAgentSubKeyboard(agents, selected.id) },
+        )
+        break
+      }
+      case 'settings_remove_agent': {
+        if (!deps.customAgents) break
+        const chatState = await state.getChatState(chatId)
+        chatState.customAgentId = null
+        await state.saveChatState(chatId, chatState)
+
+        const agents = await deps.customAgents.list()
+        await ctx.editMessageText(
+          customAgentSubText(agents, null),
+          { parse_mode: 'HTML', reply_markup: customAgentSubKeyboard(agents, null) },
+        )
+        break
+      }
       case 'settings': {
         const chatState = await state.getChatState(chatId)
         switch (parsed.action) {
@@ -327,6 +426,21 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'sub_summary':
             await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             break
+          case 'sub_custom_agent': {
+            if (!deps.customAgents) {
+              await ctx.editMessageText('Custom agent storage is not configured.', { parse_mode: 'HTML' })
+              break
+            }
+            const agents = await deps.customAgents.list()
+            const current = chatState.customAgentId
+              ? await deps.customAgents.get(chatState.customAgentId)
+              : null
+            await ctx.editMessageText(
+              customAgentSubText(agents, current),
+              { parse_mode: 'HTML', reply_markup: customAgentSubKeyboard(agents, current?.id ?? null) },
+            )
+            break
+          }
           case 'sub_output':
             await ctx.editMessageText(outputSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: outputSubKeyboard() })
             break
@@ -477,15 +591,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'back': {
             let healthy = false
             try { healthy = await openCode.healthCheck() } catch { /* offline */ }
+            const rendered = await renderSettingsMain(chatState, healthy, groupInstanceName)
             await ctx.editMessageText(
-              settingsMainText(chatState.settings, {
-                healthy,
-                hasSession: !!chatState.activeSessionId,
-                activeAgent: chatState.activeAgent,
-                instanceName: groupInstanceName,
-                botRole: deps.botRole,
-              }),
-              { parse_mode: 'HTML', reply_markup: settingsMainKeyboard() },
+              rendered.text,
+              { parse_mode: 'HTML', reply_markup: rendered.keyboard },
             )
             break
           }
@@ -560,12 +669,71 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             chatId, parsed.projectDir, state, output,
             deps.registry,
             deps.serverUrl ?? '',
+            deps.customAgents,
+          )
+        }
+        break
+      }
+      case 'addbot_agent': {
+        if (deps.registry) {
+          await handleAddbotAgentCallback(
+            chatId,
+            parsed.agentId,
+            state,
+            output,
+            deps.registry,
+            deps.serverUrl ?? '',
           )
         }
         break
       }
       case 'addbot_start': {
         await handleAddbotStartCallback(chatId, parsed.instanceName, output)
+        break
+      }
+      case 'addhookbot_all': {
+        await handleAddhookbotAllCallback(chatId, state, output)
+        break
+      }
+      case 'addhookbot_project': {
+        await handleAddhookbotProjectCb(
+          chatId, parsed.projectDir, parsed.action, state, output,
+          deps.serverUrl ?? '',
+          deps.serverUsername ?? 'opencode',
+          deps.serverPassword ?? '',
+        )
+        break
+      }
+      case 'addhookbot_done': {
+        await handleAddhookbotDoneCallback(chatId, state, output)
+        break
+      }
+      case 'addhookbot_start': {
+        await handleAddhookbotStartCallback(chatId, parsed.action, output)
+        break
+      }
+      case 'makeagent_save': {
+        await startMakeagentSave(chatId, state, output)
+        break
+      }
+      case 'makeagent_regen': {
+        if (deps.customAgents) {
+          await regenerateMakeagentDraft(chatId, state, output, openCode)
+        }
+        break
+      }
+      case 'makeagent_edit': {
+        await startMakeagentEdit(chatId, state, output)
+        break
+      }
+      case 'makeagent_cancel': {
+        cancelMakeagentWizard(chatId)
+        const chatState = await state.getChatState(chatId)
+        if (chatState.awaitingInput === 'makeagent_describe' || chatState.awaitingInput === 'makeagent_name' || chatState.awaitingInput === 'makeagent_edit') {
+          chatState.awaitingInput = null
+          await state.saveChatState(chatId, chatState)
+        }
+        await output.sendText(chatId, '❌ Custom agent wizard cancelled.')
         break
       }
       case 'debate_accept': {
@@ -702,9 +870,40 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const handled = await handleAddbotToken(chatId, text, state, output)
       if (handled) return
     }
+    if (chatState.awaitingInput === 'addhookbot_token') {
+      const handled = await handleAddhookbotToken(
+        chatId, text, state, output,
+        deps.serverUrl ?? '',
+        deps.serverUsername ?? 'opencode',
+        deps.serverPassword ?? '',
+      )
+      if (handled) return
+    }
     if (chatState.awaitingInput === 'addbot_project') {
       if (deps.registry) {
-        const handled = await handleAddbotProjectText(chatId, text, state, output, deps.registry, deps.serverUrl ?? '')
+        const handled = await handleAddbotProjectText(chatId, text, state, output, deps.registry, deps.serverUrl ?? '', deps.customAgents)
+        if (handled) return
+      }
+    }
+    if (chatState.awaitingInput === 'addhookbot_chatid') {
+      const handled = await handleAddhookbotChatId(chatId, text, state, output)
+      if (handled) return
+    }
+    if (chatState.awaitingInput === 'makeagent_describe') {
+      if (deps.customAgents) {
+        const handled = await handleMakeagentDescribe(chatId, text, state, output, openCode, deps.customAgents)
+        if (handled) return
+      }
+    }
+    if (chatState.awaitingInput === 'makeagent_name') {
+      if (deps.customAgents) {
+        const handled = await handleMakeagentName(chatId, text, state, output, deps.customAgents)
+        if (handled) return
+      }
+    }
+    if (chatState.awaitingInput === 'makeagent_edit') {
+      if (deps.customAgents) {
+        const handled = await handleMakeagentEdit(chatId, text, state, output, deps.customAgents)
         if (handled) return
       }
     }
