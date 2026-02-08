@@ -11,7 +11,8 @@ Telegram bot that remotely controls OpenCode coding agent sessions from a phone.
 
 ```
 src/
-├── main.ts                    # Composition root — DI wiring, bot start
+├── main.ts                    # Main bot composition root — DI wiring, bot start
+├── hookBot.ts                 # Hook bot composition root — session notification process
 ├── domain/                    # Pure types + ports. ZERO external deps.
 │   ├── models.ts              #   SessionRef, ChatState, UserSettings, PendingInteraction
 │   ├── events.ts              #   OpenCodeEvent discriminated union (7 event types)
@@ -96,7 +97,8 @@ src/
 domain/     → imports NOTHING (pure TypeScript only)
 app/        → imports domain/ only
 adapters/   → imports app/ + domain/ (implements ports)
-main.ts     → imports everything (sole composition root)
+main.ts     → imports everything (composition root)
+hookBot.ts  → imports everything (second composition root)
 shared/     → imports nothing from other layers
 config/     → imports domain/ (for ProjectRef type) + shared/
 ```
@@ -160,14 +162,17 @@ When adding a new command (e.g., `/git`), update ALL of these files:
 |--------|------|----------|------|
 | `createOpenCodeAdapter` | factory | `adapters/opencode/opencodeAdapter.ts` | Implements OpenCodePort via SDK v2 |
 | `createPromptFlow` | factory | `app/usecases/promptFlow.ts` | Orchestrates prompt → stream → deliver |
+| `createCompletionWatcher` | factory | `app/usecases/completionWatcher.ts` | SSE session monitoring + stall detection |
 | `createInteractiveFlow` | factory | `app/usecases/interactiveFlow.ts` | Permission/question round-trip |
 | `createSessionCommands` | factory | `app/usecases/sessionCommands.ts` | CRUD session operations |
 | `createChatQueue` | factory | `app/queue/chatQueue.ts` | Per-chat promise-chain serialization |
 | `createJsonStateStore` | factory | `adapters/persistence/jsonStateStore.ts` | Atomic JSON state with locks |
 | `createBot` | factory | `adapters/telegram/bot.ts` | grammy Bot with default HTML parse mode |
+| `createHookBotNotificationAdapter` | factory | `adapters/telegram/hookBotAdapter.ts` | HookNotificationPort impl for Telegram |
 | `createChatOutputAdapter` | factory | `adapters/telegram/bot.ts` | ChatOutputPort over grammy API |
 | `createAuthMiddleware` | factory | `adapters/telegram/authMiddleware.ts` | userId allowlist middleware |
 | `createSummaryService` | factory | `adapters/opencode/summaryService.ts` | Summarize via temp session + lightweight model |
+| `HookNotificationPort` | interface | `domain/ports/HookNotificationPort.ts` | Notification output port for hook bot |
 | `registerCommands` | function | `adapters/telegram/commands/index.ts` | Wires all commands + callbacks + text handler |
 | `mapSdkEvent` | function | `adapters/opencode/eventMapper.ts` | SDK SSE → domain event mapper |
 | `routeDelivery` | function | `app/policies/deliveryRouter.ts` | Decides inline/chunk/file strategy |
@@ -225,7 +230,7 @@ When adding a new command (e.g., `/git`), update ALL of these files:
 
 ### Logging
 - Context-based prefixes: `logger.info('opencode', 'msg')` → `[OPENCODE] msg`
-- Valid contexts: `telegram`, `opencode`, `session`, `state`, `bot`, `queue`, `interactive`, `summary`, `debate`, `review`, `registry`, `tunnel`, `voice`
+- Valid contexts: `telegram`, `opencode`, `session`, `state`, `bot`, `queue`, `interactive`, `summary`, `debate`, `review`, `registry`, `tunnel`, `voice`, `hookbot`
 - Debug: only output when `process.env.DEBUG` is truthy
 
 ## ANTI-PATTERNS (THIS PROJECT)
@@ -246,6 +251,9 @@ bun run dev
 
 # Production
 bun run start
+
+# Run hook bot
+bun run hook
 
 # Type check only
 bun run typecheck
@@ -400,6 +408,7 @@ src/__tests__/
 BOT_TOKEN=               # Telegram bot token from BotFather
 ALLOWED_USER_IDS=        # Comma-separated Telegram user IDs (at least one)
 DEFAULT_PROJECT=         # Absolute path to default project directory
+HOOK_CONFIG_PATH=        # Path to hook-config.json (default: data/hook-config.json)
 
 # Optional
 OPENCODE_SERVER_URL=     # Default: http://127.0.0.1:4096
@@ -416,6 +425,27 @@ COORDINATION_DIR=        # Shared directory for bot coordination
 DEFAULT_AGENT=           # Agent name from OpenCode server (e.g., claude-sonnet)
 DEFAULT_CUSTOM_AGENT=    # Custom agent ID from /makeagent
 ```
+
+## HOOK BOT
+
+Separate PM2 process that monitors all OpenCode sessions via SSE and sends Telegram notifications.
+
+**Entrypoint**: `src/hookBot.ts` (second composition root)
+**Config**: `data/hook-config.json` (created by `/addhookbot` wizard)
+**Setup**: Run `/addhookbot` from any existing bot to configure
+
+**Features**:
+- Session completion notifications (busy→idle) with full last message
+- Stall detection (30min inactivity warning)
+- Error forwarding
+- Permission/question forwarding with interactive inline buttons
+
+**Architecture** (Clean Architecture):
+- `src/domain/hookBotTypes.ts` — Domain types (HookBotConfig, TrackedSession, HookNotification)
+- `src/domain/ports/HookNotificationPort.ts` — Notification output port for hook bot
+- `src/app/usecases/completionWatcher.ts` — SSE monitoring usecase
+- `src/adapters/telegram/hookBotAdapter.ts` — Telegram adapter (implements HookNotificationPort)
+- `src/adapters/telegram/commands/addhookbot.ts` — Setup wizard in existing bots
 
 ## NOTES
 
