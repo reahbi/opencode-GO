@@ -1,3 +1,5 @@
+[🇰🇷 한국어](multibot-kr.md)
+
 # Multi-Bot Mode Guide
 
 Welcome to **Multi-Bot Mode** — run multiple AI bots that collaborate together! 🤖🤖

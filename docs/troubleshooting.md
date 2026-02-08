@@ -1,3 +1,5 @@
+[🇰🇷 한국어](troubleshooting-kr.md)
+
 # Troubleshooting Guide
 
 This guide covers common issues you may encounter while using OpenCode-Go and their solutions.

@@ -1,3 +1,5 @@
+[🇰🇷 한국어](deploy-kr.md)
+
 # PM2 Deployment Guide
 
 This document explains how to reliably deploy and manage OpenCode-Go using the PM2 process manager.

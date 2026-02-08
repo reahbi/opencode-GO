@@ -1,3 +1,5 @@
+[🇺🇸 English](troubleshooting.md)
+
 # 문제 해결 가이드 (Troubleshooting)
 
 OpenCode-Go 사용 중 발생할 수 있는 주요 문제들과 해결 방법을 안내합니다.

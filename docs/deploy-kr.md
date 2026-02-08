@@ -1,3 +1,5 @@
+[🇺🇸 English](deploy.md)
+
 # PM2 배포 가이드 (Deployment)
 
 이 문서는 PM2 프로세스 매니저를 사용하여 OpenCode-Go를 안정적으로 배포하고 관리하는 방법을 설명합니다.
