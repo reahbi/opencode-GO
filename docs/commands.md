@@ -1,3 +1,5 @@
+[🇰🇷 한국어](commands-kr.md)
+
 # Bot Commands Usage
 
 This document provides detailed information on all available commands and how to use them with the Telegram bot.
@@ -106,6 +108,39 @@ This document provides detailed information on all available commands and how to
 - **Description**: Cancels the ongoing wizard (e.g., /addbot).
 - **Usage**: `/cancel`
 
+## Utility Commands
+
+### /git
+- **Description**: Shows the current project's Git status at a glance. Displays branch name, staged/unstaged/untracked file counts, and recent commits. Use inline keyboard buttons to view diff stats, full diff, or extended log.
+- **Usage**: `/git`
+- **Inline Buttons**:
+  - **📋 Diff**: Shows staged and unstaged change statistics
+  - **📄 Full Diff**: Shows the complete diff (sent as `.patch` file if too long)
+  - **📜 Log**: Shows the last 10 commits
+  - **🔄 Refresh**: Refreshes the git status display
+
+### /tunnel [port|stop]
+- **Description**: Creates a publicly accessible tunnel to a local server using cloudflared. Useful for sharing development servers or testing webhooks. Select from common ports or enter a custom port.
+- **Usage**: `/tunnel`, `/tunnel 3000`, `/tunnel stop`
+- **Inline Buttons** (when no tunnel is active):
+  - **3000 (React/Next)**, **5173 (Vite)**, **8080 (General)**, **4000 (GraphQL)**: Quick port selection
+  - **Enter custom port...**: Enter any port number
+- **Inline Buttons** (when tunnel is active):
+  - **Open**: Opens the tunnel URL
+  - **Stop**: Stops the active tunnel
+- **Note**: Requires `cloudflared` to be installed on the system.
+
+### /makeagent
+- **Description**: AI-powered wizard to create a custom agent with a tailored system prompt. Describe the agent you want (e.g., "코드 리뷰어" or "devops helper"), and the AI generates a complete agent profile with name, description, and system prompt.
+- **Usage**: `/makeagent`
+- **Flow**:
+  1. Send `/makeagent` to start the wizard
+  2. Describe the agent you want to create
+  3. AI generates a draft with name, description, and system prompt
+  4. Review and choose: ✅ Save, 🔄 Regenerate, ✏️ Edit, or ❌ Cancel
+  5. Optionally rename the agent before saving
+- **Note**: Requires an active project session. Created agents appear in `/settings` → Custom Agent.
+
 ## Regular Conversation (Prompting)
 
 Sending regular text (not a command) forwards it as a prompt to the current session's AI agent. The AI will analyze code or suggest modifications based on your request.
@@ -114,11 +149,36 @@ Sending regular text (not a command) forwards it as a prompt to the current sess
 
 The following options can be managed through the `/settings` menu:
 
-- **Summary Mode**: When enabled, automatically summarizes long AI responses.
+### Agent & Mode (`🤖 Agent & Mode`)
+- **Agent Selection**: Switch between available AI agents. Click an agent name to activate it.
+- **Review Mode**: Toggle read-only mode. When ON, file modification requests are auto-rejected. Reader bots have this ON by default; Writer bots have it OFF.
+
+### Custom Agent (`🎭 Custom Agent`)
+- **Custom Agent Selection**: Switch between custom agents created via `/makeagent`. Click an agent name to activate or remove it.
+
+### Summary (`📊 Summary`)
+- **Summary Mode**: When enabled, automatically summarizes long AI responses using a lightweight model.
+- **Summary Model**: Select the AI model used for summarization (fetched from your OpenCode server).
+- **Summary Threshold**: Responses exceeding this length trigger summary mode. (Default: 3,000 characters)
+- **Expertise Level**: Adjusts both text summary and voice prompt style:
+  - 🎮 **Vibe Coder** — No jargon. Explains changes from the user's perspective.
+  - 👨‍💻 **Developer** — Full technical detail with file names, function signatures, test results.
+  - 🌱 **Beginner** — Technical terms with brief explanations to help learning.
+
+### Output (`📝 Output`)
 - **Output Format**:
   - `formatted`: Applies Markdown formatting for better readability.
   - `raw`: Displays the AI's raw response as-is.
-- **Summary Threshold**: Responses exceeding this length will trigger summary mode. (Default: 3000 characters)
-- **Summary Model**: Select the lightweight AI model used for summarization.
+
+### History Export (`📜 History Export`)
 - **History Format**: Choose export format between `.md` (Markdown) or `.html` (HTML).
 - **History Limit**: Limit the number of recent messages to export. `0` or `all` exports everything.
+
+### Voice (`🔊 Voice`)
+- **Voice Mode**: Enable/disable voice responses. When ON, a 🔊 Listen button appears after AI responses.
+- **Auto Mode**: When ON, voice MP3 is automatically generated and sent when AI finishes — no button tap needed.
+- **Language**: Korean (🇰🇷) or English (🇺🇸) for TTS output.
+- **Summary Length**: Target length for voice summary: 500, 800, 1,200, or 2,000 characters.
+- **Speed**: Playback speed: 1.0x, 1.25x, 1.5x, or 2.0x.
+- **Voice Gender**: Female (👩) or Male (👨) voice.
+- **Expertise Level**: Same as Summary — affects voice prompt style.
