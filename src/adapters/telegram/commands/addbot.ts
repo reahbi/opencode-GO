@@ -1,6 +1,7 @@
 import type { Context } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { BotRegistryPort } from '../../../domain/ports/BotRegistryPort.js'
+import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
 import type { Button } from '../../../domain/models.js'
 import { logger } from '../../../shared/logger.js'
@@ -13,6 +14,7 @@ interface AddBotWizardState {
   role?: 'writer' | 'reader'
   projectDir?: string
   instanceName?: string
+  customAgentId?: string
   tokenAttempts?: number
 }
 
@@ -198,6 +200,7 @@ export async function handleAddbotProjectCallback(
   output: ChatOutputPort,
   registry: BotRegistryPort,
   serverUrl: string,
+  customAgents?: CustomAgentPort,
 ): Promise<void> {
   if (projectDir === '__manual__') {
     const chatState = await state.getChatState(chatId)
@@ -207,7 +210,7 @@ export async function handleAddbotProjectCallback(
     return
   }
 
-  await finishAddbot(chatId, projectDir, state, output, registry, serverUrl)
+  await startCustomAgentSelection(chatId, projectDir, state, output, registry, serverUrl, customAgents)
 }
 
 export async function handleAddbotProjectText(
@@ -217,6 +220,7 @@ export async function handleAddbotProjectText(
   output: ChatOutputPort,
   registry: BotRegistryPort,
   serverUrl: string,
+  customAgents?: CustomAgentPort,
 ): Promise<boolean> {
   const projectDir = text.trim()
   if (!projectDir.startsWith('/')) {
@@ -224,8 +228,78 @@ export async function handleAddbotProjectText(
     return true
   }
 
-  await finishAddbot(chatId, projectDir, state, output, registry, serverUrl)
+  await startCustomAgentSelection(chatId, projectDir, state, output, registry, serverUrl, customAgents)
   return true
+}
+
+async function startCustomAgentSelection(
+  chatId: number,
+  projectDir: string,
+  state: StateStore,
+  output: ChatOutputPort,
+  registry: BotRegistryPort,
+  serverUrl: string,
+  customAgents?: CustomAgentPort,
+): Promise<void> {
+  const wizard = wizards.get(chatId)
+  if (!wizard) {
+    await output.sendText(chatId, '❌ Wizard state lost. Start again with /addbot.')
+    return
+  }
+
+  wizard.projectDir = projectDir
+  wizard.customAgentId = undefined
+  wizards.set(chatId, wizard)
+
+  if (!customAgents) {
+    await finishAddbot(chatId, projectDir, state, output, registry, serverUrl)
+    return
+  }
+
+  const agents = await customAgents.list()
+  const buttons: Button[] = agents.map(agent => ({
+    label: `🎭 ${agent.name}`,
+    callbackData: `addbot_agent:${agent.id}`,
+  }))
+  buttons.push({ label: '⏭️ Skip', callbackData: 'addbot_agent:__skip__' })
+  buttons.push({ label: '✨ Create new', callbackData: 'addbot_agent:__new__' })
+
+  await output.sendInteraction(
+    chatId,
+    agents.length > 0
+      ? 'Select an optional custom agent for this bot:'
+      : 'No custom agents found yet. You can skip or create one first.',
+    buttons,
+  )
+}
+
+export async function handleAddbotAgentCallback(
+  chatId: number,
+  agentId: string,
+  state: StateStore,
+  output: ChatOutputPort,
+  registry: BotRegistryPort,
+  serverUrl: string,
+): Promise<void> {
+  const wizard = wizards.get(chatId)
+  if (!wizard || !wizard.projectDir) {
+    await output.sendText(chatId, '❌ Wizard state lost. Start again with /addbot.')
+    return
+  }
+
+  if (agentId === '__new__') {
+    const chatState = await state.getChatState(chatId)
+    chatState.awaitingInput = null
+    await state.saveChatState(chatId, chatState)
+    wizards.delete(chatId)
+    await output.sendText(chatId, 'Use /makeagent to create a custom agent first, then run /addbot again.')
+    return
+  }
+
+  wizard.customAgentId = agentId === '__skip__' ? undefined : agentId
+  wizards.set(chatId, wizard)
+
+  await finishAddbot(chatId, wizard.projectDir, state, output, registry, serverUrl)
 }
 
 async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boolean> {
@@ -254,6 +328,7 @@ async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boole
       `        OPENCODE_SERVER_USERNAME: '${process.env.OPENCODE_SERVER_USERNAME ?? 'opencode'}',`,
       `        OPENCODE_SERVER_PASSWORD: '${process.env.OPENCODE_SERVER_PASSWORD ?? ''}',`,
       `        BOT_ROLE: '${wizard.role}',`,
+      ...(wizard.customAgentId ? [`        DEFAULT_CUSTOM_AGENT: '${wizard.customAgentId}',`] : []),
       `        GROUP_CHAT_ENABLED: 'true',`,
       `        COORDINATION_DIR,`,
       `      },`,
@@ -337,6 +412,7 @@ async function finishAddbot(
     `   Instance: <code>${escapeHtml(instanceName)}</code>`,
     `   Role: ${wizard.role === 'writer' ? '✏️ Writer' : '🔒 Reader'}`,
     `   Project: <code>${escapeHtml(projectDir)}</code>`,
+    `   Custom Agent: ${wizard.customAgentId ? `<code>${escapeHtml(wizard.customAgentId)}</code>` : 'None'}`,
     ``,
     ecosystemStatus,
   ].join('\n'), buttons)
@@ -387,6 +463,7 @@ export async function handleAddbotStartCallback(
           OPENCODE_SERVER_USERNAME: process.env.OPENCODE_SERVER_USERNAME ?? 'opencode',
           OPENCODE_SERVER_PASSWORD: process.env.OPENCODE_SERVER_PASSWORD ?? '',
           BOT_ROLE: wizard.role,
+          ...(wizard.customAgentId ? { DEFAULT_CUSTOM_AGENT: wizard.customAgentId } : {}),
           GROUP_CHAT_ENABLED: 'true',
           COORDINATION_DIR: process.env.COORDINATION_DIR ?? '/tmp/opencode-go-coordination',
           ...(process.env.DEFAULT_AGENT ? { DEFAULT_AGENT: process.env.DEFAULT_AGENT } : {}),
