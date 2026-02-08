@@ -2,7 +2,8 @@ import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
-import type { UserSettings } from '../../../domain/models.js'
+import type { CustomAgent, UserSettings } from '../../../domain/models.js'
+import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
 
 export function resolveReviewMode(settings: UserSettings, botRole?: string): boolean {
   if (settings.reviewMode !== undefined) return settings.reviewMode
@@ -17,6 +18,7 @@ export function settingsMainText(
     healthy?: boolean
     hasSession?: boolean
     activeAgent?: string | null
+    customAgentName?: string | null
     instanceName?: string
     botRole?: string
   },
@@ -28,6 +30,7 @@ export function settingsMainText(
   const server = opts.healthy ? '🟢 Online' : '🔴 Offline'
   const session = opts.hasSession ? 'active' : 'None'
   const agent = opts.activeAgent || 'default'
+  const customAgent = opts.customAgentName || null
   const review = resolveReviewMode(s, opts.botRole) ? '🔒' : 'OFF'
 
   const summaryStatus = s.summaryMode ? '✅' : 'OFF'
@@ -45,6 +48,7 @@ export function settingsMainText(
     `${server} · Session: ${session}`,
     '',
     `<b>🤖 Agent:</b> ${agent} · Review: ${review}`,
+    `<b>🎭 Custom Agent:</b> ${customAgent || 'None'}`,
     `<b>📊 Summary:</b> ${summaryStatus} · ${formatExpertise(s.userExpertise)} · Model: ${summaryModel}`,
     `<b>📝 Output:</b> ${outputFmt} · <b>📜 History:</b> ${histFmt}/${histLimit}`,
     `<b>🔊 Voice:</b> ${voiceStatus} ${voiceAuto} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
@@ -55,6 +59,8 @@ export function settingsMainKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text('🤖 Agent & Mode', 'settings:sub_agent')
     .text('📊 Summary', 'settings:sub_summary')
+    .row()
+    .text('🎭 Custom Agent', 'settings:sub_custom_agent')
     .row()
     .text('📝 Output', 'settings:sub_output')
     .text('📜 History Export', 'settings:sub_history')
@@ -98,6 +104,41 @@ export function agentSubKeyboard(
   }
   kb.text('🔒 Toggle Review Mode', 'settings:review')
   kb.row()
+  kb.text('◀️ Back', 'settings:back')
+  return kb
+}
+
+export function customAgentSubText(
+  agents: CustomAgent[],
+  currentAgent: CustomAgent | null,
+): string {
+  const lines = [
+    '<b>🎭 Custom Agent</b>',
+    '',
+    `Current: ${currentAgent ? `<b>${currentAgent.name}</b>` : 'None'}`,
+    currentAgent ? `Description: ${currentAgent.description || '-'}` : 'Description: -',
+    '',
+  ]
+
+  if (agents.length === 0) {
+    lines.push('No custom agents available yet. Use /makeagent to create one.')
+  } else {
+    lines.push('Select an agent:')
+  }
+
+  return lines.join('\n')
+}
+
+export function customAgentSubKeyboard(
+  agents: CustomAgent[],
+  currentAgentId: string | null | undefined,
+): InlineKeyboard {
+  const kb = new InlineKeyboard()
+  for (const agent of agents) {
+    const isActive = agent.id === currentAgentId
+    kb.text(isActive ? `✅ ${agent.name}` : agent.name, `sca:${agent.id}`).row()
+  }
+  kb.text('🧹 Remove', 'sca:remove').row()
   kb.text('◀️ Back', 'settings:back')
   return kb
 }
@@ -254,7 +295,11 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
 
 // ── Command ──
 
-export function settingsCommand(state: StateStore, openCode: OpenCodePort, instanceName?: string, botRole?: string) {
+export function settingsCommand(
+  state: StateStore,
+  openCode: OpenCodePort,
+  deps?: { instanceName?: string; botRole?: string; customAgents?: CustomAgentPort },
+) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
@@ -268,8 +313,11 @@ export function settingsCommand(state: StateStore, openCode: OpenCodePort, insta
         healthy,
         hasSession: !!chatState.activeSessionId,
         activeAgent: chatState.activeAgent,
-        instanceName: isGroup ? instanceName : undefined,
-        botRole,
+        customAgentName: chatState.customAgentId && deps?.customAgents
+          ? (await deps.customAgents.get(chatState.customAgentId))?.name ?? null
+          : null,
+        instanceName: isGroup ? deps?.instanceName : undefined,
+        botRole: deps?.botRole,
       }),
       { parse_mode: 'HTML', reply_markup: settingsMainKeyboard() },
     )
