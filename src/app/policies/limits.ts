@@ -81,4 +81,11 @@ export const LIMITS = {
 
   /** Minimum content length for auto voice trigger */
   VOICE_AUTO_MIN_CONTENT: 200,
+
+  // ── Hook Bot ──────────────────────────────────────────────
+  /** Time before hook session is considered stalled (ms) — 30 minutes */
+  HOOK_STALL_WARNING_MS: 30 * 60 * 1000,
+
+  /** Interval to check for hook session stalls (ms) — 5 minutes */
+  HOOK_STALL_CHECK_INTERVAL_MS: 5 * 60 * 1000,
 } as const

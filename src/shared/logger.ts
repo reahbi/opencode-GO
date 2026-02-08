@@ -15,6 +15,7 @@ const PREFIXES = {
   registry: '[REGISTRY]',
   tunnel: '[TUNNEL]',
   voice: '[VOICE]',
+  hookbot: '[HOOKBOT]',
 } as const
 
 type LogContext = keyof typeof PREFIXES
