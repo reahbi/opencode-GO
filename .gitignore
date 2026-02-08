@@ -4,6 +4,7 @@ data/projects.json
 data/state.json
 data/registry.json
 data/instances/
+data/hook-config.json
 coverage/
 dist/
 *.log

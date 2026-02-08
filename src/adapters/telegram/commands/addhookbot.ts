@@ -1,4 +1,5 @@
 import type { Context } from 'grammy'
+import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
 import type { Button } from '../../../domain/models.js'
@@ -48,6 +49,34 @@ export function addhookbotCommand(state: StateStore) {
     if (ctx.chat?.type !== 'private') {
       await ctx.reply('Only available in DM.')
       return
+    }
+
+    const configPath = resolve(process.cwd(), 'data', 'hook-config.json')
+    try {
+      const raw = await fs.readFile(configPath, 'utf-8')
+      const config = JSON.parse(raw) as { botToken?: string; chatId?: number; mode?: string; projects?: { name: string }[] }
+
+      const kb = new InlineKeyboard()
+      kb.text('❌ Remove hook bot', 'ahb:remove').row()
+
+      const modeText = config.mode === 'all'
+        ? '📡 All projects'
+        : `📁 ${(config.projects || []).map(p => p.name).join(', ') || 'none'}`
+
+      const lines = [
+        '<b>📡 Hook Bot Configured</b>',
+        '',
+        `   Mode: ${modeText}`,
+        `   Chat ID: <code>${config.chatId ?? 'unknown'}</code>`,
+        `   Config: <code>data/hook-config.json</code>`,
+        '',
+        'Tap ❌ to remove the existing hook bot.',
+      ]
+
+      await ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb })
+      return
+    } catch {
+      // No config — start wizard
     }
 
     wizards.delete(chatId)
@@ -497,6 +526,55 @@ export async function handleAddhookbotStartCallback(
 
 export function cancelAddhookbotWizard(chatId: number): void {
   wizards.delete(chatId)
+}
+
+export async function handleAddhookbotRemoveCallback(
+  chatId: number,
+  output: ChatOutputPort,
+): Promise<void> {
+  const configPath = resolve(process.cwd(), 'data', 'hook-config.json')
+
+  try {
+    await fs.unlink(configPath)
+  } catch { /* config may already be gone */ }
+
+  const pm2Name = 'opencode-go-hookbot'
+  try {
+    const proc = Bun.spawn(['pm2', 'delete', pm2Name], {
+      cwd: process.cwd(),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    await proc.exited
+  } catch { /* PM2 process may not exist */ }
+
+  await removeHookBotFromEcosystem()
+
+  await output.sendText(chatId, `✅ Hook bot removed and PM2 process stopped.\nUse /addhookbot to set up again.`)
+  logger.info('registry', 'Hook bot removed via toggle')
+}
+
+async function removeHookBotFromEcosystem(): Promise<boolean> {
+  const configPath = resolve(process.cwd(), 'ecosystem.config.cjs')
+  try {
+    let content = await fs.readFile(configPath, 'utf-8')
+    const marker = `name: 'opencode-go-hookbot'`
+    if (!content.includes(marker)) return true
+
+    const idx = content.indexOf(marker)
+    let blockStart = content.lastIndexOf('    {', idx)
+    let blockEnd = content.indexOf('    },', idx)
+    if (blockStart === -1 || blockEnd === -1) return false
+    blockEnd += '    },'.length
+
+    while (blockEnd < content.length && content[blockEnd] === '\n') blockEnd++
+
+    content = content.slice(0, blockStart) + content.slice(blockEnd)
+    await fs.writeFile(configPath, content, 'utf-8')
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Clear addhookbot wizard state if active (used when other commands are invoked) */

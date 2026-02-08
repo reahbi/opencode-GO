@@ -1,4 +1,5 @@
 import type { Context } from 'grammy'
+import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { BotRegistryPort } from '../../../domain/ports/BotRegistryPort.js'
 import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
@@ -44,7 +45,7 @@ async function fetchProjects(serverUrl: string, username: string, password: stri
   return projects.filter(p => p.worktree !== '/')
 }
 
-export function addbotCommand(state: StateStore) {
+export function addbotCommand(state: StateStore, registry?: BotRegistryPort) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
@@ -53,7 +54,30 @@ export function addbotCommand(state: StateStore) {
       return
     }
 
-    // Reset any existing wizard state
+    // Toggle: if bots exist, show list with remove buttons
+    if (registry) {
+      const bots = await registry.list()
+      if (bots.length > 0) {
+        const kb = new InlineKeyboard()
+        for (const b of bots) {
+          kb.text(`❌ @${b.botUsername} (${b.botRole})`, `addbot_rm:${b.instanceName}`).row()
+        }
+        kb.text('➕ Add new bot', 'addbot_new')
+
+        const lines = [
+          '<b>🤖 Registered Bots</b>',
+          '',
+          ...bots.map(b => `• <b>@${escapeHtml(b.botUsername)}</b> — ${b.botRole === 'writer' ? '✏️ Writer' : '🔒 Reader'} — <code>${escapeHtml(b.projectDir)}</code>`),
+          '',
+          'Tap ❌ to remove, or add a new bot.',
+        ]
+
+        await ctx.reply(lines.join('\n'), { parse_mode: 'HTML', reply_markup: kb })
+        return
+      }
+    }
+
+    // No existing bots — start wizard
     wizards.delete(chatId)
 
     const chatState = await state.getChatState(chatId)
@@ -497,6 +521,77 @@ export async function handleAddbotStartCallback(
 
 export function cancelAddbotWizard(chatId: number): void {
   wizards.delete(chatId)
+}
+
+export async function handleAddbotRemoveCallback(
+  chatId: number,
+  instanceName: string,
+  output: ChatOutputPort,
+  registry: BotRegistryPort,
+): Promise<void> {
+  try {
+    await registry.unregister(instanceName)
+
+    const pm2Name = `opencode-go-${instanceName}`
+    try {
+      const proc = Bun.spawn(['pm2', 'delete', pm2Name], {
+        cwd: process.cwd(),
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await proc.exited
+    } catch { /* PM2 process may not exist */ }
+
+    await removeFromEcosystemConfig(instanceName)
+
+    await output.sendText(chatId, `✅ Bot <code>${escapeHtml(instanceName)}</code> removed and PM2 process stopped.`, 'HTML')
+    logger.info('registry', `Bot removed via toggle: ${instanceName}`)
+  } catch (error) {
+    await output.sendText(chatId, `❌ Failed to remove bot: ${escapeHtml(error instanceof Error ? error.message : 'unknown')}`, 'HTML')
+  }
+}
+
+async function removeFromEcosystemConfig(instanceName: string): Promise<boolean> {
+  const configPath = resolve(process.cwd(), 'ecosystem.config.cjs')
+  try {
+    let content = await fs.readFile(configPath, 'utf-8')
+    const marker = `name: 'opencode-go-${instanceName}'`
+    if (!content.includes(marker)) return true
+
+    const idx = content.indexOf(marker)
+    let blockStart = content.lastIndexOf('    {', idx)
+    let blockEnd = content.indexOf('    },', idx)
+    if (blockStart === -1 || blockEnd === -1) return false
+    blockEnd += '    },'.length
+
+    while (blockEnd < content.length && content[blockEnd] === '\n') blockEnd++
+
+    content = content.slice(0, blockStart) + content.slice(blockEnd)
+    await fs.writeFile(configPath, content, 'utf-8')
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function startAddbotWizard(
+  chatId: number,
+  state: StateStore,
+  output: ChatOutputPort,
+): Promise<void> {
+  wizards.delete(chatId)
+
+  const chatState = await state.getChatState(chatId)
+  chatState.awaitingInput = 'addbot_token'
+  await state.saveChatState(chatId, chatState)
+
+  await output.sendText(chatId, [
+    '<b>🤖 Add Bot Wizard</b>',
+    '',
+    'Send the bot token from BotFather.',
+    '',
+    'Type /cancel to cancel.',
+  ].join('\n'), 'HTML')
 }
 
 /** Clear addbot wizard state if active (used when other commands are invoked) */

@@ -48,14 +48,17 @@ async function main() {
       }
 
       const data = await response.json() as any[]
-      projects = data.map(p => ({
-        directory: p.worktree,
-        name: p.name || path.basename(p.worktree),
-      }))
+      projects = data
+        .filter(p => p.worktree && p.worktree !== '/')
+        .map(p => ({
+          directory: p.worktree,
+          name: p.name || path.basename(p.worktree),
+        }))
     } catch (err) {
       logger.error('hookbot', `Project discovery failed: ${err instanceof Error ? err.message : 'unknown'}`)
       process.exit(1)
     }
+    config.projects = projects
   }
 
   const bot = createHookBot(config.botToken)

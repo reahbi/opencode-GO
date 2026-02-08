@@ -19,6 +19,8 @@ export type ParsedCallback =
   | { type: 'addbot_project'; projectDir: string }
   | { type: 'addbot_agent'; agentId: string }
   | { type: 'addbot_start'; instanceName: string }
+  | { type: 'addbot_remove'; instanceName: string }
+  | { type: 'addbot_new' }
   | { type: 'makeagent_save' }
   | { type: 'makeagent_regen' }
   | { type: 'makeagent_edit' }
@@ -35,6 +37,7 @@ export type ParsedCallback =
   | { type: 'addhookbot_all' }
   | { type: 'addhookbot_done' }
   | { type: 'addhookbot_start'; action: 'start' | 'skip' }
+  | { type: 'addhookbot_remove' }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -179,6 +182,14 @@ export function parseCallback(data: string): ParsedCallback {
     return { type: 'addbot_start', instanceName }
   }
 
+  if (data.startsWith('addbot_rm:')) {
+    const instanceName = data.slice('addbot_rm:'.length)
+    if (!instanceName) return { type: 'unknown', raw: data }
+    return { type: 'addbot_remove', instanceName }
+  }
+
+  if (data === 'addbot_new') return { type: 'addbot_new' }
+
   if (data === 'ma:save') return { type: 'makeagent_save' }
   if (data === 'ma:regen') return { type: 'makeagent_regen' }
   if (data === 'ma:edit') return { type: 'makeagent_edit' }
@@ -251,6 +262,7 @@ export function parseCallback(data: string): ParsedCallback {
 
   if (data === 'ahb:all') return { type: 'addhookbot_all' }
   if (data === 'ahb:done') return { type: 'addhookbot_done' }
+  if (data === 'ahb:remove') return { type: 'addhookbot_remove' }
 
   if (data.startsWith('ahb_start:')) {
     const action = data.slice('ahb_start:'.length)

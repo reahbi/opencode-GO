@@ -34,7 +34,7 @@ import {
 import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
-import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, handleAddbotAgentCallback } from './addbot.js'
+import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, handleAddbotAgentCallback, handleAddbotRemoveCallback, startAddbotWizard } from './addbot.js'
 import {
   addhookbotCommand,
   handleAddhookbotToken,
@@ -44,6 +44,7 @@ import {
   handleAddhookbotChatId,
   handleAddhookbotStartCallback,
   cancelAddhookbotWizard,
+  handleAddhookbotRemoveCallback,
 } from './addhookbot.js'
 import {
   makeagentCommand,
@@ -269,7 +270,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   if (deps.registry) {
     reg('bots', botsCommand(deps.registry))
-    reg('addbot', addbotCommand(state))
+    reg('addbot', addbotCommand(state, deps.registry))
     reg('addhookbot', addhookbotCommand(state))
   }
 
@@ -691,6 +692,16 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await handleAddbotStartCallback(chatId, parsed.instanceName, output)
         break
       }
+      case 'addbot_remove': {
+        if (deps.registry) {
+          await handleAddbotRemoveCallback(chatId, parsed.instanceName, output, deps.registry)
+        }
+        break
+      }
+      case 'addbot_new': {
+        await startAddbotWizard(chatId, state, output)
+        break
+      }
       case 'addhookbot_all': {
         await handleAddhookbotAllCallback(chatId, state, output)
         break
@@ -710,6 +721,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'addhookbot_start': {
         await handleAddhookbotStartCallback(chatId, parsed.action, output)
+        break
+      }
+      case 'addhookbot_remove': {
+        await handleAddhookbotRemoveCallback(chatId, output)
         break
       }
       case 'makeagent_save': {

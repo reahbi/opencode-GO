@@ -86,7 +86,7 @@ export function createOpenCodeAdapter(serverUrl: string, username: string, passw
   const clientOptions: { baseUrl: string; headers?: Record<string, string> } = {
     baseUrl: serverUrl,
   }
-  if (password !== null) {
+  if (password != null && password !== '') {
     const credentials = Buffer.from(`${username}:${password}`).toString('base64')
     clientOptions.headers = { Authorization: `Basic ${credentials}` }
   }
@@ -260,7 +260,9 @@ export function createOpenCodeAdapter(serverUrl: string, username: string, passw
         const sse = await client.event.subscribe({ directory }, signal ? { signal } : undefined)
         for await (const event of sse.stream) {
           if (signal?.aborted) return
-          const domainEvent = mapSdkEvent(extractEventPayload(event))
+          const payload = extractEventPayload(event)
+          logger.debug('opencode', `SSE raw event for ${directory}: ${JSON.stringify(payload).slice(0, 200)}`)
+          const domainEvent = mapSdkEvent(payload)
           if (domainEvent) {
             await handler(domainEvent)
           }

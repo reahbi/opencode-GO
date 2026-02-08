@@ -223,6 +223,7 @@ async function main() {
     { command: 'settings', description: 'Summary, output format, etc.' },
     { command: 'groupsettings', description: 'Group settings (debate, bots)' },
     { command: 'bots', description: 'List registered bots' },
+    { command: 'addbot', description: 'Add a new bot instance' },
     { command: 'makeagent', description: 'Create a custom system-prompt agent' },
     { command: 'tunnel', description: 'Create tunnel to localhost' },
     { command: 'addhookbot', description: 'Setup hook bot for session notifications' },

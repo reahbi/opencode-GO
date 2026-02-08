@@ -158,6 +158,17 @@ export function createCompletionWatcher(deps: CompletionWatcherDeps) {
         const tracked = busySessions.get(key)
         if (tracked) {
           tracked.lastActivityTime = Date.now()
+        } else {
+          // Auto-register: session activity arrived before session.busy
+          const now = Date.now()
+          busySessions.set(key, {
+            sessionId: event.data.sessionId,
+            directory,
+            projectName,
+            busySince: now,
+            lastActivityTime: now,
+          })
+          logger.info('hookbot', `Auto-registered session ${event.data.sessionId} in ${projectName} (from ${event.type})`)
         }
         break
       }
