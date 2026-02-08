@@ -1,3 +1,5 @@
+[🇺🇸 English](bun.md)
+
 # Bun 설치 가이드
 
 OpenCode-Go는 Bun 런타임을 사용하여 실행됩니다. 이 문서는 Bun을 설치하고 설정하는 방법을 안내합니다.

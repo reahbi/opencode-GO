@@ -1,3 +1,5 @@
+[🇰🇷 한국어](installation-kr.md)
+
 # Installation
 
 ## For Humans
@@ -66,6 +68,10 @@ Then install dependencies:
 ```bash
 bun install
 ```
+
+**Optional dependencies** (for specific features):
+- **Voice TTS** — requires `edge-tts` Python package. Install: `python3 -m venv /tmp/edge-tts-env && /tmp/edge-tts-env/bin/pip install edge-tts`
+- **Tunnel** — requires `cloudflared` binary in PATH. Install: see [cloudflare/cloudflared releases](https://github.com/cloudflare/cloudflared/releases)
 
 ### Step 2: Ask for BOT_TOKEN
 

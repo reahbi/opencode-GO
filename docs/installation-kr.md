@@ -1,3 +1,5 @@
+[🇺🇸 English](installation.md)
+
 # Installation
 
 ## For Humans
@@ -66,6 +68,10 @@ Then install dependencies:
 ```bash
 bun install
 ```
+
+**선택적 의존성** (특정 기능에 필요):
+- **음성 TTS** — `edge-tts` Python 패키지가 필요합니다. 설치: `python3 -m venv /tmp/edge-tts-env && /tmp/edge-tts-env/bin/pip install edge-tts`
+- **터널** — `cloudflared` 바이너리가 PATH에 있어야 합니다. 설치: [cloudflare/cloudflared releases](https://github.com/cloudflare/cloudflared/releases) 참고
 
 ### Step 2: Ask for BOT_TOKEN
 

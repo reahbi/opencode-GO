@@ -1,3 +1,5 @@
+[🇰🇷 한국어](bun-kr.md)
+
 # Bun Installation Guide
 
 OpenCode-Go runs on the Bun runtime. This document guides you through installing and configuring Bun.
