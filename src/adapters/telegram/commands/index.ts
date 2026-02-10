@@ -37,6 +37,8 @@ import { botsCommand } from './bots.js'
 import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, handleAddbotAgentCallback, handleAddbotRemoveCallback, startAddbotWizard } from './addbot.js'
 import {
   addhookbotCommand,
+  startAddhookbotWizard,
+  startAddhookbotReconfigure,
   handleAddhookbotToken,
   handleAddhookbotAllCallback,
   handleAddhookbotProjectCallback as handleAddhookbotProjectCb,
@@ -60,6 +62,7 @@ import { queueCommand, clearQueueCommand, showQueueCommand } from './queue.js'
 import { undoCommand, redoCommand } from './undo.js'
 import { tunnelCommand, startTunnelWithFeedback, handleTunnelPortInput } from './tunnel.js'
 import { gitCommand, handleGitCallback } from './git.js'
+import { restartCommand, handleRestartCallback } from './restart.js'
 import { createSessionCommands } from '../../../app/usecases/sessionCommands.js'
 import { createPromptFlow } from '../../../app/usecases/promptFlow.js'
 import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
@@ -281,6 +284,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   if (deps.tunnel) {
     reg('tunnel', tunnelCommand(deps.tunnel))
   }
+
+  reg('restart', restartCommand())
 
   reg('cancel', async (ctx) => {
     const chatId = ctx.chat?.id
@@ -727,6 +732,16 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await handleAddhookbotRemoveCallback(chatId, output)
         break
       }
+      case 'addhookbot_reconfigure': {
+        await startAddhookbotReconfigure(
+          chatId,
+          output,
+          deps.serverUrl ?? '',
+          deps.serverUsername ?? 'opencode',
+          deps.serverPassword ?? '',
+        )
+        break
+      }
       case 'makeagent_save': {
         await startMakeagentSave(chatId, state, output)
         break
@@ -844,6 +859,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'git': {
         await handleGitCallback(ctx, parsed.action, state)
+        break
+      }
+      case 'restart': {
+        await handleRestartCallback(ctx, parsed.action)
         break
       }
       case 'voice': {

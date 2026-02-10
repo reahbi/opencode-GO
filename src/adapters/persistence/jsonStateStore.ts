@@ -76,6 +76,7 @@ export function createJsonStateStore(dataDir?: string): StateStore {
       currentQuestionIndex: pi.currentQuestionIndex,
       phase: pi.phase,
       creatorUserId: pi.creatorUserId,
+      directory: pi.directory,
     }
   }
 

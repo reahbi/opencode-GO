@@ -159,7 +159,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     interaction: PendingInteraction,
     chatState: Awaited<ReturnType<typeof deps.state.getChatState>>,
   ): Promise<void> {
-    const directory = chatState.activeProjectDirectory
+    const directory = interaction.directory ?? chatState.activeProjectDirectory
     if (!directory) {
       await deps.output.sendText(chatId, '❌ No active project directory')
       return
@@ -167,8 +167,15 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
     const answers = toSubmitAnswers(interaction)
     logger.info('interactive', `Submitting ${answers.length} answers for requestId=${interaction.requestId}: ${JSON.stringify(answers)}`)
-    await deps.openCode.replyQuestion(interaction.requestId, directory, answers)
-    logger.info('interactive', `replyQuestion succeeded for requestId=${interaction.requestId}`)
+
+    let replyFailed = false
+    try {
+      await deps.openCode.replyQuestion(interaction.requestId, directory, answers)
+      logger.info('interactive', `replyQuestion succeeded for requestId=${interaction.requestId}`)
+    } catch (err) {
+      logger.info('interactive', `replyQuestion failed (likely already resolved elsewhere): requestId=${interaction.requestId}: ${err instanceof Error ? err.message : String(err)}`)
+      replyFailed = true
+    }
 
     chatState.pendingInteractions = chatState.pendingInteractions.filter(
       i => i.interactionId !== interaction.interactionId
@@ -178,25 +185,30 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     await deps.state.saveChatState(chatId, chatState)
 
     if (interaction.messageHandle) {
-      const questions = interaction.questions ?? []
-      const total = questions.length
       let summary: string
 
-      if (total === 1) {
-        const answer = answers[0] ?? []
-        const answerText = answer.length === 0
-          ? '⏭️ skipped'
-          : escapeHtml(answer.join(', '))
-        summary = `✅ <b>Answered:</b> ${answerText}`
+      if (replyFailed) {
+        summary = '✅ 이미 다른 곳에서 답변되었습니다'
       } else {
-        const lines = [`✅ <b>${total} questions answered</b>\n`]
-        for (let i = 0; i < total; i++) {
-          const q = questions[i]
-          const a = answers[i] ?? []
-          lines.push(`<b>${i + 1}.</b> ${escapeHtml(q?.text ?? '?')}`)
-          lines.push(`   → ${answerLabel(a)}\n`)
+        const questions = interaction.questions ?? []
+        const total = questions.length
+
+        if (total === 1) {
+          const answer = answers[0] ?? []
+          const answerText = answer.length === 0
+            ? '⏭️ skipped'
+            : escapeHtml(answer.join(', '))
+          summary = `✅ <b>Answered:</b> ${answerText}`
+        } else {
+          const lines = [`✅ <b>${total} questions answered</b>\n`]
+          for (let i = 0; i < total; i++) {
+            const q = questions[i]
+            const a = answers[i] ?? []
+            lines.push(`<b>${i + 1}.</b> ${escapeHtml(q?.text ?? '?')}`)
+            lines.push(`   → ${answerLabel(a)}\n`)
+          }
+          summary = lines.join('\n')
         }
-        summary = lines.join('\n')
       }
 
       try {
@@ -207,16 +219,16 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handlePermissionEvent(chatId: number, event: PermissionAsked, actorUserId?: number): Promise<void> {
+  async function handlePermissionEvent(chatId: number, event: PermissionAsked, actorUserId?: number, directory?: string): Promise<void> {
     try {
       if (deps.botRole === 'reader') {
         const chatState = await deps.state.getChatState(chatId)
-        const directory = chatState.activeProjectDirectory
-        if (!directory) {
+        const dir = directory ?? chatState.activeProjectDirectory
+        if (!dir) {
           logger.warn('interactive', `Reader bot permission auto-reject skipped (no directory, requestId=${event.requestId})`)
           return
         }
-        await deps.openCode.replyPermission(event.requestId, directory, 'reject')
+        await deps.openCode.replyPermission(event.requestId, dir, 'reject')
         await deps.output.sendText(chatId, '🔒 Reader bot: Permission auto-rejected (read-only)')
         return
       }
@@ -229,6 +241,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         type: 'permission',
         expiresAt: Date.now() + LIMITS.INTERACTION_TTL_MS,
         creatorUserId: actorUserId,
+        directory,
       }
 
       const chatState = await deps.state.getChatState(chatId)
@@ -249,7 +262,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number): Promise<void> {
+  async function handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number, directory?: string): Promise<void> {
     try {
       const interactionId = generateUUID()
       const questions = event.questions.map(q => ({
@@ -276,6 +289,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         currentQuestionIndex: 0,
         phase: 'answering',
         creatorUserId: actorUserId,
+        directory,
       }
 
       const chatState = await deps.state.getChatState(chatId)
@@ -312,21 +326,30 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
           return
         }
 
-        const directory = chatState.activeProjectDirectory
+        const directory = interaction.directory ?? chatState.activeProjectDirectory
         if (!directory) {
           await deps.state.saveChatState(chatId, chatState)
           await deps.output.sendText(chatId, '❌ No active project directory')
           return
         }
 
-        await deps.openCode.replyPermission(interaction.requestId, directory, response)
+        let replyFailed = false
+        try {
+          await deps.openCode.replyPermission(interaction.requestId, directory, response)
+        } catch (err) {
+          logger.info('interactive', `replyPermission failed (likely already resolved elsewhere): requestId=${interaction.requestId}: ${err instanceof Error ? err.message : String(err)}`)
+          replyFailed = true
+        }
 
         chatState.pendingInteractions = chatState.pendingInteractions.filter(
           i => i.interactionId !== interactionId
         )
         await deps.state.saveChatState(chatId, chatState)
 
-        await deps.output.sendText(chatId, `✅ Permission: ${response}`)
+        const msg = replyFailed
+          ? '✅ 이미 다른 곳에서 답변되었습니다'
+          : `✅ Permission: ${response}`
+        await deps.output.sendText(chatId, msg)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle permission callback', { chatId, interactionId, error })

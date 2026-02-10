@@ -24,6 +24,37 @@ interface OpenCodeProject {
 const MAX_TOKEN_ATTEMPTS = 3
 const wizards = new Map<number, AddhookbotWizardState>()
 
+async function pm2Save(): Promise<void> {
+  try {
+    const proc = Bun.spawn(['pm2', 'save'], { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' })
+    await proc.exited
+  } catch {
+    logger.warn('registry', 'pm2 save failed')
+  }
+}
+
+export async function startAddhookbotWizard(chatId: number, state: StateStore, output: ChatOutputPort): Promise<void> {
+  wizards.delete(chatId)
+
+  const chatState = await state.getChatState(chatId)
+  chatState.awaitingInput = 'addhookbot_token'
+  await state.saveChatState(chatId, chatState)
+
+  await output.sendText(
+    chatId,
+    [
+      '<b>📡 Hook Bot Setup Wizard</b>',
+      '',
+      'This will configure a hook bot that sends notifications when AI sessions complete.',
+      '',
+      'Send the bot token from BotFather.',
+      '',
+      'Type /cancel to cancel.',
+    ].join('\n'),
+    'HTML',
+  )
+}
+
 function escapeHtml(t: string): string {
   return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -57,6 +88,7 @@ export function addhookbotCommand(state: StateStore) {
       const config = JSON.parse(raw) as { botToken?: string; chatId?: number; mode?: string; projects?: { name: string }[] }
 
       const kb = new InlineKeyboard()
+      kb.text('🔄 Reconfigure', 'ahb:reconfigure').row()
       kb.text('❌ Remove hook bot', 'ahb:remove').row()
 
       const modeText = config.mode === 'all'
@@ -480,6 +512,24 @@ export async function handleAddhookbotStartCallback(
   const pm2Name = 'opencode-go-hookbot'
   await output.sendText(chatId, `🚀 Starting <code>${escapeHtml(pm2Name)}</code>...`, 'HTML')
 
+  // If process already exists, prefer restart so new config is applied.
+  try {
+    const restartProc = Bun.spawn(['pm2', 'restart', pm2Name], {
+      cwd: process.cwd(),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const restartExit = await restartProc.exited
+    if (restartExit === 0) {
+      await pm2Save()
+      wizards.delete(chatId)
+      await output.sendText(chatId, `✅ <code>${escapeHtml(pm2Name)}</code> restarted!`, 'HTML')
+      return
+    }
+  } catch {
+    // ignore and fall back to pm2 start
+  }
+
   const tmpConfigPath = `/tmp/${pm2Name}.config.json`
   try {
     const appConfig = {
@@ -512,6 +562,7 @@ export async function handleAddhookbotStartCallback(
     await fs.unlink(tmpConfigPath).catch(() => {})
 
     if (exitCode === 0) {
+      await pm2Save()
       wizards.delete(chatId)
       await output.sendText(chatId, `✅ <code>${escapeHtml(pm2Name)}</code> started!`, 'HTML')
     } else {
@@ -521,6 +572,86 @@ export async function handleAddhookbotStartCallback(
   } catch (error) {
     await fs.unlink(tmpConfigPath).catch(() => {})
     await output.sendText(chatId, `❌ PM2 execution failed: ${escapeHtml(error instanceof Error ? error.message : 'unknown')}`, 'HTML')
+  }
+}
+
+export async function startAddhookbotReconfigure(
+  chatId: number,
+  output: ChatOutputPort,
+  serverUrl: string,
+  serverUsername: string,
+  serverPassword: string,
+): Promise<void> {
+  const configPath = resolve(process.cwd(), 'data', 'hook-config.json')
+
+  let config: { botToken?: string }
+  try {
+    const raw = await fs.readFile(configPath, 'utf-8')
+    config = JSON.parse(raw) as { botToken?: string }
+  } catch {
+    await output.sendText(chatId, '❌ No existing hook bot config found. Use /addhookbot to set up.')
+    return
+  }
+
+  if (!config.botToken) {
+    await output.sendText(chatId, '❌ Existing config has no bot token. Use /addhookbot to set up from scratch.')
+    return
+  }
+
+  const token = config.botToken
+  let username = ''
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
+      signal: AbortSignal.timeout(10000),
+    })
+    const data = await res.json() as { ok: boolean; result?: { username?: string } }
+    if (!data.ok || !data.result?.username) {
+      await output.sendText(chatId, '❌ Saved bot token is no longer valid. Use /addhookbot to set up with a new token.')
+      return
+    }
+    username = data.result.username
+  } catch {
+    await output.sendText(chatId, '❌ Cannot verify saved bot token. Check network and try again.')
+    return
+  }
+
+  const wizard: AddhookbotWizardState = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0 }
+  wizards.set(chatId, wizard)
+
+  let projects: OpenCodeProject[] = []
+  try {
+    projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
+  } catch {
+    logger.debug('registry', 'Failed to fetch projects for addhookbot reconfigure')
+  }
+
+  if (projects.length > 0) {
+    const buttons: Button[] = [
+      { label: '📡 All projects', callbackData: 'ahb:all' },
+    ]
+    for (const p of projects) {
+      const name = p.name || p.worktree.split('/').pop() || p.worktree
+      buttons.push({
+        label: `⬜ ${name}`,
+        callbackData: `ahb_proj:${p.worktree}:select`,
+      })
+    }
+    buttons.push({ label: '✅ Done', callbackData: 'ahb:done' })
+
+    await output.sendInteraction(
+      chatId,
+      `🔄 <b>Reconfigure @${escapeHtml(username)}</b>\n\nSelect projects to monitor:\n<i>(Toggle individual projects or select all)</i>`,
+      buttons,
+    )
+  } else {
+    wizard.mode = 'all'
+    wizards.set(chatId, wizard)
+
+    await output.sendText(
+      chatId,
+      `🔄 <b>Reconfigure @${escapeHtml(username)}</b>\n\nNo projects found on server. Mode set to <b>📡 All projects</b>.\n\nSend the chat ID for notifications.\nDefault: <code>${chatId}</code> (this chat)\n\nSend <code>default</code> to use current chat, or enter a numeric chat ID.`,
+      'HTML',
+    )
   }
 }
 
@@ -549,6 +680,7 @@ export async function handleAddhookbotRemoveCallback(
   } catch { /* PM2 process may not exist */ }
 
   await removeHookBotFromEcosystem()
+  await pm2Save()
 
   await output.sendText(chatId, `✅ Hook bot removed and PM2 process stopped.\nUse /addhookbot to set up again.`)
   logger.info('registry', 'Hook bot removed via toggle')

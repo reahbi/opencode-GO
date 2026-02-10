@@ -88,4 +88,10 @@ export const LIMITS = {
 
   /** Interval to check for hook session stalls (ms) — 5 minutes */
   HOOK_STALL_CHECK_INTERVAL_MS: 5 * 60 * 1000,
+
+  /** Polling interval for hook completion backfill (ms) — 3 minutes */
+  HOOK_COMPLETION_POLL_INTERVAL_MS: 3 * 60 * 1000,
+
+  /** Only consider sessions updated within this window for poll-based completion (ms) — 15 minutes */
+  HOOK_COMPLETION_POLL_RECENT_WINDOW_MS: 15 * 60 * 1000,
 } as const

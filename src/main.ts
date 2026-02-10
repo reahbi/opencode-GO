@@ -17,6 +17,7 @@ import { createEdgeTtsAdapter } from './adapters/tts/edgeTtsAdapter.js'
 import { createSummaryService } from './adapters/opencode/summaryService.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
 import { logger, setInstancePrefix } from './shared/logger.js'
+import { waitForServer } from './shared/waitForServer.js'
 import { LIMITS } from './app/policies/limits.js'
 import { promises as fs } from 'node:fs'
 
@@ -52,9 +53,22 @@ async function main() {
     if (chatId && config.defaultProject) {
       const chatState = await state.getChatState(chatId)
       let changed = false
+      let resetSessionContext = false
       if (!chatState.activeProjectDirectory) {
         chatState.activeProjectDirectory = config.defaultProject
         changed = true
+      } else if (chatState.activeProjectDirectory !== config.defaultProject) {
+        try {
+          await fs.access(chatState.activeProjectDirectory)
+        } catch {
+          logger.warn(
+            'state',
+            `Invalid project directory in state for chat ${chatId}: ${chatState.activeProjectDirectory}. Resetting to ${config.defaultProject}`,
+          )
+          chatState.activeProjectDirectory = config.defaultProject
+          changed = true
+          resetSessionContext = true
+        }
       }
       if (!chatState.activeAgent && config.defaultAgent) {
         chatState.activeAgent = config.defaultAgent
@@ -63,6 +77,12 @@ async function main() {
       if (!chatState.customAgentId && config.defaultCustomAgent) {
         chatState.customAgentId = config.defaultCustomAgent
         changed = true
+      }
+      if (resetSessionContext) {
+        chatState.activeSessionId = null
+        chatState.pendingInteractions = []
+        chatState.awaitingInput = null
+        chatState.awaitingInteractionId = null
       }
       if (changed) await state.saveChatState(chatId, chatState)
     }
@@ -178,12 +198,12 @@ async function main() {
   logger.info('bot', `Default project: ${config.defaultProject}`)
   logger.info('bot', `Allowed users: ${config.allowedUserIds.length > 0 ? config.allowedUserIds.join(', ') : 'all'}`)
 
-  const healthy = await openCode.healthCheck()
-  if (healthy) {
-    logger.info('bot', 'OpenCode server is reachable')
-  } else {
-    logger.warn('bot', 'OpenCode server is not reachable. Bot will start anyway.')
-  }
+  await waitForServer({
+    serverUrl: config.openCodeServerUrl,
+    username: config.openCodeServerUsername,
+    password: config.openCodeServerPassword,
+    logContext: 'bot',
+  })
 
   // Graceful shutdown
   async function shutdown(signal: string) {
@@ -226,6 +246,7 @@ async function main() {
     { command: 'addbot', description: 'Add a new bot instance' },
     { command: 'makeagent', description: 'Create a custom system-prompt agent' },
     { command: 'tunnel', description: 'Create tunnel to localhost' },
+    { command: 'restart', description: 'Restart PM2 processes' },
     { command: 'addhookbot', description: 'Setup hook bot for session notifications' },
     { command: 'help', description: 'Help' },
   ])

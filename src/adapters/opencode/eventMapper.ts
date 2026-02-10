@@ -44,7 +44,11 @@ function mapQuestionInfo(value: unknown, index: number): QuestionInfo {
 
   if (Array.isArray(optionsRaw)) {
     const labels = optionsRaw
-      .map((option) => (isRecord(option) ? option.label : undefined))
+      .map((option) => {
+        if (typeof option === 'string') return option
+        if (isRecord(option)) return getString(option.label)
+        return undefined
+      })
       .filter(isString)
     if (labels.length > 0) {
       options = labels

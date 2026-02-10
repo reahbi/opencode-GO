@@ -295,6 +295,8 @@ pm2 logs
 
 **비활성 경고** — AI 세션이 30분 이상 유휴 상태이면 알림을 받습니다. 대기 중인 작업을 잊어버리는 일이 없습니다.
 
+**훅 봇 (📡)** — OpenCode 세션을 SSE로 모니터링하는 별도의 경량 프로세스입니다. 세션 완료, 정체, 에러 발생 시 텔레그램으로 알림을 받을 수 있습니다 — 메인 봇 없이도 동작합니다. 알림 채팅에서 바로 권한 승인과 질문 답변이 가능합니다. `/addhookbot` 마법사로 간편하게 설정하세요.
+
 **진단 도구** — `bun run doctor`로 설정 문제를 자동 진단합니다.
 
 ---
@@ -383,6 +385,7 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `/review [대상]` | 상대 봇에게 코드 리뷰 요청 (🧪 테스트 중) |
 | `/bots` | 등록된 봇 현황 (온라인/오프라인) |
 | `/addbot` | 새 봇 추가 마법사 (DM 전용) |
+| `/addhookbot` | 훅 봇 설정 마법사 (DM 전용) |
 | `/cancel` | 진행 중인 마법사 취소 |
 | `/help` | 도움말 |
 
@@ -409,6 +412,7 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `COORDINATION_DIR` | | — | 봇 간 조정용 공유 디렉토리 (멀티봇 필수) |
 | `DEFAULT_AGENT` | | — | 기본 AI 에이전트 이름 (OpenCode 서버의 에이전트명과 일치해야 함) |
 | `DEFAULT_CUSTOM_AGENT` | | — | 기본 커스텀 에이전트 ID (`/makeagent`로 생성) |
+| `HOOK_CONFIG_PATH` | | `data/hook-config.json` | 훅 봇 설정 파일 경로 |
 | `DEBUG` | | — | truthy 값 설정 시 디버그 로그 활성화 |
 
 ---
@@ -424,7 +428,8 @@ src/
 ├── adapters/      # 외부 세계 — Telegram, OpenCode SDK, JSON 저장소
 ├── config/        # 환경변수 파싱 + 프로젝트 설정
 ├── shared/        # 로거, 포매터, 상수
-└── main.ts        # Composition Root (의존성 조립)
+├── main.ts        # Composition Root (의존성 조립)
+└── hookBot.ts     # Hook Bot Composition Root (세션 알림 프로세스)
 ```
 
 **멀티봇 모드 구조:**
@@ -489,6 +494,7 @@ bun run doctor    # 6가지 설정 항목을 자동으로 진단합니다
 | [명령어 사용법](docs/commands.md) | 전체 명령어 상세 설명 |
 | [PM2 배포](docs/deploy.md) | 프로덕션 배포 + 멀티 인스턴스 |
 | [멀티봇 가이드](docs/multibot-kr.md) | 멀티봇 설정, 역할, 토론, 리뷰 기능 |
+| [훅 봇 가이드](docs/hookbot-kr.md) | 세션 알림 봇 설정 및 기능 |
 | [문제 해결](docs/troubleshooting.md) | 자주 묻는 문제 + `bun run doctor` |
 | [AGENTS.md](AGENTS.md) | AI 에이전트용 프로젝트 지식 베이스 |
 
@@ -498,6 +504,7 @@ bun run doctor    # 6가지 설정 항목을 자동으로 진단합니다
 
 ```bash
 bun run dev        # 개발 모드 (hot reload)
+bun run hook       # 훅 봇 실행 (세션 알림)
 bun run typecheck  # 타입 체크
 bun run build      # dist/ 빌드
 ```
@@ -547,7 +554,7 @@ bun run start    # Production
 2. Send `/new` to create a session
 3. Send a message — it goes straight to the AI
 
-**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode with expertise adaptation | Multi-agent selection | PM2 multi-instance deployment | Group chat with @mention routing | Multi-bot collaboration (Writer/Reader roles, 🧪 testing) | `/debate` and `/review` between bots | Bot registry (`/bots`, `/addbot`) | Group settings (`/groupsettings`) | Review Mode toggle in `/settings` | Voice response with auto-voice mode | Expertise level selector (Vibe/Developer/Beginner)
+**Key Features**: Real-time SSE streaming | Interactive permission/question buttons | Smart response delivery (inline / chunk / file) | Summary mode with expertise adaptation | Multi-agent selection | PM2 multi-instance deployment | Group chat with @mention routing | Multi-bot collaboration (Writer/Reader roles, 🧪 testing) | `/debate` and `/review` between bots | Bot registry (`/bots`, `/addbot`) | Group settings (`/groupsettings`) | Review Mode toggle in `/settings` | Voice response with auto-voice mode | Expertise level selector (Vibe/Developer/Beginner) | Hook Bot session notifications (`/addhookbot`)
 
 **Multi-Bot Mode (Optional)**
 

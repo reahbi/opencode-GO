@@ -15,6 +15,8 @@ export interface TrackedSession {
   busySince: number
   lastActivityTime: number
   sessionTitle?: string
+  /** true = saw real session.busy event; false = seeded at startup or auto-registered */
+  observed?: boolean
 }
 
 export type HookNotification =
@@ -24,7 +26,7 @@ export type HookNotification =
       directory: string
       projectName: string
       sessionTitle?: string
-      duration: number
+      duration: number | null
       lastMessage?: string
     }
   | {

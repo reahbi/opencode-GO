@@ -104,7 +104,52 @@ describe('createCompletionWatcher', () => {
     )
   })
 
-  it('idle without prior busy is ignored', async () => {
+  it('uses latest assistant text even if newest assistant message has no text', async () => {
+    const h = createTestHarness()
+    activeWatchers.push(h.watcher)
+
+    h.openCode.getSession = async () => ({
+      id: 's-1',
+      title: 'Test title',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    })
+
+    h.openCode.getSessionMessages = async () => ([
+      {
+        role: 'user',
+        createdAt: 1,
+        parts: [{ type: 'text', text: 'Do the thing' }],
+      },
+      {
+        role: 'assistant',
+        createdAt: 2,
+        parts: [{ type: 'text', text: 'Here is the real answer.' }],
+      },
+      {
+        role: 'assistant',
+        createdAt: 3,
+        parts: [{ type: 'tool', tool: 'bash', title: 'Run tests', status: 'completed' }],
+      },
+    ])
+
+    await h.watcher.startWatching([project])
+    await waitFor(() => h.mockStreamEvents.mock.calls.length === 1)
+
+    await h.emit({ type: 'session.busy', data: { sessionId: 's-1' } })
+    await h.emit({ type: 'session.idle', data: { sessionId: 's-1' } })
+
+    await waitFor(() => h.mockNotify.mock.calls.length === 1)
+    expect(h.mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'completion',
+        sessionId: 's-1',
+        lastMessage: 'Here is the real answer.',
+      }),
+    )
+  })
+
+  it('idle without prior busy triggers untracked completion', async () => {
     const h = createTestHarness()
     activeWatchers.push(h.watcher)
 
@@ -112,9 +157,33 @@ describe('createCompletionWatcher', () => {
     await waitFor(() => h.mockStreamEvents.mock.calls.length === 1)
 
     await h.emit({ type: 'session.idle', data: { sessionId: 's-1' } })
+
+    await waitFor(() => h.mockNotify.mock.calls.length === 1)
+    expect(h.mockNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'completion',
+        sessionId: 's-1',
+        directory: project.directory,
+        projectName: project.name,
+        duration: null,
+      }),
+    )
+  })
+
+  it('idle without prior busy deduplicates within TTL', async () => {
+    const h = createTestHarness()
+    activeWatchers.push(h.watcher)
+
+    await h.watcher.startWatching([project])
+    await waitFor(() => h.mockStreamEvents.mock.calls.length === 1)
+
+    await h.emit({ type: 'session.idle', data: { sessionId: 's-1' } })
+    await waitFor(() => h.mockNotify.mock.calls.length === 1)
+
+    await h.emit({ type: 'session.idle', data: { sessionId: 's-1' } })
     await sleepTick()
 
-    expect(h.mockNotify).not.toHaveBeenCalled()
+    expect(h.mockNotify.mock.calls.filter(([n]) => n.type === 'completion')).toHaveLength(1)
   })
 
   it('session.error triggers error notification', async () => {

@@ -294,6 +294,8 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 **Inactivity Warning** — Get notified if your AI session sits idle for 30+ minutes. Never forget about a waiting task again.
 
+**Hook Bot (📡)** — A separate lightweight process that monitors all OpenCode sessions via SSE and sends Telegram notifications. Get notified when sessions complete, stall, or encounter errors — even without the main bot running. Approve permissions and answer questions directly from the notification chat. Set up instantly with the `/addhookbot` wizard.
+
 **Diagnostics** — Run `bun run doctor` to auto-diagnose configuration issues.
 
 ---
@@ -383,6 +385,7 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute pat
 | `/review [target]` | Request code review from peer bot (🧪 Testing) |
 | `/bots` | Registered bot status (online/offline) |
 | `/addbot` | New bot setup wizard (DM only) |
+| `/addhookbot` | Hook bot setup wizard (DM only) |
 | `/cancel` | Cancel ongoing wizard |
 | `/help` | Help |
 
@@ -409,6 +412,7 @@ Detailed usage: [Commands Guide](docs/commands.md)
 | `COORDINATION_DIR` | | — | Shared directory for bot coordination (required for multi-bot) |
 | `DEFAULT_AGENT` | | — | Default AI agent name (must match an agent from OpenCode server) |
 | `DEFAULT_CUSTOM_AGENT` | | — | Default custom agent ID (from `/makeagent`) |
+| `HOOK_CONFIG_PATH` | | `data/hook-config.json` | Hook bot configuration file path |
 | `DEBUG` | | — | Enable debug logs when set to truthy value |
 
 ---
@@ -424,7 +428,8 @@ src/
 ├── adapters/      # External world — Telegram, OpenCode SDK, JSON storage
 ├── config/        # Environment parsing + project settings
 ├── shared/        # Logger, formatters, constants
-└── main.ts        # Composition Root (dependency assembly)
+├── main.ts        # Composition Root (dependency assembly)
+└── hookBot.ts     # Hook Bot Composition Root (session notification process)
 ```
 
 **Multi-Bot Mode Architecture:**
@@ -489,6 +494,7 @@ For common issues and solutions, see the [Troubleshooting Guide](docs/troublesho
 | [Commands Usage](docs/commands.md) | Full command reference |
 | [PM2 Deployment](docs/deploy.md) | Production deployment + multi-instance |
 | [Multi-Bot Guide](docs/multibot.md) | Multi-bot setup, roles, debate, and review features |
+| [Hook Bot Guide](docs/hookbot.md) | Session notification bot setup and features |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues + `bun run doctor` |
 | [AGENTS.md](AGENTS.md) | AI agent project knowledge base |
 
@@ -498,6 +504,7 @@ For common issues and solutions, see the [Troubleshooting Guide](docs/troublesho
 
 ```bash
 bun run dev        # Development mode (hot reload)
+bun run hook       # Start hook bot (session notifications)
 bun run typecheck  # Type check
 bun run build      # Build to dist/
 ```

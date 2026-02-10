@@ -38,6 +38,8 @@ export type ParsedCallback =
   | { type: 'addhookbot_done' }
   | { type: 'addhookbot_start'; action: 'start' | 'skip' }
   | { type: 'addhookbot_remove' }
+  | { type: 'addhookbot_reconfigure' }
+  | { type: 'restart'; action: string }
   | { type: 'unknown'; raw: string }
 
 const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
@@ -263,6 +265,7 @@ export function parseCallback(data: string): ParsedCallback {
   if (data === 'ahb:all') return { type: 'addhookbot_all' }
   if (data === 'ahb:done') return { type: 'addhookbot_done' }
   if (data === 'ahb:remove') return { type: 'addhookbot_remove' }
+  if (data === 'ahb:reconfigure') return { type: 'addhookbot_reconfigure' }
 
   if (data.startsWith('ahb_start:')) {
     const action = data.slice('ahb_start:'.length)
@@ -270,6 +273,12 @@ export function parseCallback(data: string): ParsedCallback {
       return { type: 'addhookbot_start', action }
     }
     return { type: 'unknown', raw: data }
+  }
+
+  if (data.startsWith('restart:')) {
+    const action = data.slice('restart:'.length)
+    if (!action) return { type: 'unknown', raw: data }
+    return { type: 'restart', action }
   }
 
   return { type: 'unknown', raw: data }

@@ -38,6 +38,7 @@ export function helpCommand(instanceName?: string) {
 
 <b>Project</b>
 /git — Git status, diff, log
+/restart — Restart PM2 processes
 
 <b>General</b>
 /start — Welcome & status overview

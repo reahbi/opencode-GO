@@ -50,6 +50,7 @@ export interface PendingInteraction {
   currentQuestionIndex?: number
   phase?: 'answering' | 'confirm'
   creatorUserId?: number
+  directory?: string
 }
 
 /** Queued message for delivery when session becomes idle */
