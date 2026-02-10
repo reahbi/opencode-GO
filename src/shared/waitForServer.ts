@@ -4,21 +4,16 @@ export interface WaitForServerOptions {
   serverUrl: string
   username: string
   password: string | null
-  /** Maximum number of attempts before giving up (default: 120 → ~5 min with backoff) */
   maxAttempts?: number
-  /** Initial delay between retries in ms (default: 2000) */
   initialDelayMs?: number
-  /** Maximum delay between retries in ms (default: 15000) */
   maxDelayMs?: number
-  /** Log context for prefixing messages */
   logContext?: 'bot' | 'hookbot'
 }
 
-/**
- * Polls the OpenCode server until it responds to a health check.
- * Uses exponential backoff with jitter.
- * Returns `true` when the server is reachable, `false` if max attempts exhausted.
- */
+export function isRunningUnderPM2(): boolean {
+  return 'PM2_HOME' in process.env || 'pm_id' in process.env
+}
+
 export async function waitForServer(options: WaitForServerOptions): Promise<boolean> {
   const {
     serverUrl,

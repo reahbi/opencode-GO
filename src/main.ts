@@ -17,7 +17,7 @@ import { createEdgeTtsAdapter } from './adapters/tts/edgeTtsAdapter.js'
 import { createSummaryService } from './adapters/opencode/summaryService.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
 import { logger, setInstancePrefix } from './shared/logger.js'
-import { waitForServer } from './shared/waitForServer.js'
+import { waitForServer, isRunningUnderPM2 } from './shared/waitForServer.js'
 import { LIMITS } from './app/policies/limits.js'
 import { promises as fs } from 'node:fs'
 
@@ -198,12 +198,21 @@ async function main() {
   logger.info('bot', `Default project: ${config.defaultProject}`)
   logger.info('bot', `Allowed users: ${config.allowedUserIds.length > 0 ? config.allowedUserIds.join(', ') : 'all'}`)
 
-  await waitForServer({
-    serverUrl: config.openCodeServerUrl,
-    username: config.openCodeServerUsername,
-    password: config.openCodeServerPassword,
-    logContext: 'bot',
-  })
+  if (isRunningUnderPM2()) {
+    await waitForServer({
+      serverUrl: config.openCodeServerUrl,
+      username: config.openCodeServerUsername,
+      password: config.openCodeServerPassword,
+      logContext: 'bot',
+    })
+  } else {
+    const healthy = await openCode.healthCheck()
+    if (healthy) {
+      logger.info('bot', 'OpenCode server is reachable')
+    } else {
+      logger.warn('bot', 'OpenCode server is not reachable. Bot will start anyway.')
+    }
+  }
 
   // Graceful shutdown
   async function shutdown(signal: string) {

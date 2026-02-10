@@ -13,7 +13,7 @@ import { createInteractiveFlow } from './app/usecases/interactiveFlow.js'
 import { createCompletionWatcher } from './app/usecases/completionWatcher.js'
 import type { HookBotConfig } from './domain/hookBotTypes.js'
 import { logger } from './shared/logger.js'
-import { waitForServer } from './shared/waitForServer.js'
+import { waitForServer, isRunningUnderPM2 } from './shared/waitForServer.js'
 
 type ServerProject = {
   worktree?: string
@@ -108,12 +108,14 @@ async function main() {
 
   logger.info('hookbot', 'Starting Hook Bot composition root...')
 
-  await waitForServer({
-    serverUrl: config.serverUrl,
-    username: config.serverUsername,
-    password: config.serverPassword,
-    logContext: 'hookbot',
-  })
+  if (isRunningUnderPM2()) {
+    await waitForServer({
+      serverUrl: config.serverUrl,
+      username: config.serverUsername,
+      password: config.serverPassword,
+      logContext: 'hookbot',
+    })
+  }
 
   const openCode = createOpenCodeAdapter(config.serverUrl, config.serverUsername, config.serverPassword)
 

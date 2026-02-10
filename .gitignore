@@ -1,15 +1,15 @@
 node_modules/
 .env
-data/projects.json
-data/state.json
-data/registry.json
-data/instances/
-data/hook-config.json
+data/
 coverage/
 dist/
 *.log
 .DS_Store
 ecosystem.config.cjs
+server.bat
+tmp/
+*.png
+docs/hookbot-improvement-plan.md
 
 # Sisyphus planning artifacts
 .sisyphus/
