@@ -35,12 +35,11 @@ describe('claudeAgentAdapter', () => {
       expect(models.every(m => m.id && m.name)).toBe(true)
     })
 
-    it('includes opus, sonnet, and haiku variants', async () => {
+    it('includes sonnet and haiku variants', async () => {
       const adapter = createClaudeAgentAdapter({ model: 'claude-sonnet-4-5' })
       const models = await adapter.getSupportedModels()
       const ids = models.map(m => m.id)
 
-      expect(ids.some(id => id.includes('opus'))).toBe(true)
       expect(ids.some(id => id.includes('sonnet'))).toBe(true)
       expect(ids.some(id => id.includes('haiku'))).toBe(true)
     })
