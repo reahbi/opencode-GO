@@ -1,4 +1,4 @@
-[Korean](opencode-kr.md)
+[Korean](claude-code-kr.md)
 
 # Claude Code Setup Guide
 
@@ -46,11 +46,10 @@ MAX_BUDGET_USD=5.00
 
 ## How It Works
 
-Unlike the previous OpenCode-based architecture (which required a separate server), Claude-Go runs as a **single process**:
+Claude-Go runs as a **single process** — no separate server needed:
 
 ```
-Previous:  Bot ──HTTP+SSE──> OpenCode Server (separate process)
-Now:       Bot ← Agent SDK query() embedded (same process)
+Bot ← Agent SDK query() embedded (same process)
 ```
 
 - The Claude Agent SDK's `query()` function returns an `AsyncGenerator` for real-time streaming

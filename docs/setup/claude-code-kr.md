@@ -1,4 +1,4 @@
-[English](opencode.md)
+[English](claude-code.md)
 
 # Claude Code 설정 가이드
 
@@ -46,11 +46,10 @@ MAX_BUDGET_USD=5.00
 
 ## 동작 방식
 
-이전 OpenCode 기반 아키텍처(별도 서버 필요)와 달리, Claude-Go는 **단일 프로세스**로 실행됩니다:
+Claude-Go는 **단일 프로세스**로 실행됩니다 — 별도 서버가 필요 없습니다:
 
 ```
-이전:  Bot ──HTTP+SSE──> OpenCode Server (별도 프로세스)
-현재:  Bot ← Agent SDK query() 임베드 (같은 프로세스)
+Bot ← Agent SDK query() 임베드 (같은 프로세스)
 ```
 
 - Claude Agent SDK의 `query()` 함수는 실시간 스트리밍을 위한 `AsyncGenerator`를 반환합니다
