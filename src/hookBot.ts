@@ -1,16 +1,44 @@
 import { promises as fs } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   createHookBot,
   createHookBotNotificationAdapter,
   createHookBotAuthGuard,
   registerHookBotHandlers,
+  fetchServerProjects,
 } from './adapters/telegram/hookBotAdapter.js'
 import { createChatOutputAdapter } from './adapters/telegram/bot.js'
 import { createHookBotStateStore } from './adapters/persistence/hookBotStateStore.js'
 import { createInteractiveFlow } from './app/usecases/interactiveFlow.js'
 import { createCompletionWatcher } from './app/usecases/completionWatcher.js'
+import { createTurnWatcher } from './app/usecases/turnWatcher.js'
 import type { HookBotConfig } from './domain/hookBotTypes.js'
 import { logger } from './shared/logger.js'
+
+/** Read registry.json to discover project directories */
+async function discoverProjectsFromRegistry(): Promise<Array<{ directory: string; name: string }>> {
+  const paths = [
+    resolve(process.cwd(), 'data', 'registry.json'),
+    resolve(process.env.STATE_DIR || 'data', 'registry.json'),
+  ]
+  for (const registryPath of paths) {
+    try {
+      const raw = await fs.readFile(registryPath, 'utf-8')
+      const parsed = JSON.parse(raw) as { bots?: Record<string, { projectDir?: string; instanceName?: string }> }
+      const entries = Object.values(parsed.bots ?? {})
+      const results = entries
+        .filter(e => e.projectDir && e.projectDir.length > 1)
+        .map(e => ({
+          directory: e.projectDir!,
+          name: e.instanceName || e.projectDir!.split('/').pop() || e.projectDir!,
+        }))
+      if (results.length > 0) return results
+    } catch {
+      // try next path
+    }
+  }
+  return []
+}
 
 async function main() {
   const configPath = process.env.HOOK_CONFIG_PATH || 'data/hook-config.json'
@@ -31,7 +59,34 @@ async function main() {
 
   logger.info('hookbot', 'Starting Hook Bot (Claude-Go mode)...')
 
-  const projects = config.projects || []
+  let projects = config.projects || []
+
+  // For 'all' mode with no configured projects, discover from registry or server
+  if (config.mode === 'all' && projects.length === 0) {
+    logger.info('hookbot', 'Mode is "all" with no configured projects, discovering...')
+
+    // Try server first
+    if (config.serverUrl) {
+      try {
+        projects = await fetchServerProjects(config)
+        logger.info('hookbot', `Discovered ${projects.length} project(s) from server`)
+      } catch {
+        logger.debug('hookbot', 'Server project discovery failed')
+      }
+    }
+
+    // Fall back to registry file
+    if (projects.length === 0) {
+      projects = await discoverProjectsFromRegistry()
+      if (projects.length > 0) {
+        logger.info('hookbot', `Discovered ${projects.length} project(s) from registry`)
+      }
+    }
+
+    if (projects.length === 0) {
+      logger.warn('hookbot', 'No projects discovered. Hook bot will not monitor anything until /scan is used.')
+    }
+  }
 
   const bot = createHookBot(config.botToken)
 
@@ -46,13 +101,42 @@ async function main() {
 
   const notificationPort = createHookBotNotificationAdapter(bot, config.chatId, config, interactiveFlow)
   const watcher = createCompletionWatcher({ notificationPort })
+  const instancesDir = resolve(process.cwd(), 'data', 'instances')
+  const turnWatcher = createTurnWatcher({ notificationPort, projects, instancesDir })
 
   await watcher.startWatching(projects)
+  turnWatcher.start()
 
   const discoverAndWatch = async (): Promise<number> => {
-    const discovered: Array<{ directory: string; name: string }> = []
+    // For 'all' mode, discover from server or registry
+    let allCandidates: Array<{ directory: string; name: string }> = []
 
-    for (const project of projects) {
+    if (config.mode === 'all') {
+      // Try server first
+      if (config.serverUrl) {
+        try {
+          allCandidates = await fetchServerProjects(config)
+        } catch {
+          logger.debug('hookbot', 'Server discovery failed during scan')
+        }
+      }
+      // Fall back to registry
+      if (allCandidates.length === 0) {
+        allCandidates = await discoverProjectsFromRegistry()
+      }
+      // Also include originally configured projects
+      for (const p of projects) {
+        if (!allCandidates.some(c => c.directory === p.directory)) {
+          allCandidates.push(p)
+        }
+      }
+    } else {
+      allCandidates = [...projects]
+    }
+
+    // Filter to those with .claude directories
+    const discovered: Array<{ directory: string; name: string }> = []
+    for (const project of allCandidates) {
       const claudeDir = `${project.directory}/.claude`
       try {
         await fs.access(claudeDir)
@@ -78,6 +162,13 @@ async function main() {
 
   registerHookBotHandlers(bot, config, { watcher, discoverAndWatch, interactiveFlow })
 
+  await bot.api.setMyCommands([
+    { command: 'hookstatus', description: 'Show watching status' },
+    { command: 'scan', description: 'Discover and watch new projects' },
+    { command: 'settings', description: 'Configure hook bot settings' },
+    { command: 'cancel', description: 'Cancel pending interaction' },
+  ])
+
   bot.start({
     drop_pending_updates: true,
     onStart: (botInfo) => {
@@ -89,6 +180,7 @@ async function main() {
   async function shutdown(signal: string) {
     logger.info('hookbot', `Received ${signal}, shutting down...`)
     watcher.stopAll()
+    turnWatcher.stop()
     await bot.stop()
     logger.info('hookbot', 'Hook bot stopped')
     process.exit(0)

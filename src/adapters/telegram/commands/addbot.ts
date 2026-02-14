@@ -10,6 +10,7 @@ import { logger } from '../../../shared/logger.js'
 import { updateChatState } from '../../../app/usecases/stateUpdate.js'
 import { promises as fs } from 'node:fs'
 import { resolve } from 'node:path'
+import { homedir } from 'node:os'
 
 interface AddBotWizardState {
   token: string
@@ -24,24 +25,38 @@ interface AddBotWizardState {
 const MAX_TOKEN_ATTEMPTS = 3
 const wizards = new Map<number, AddBotWizardState>()
 
-interface Project {
-  worktree: string
-  name?: string
+/**
+ * Get recent projects from Claude Code's project directory
+ * Returns array of absolute paths sorted by most recently used
+ */
+async function getClaudeCodeProjects(): Promise<string[]> {
+  try {
+    const projectsDir = resolve(homedir(), '.claude', 'projects')
+    const entries = await fs.readdir(projectsDir, { withFileTypes: true })
+
+    // Get directories with their modification times
+    const dirs = await Promise.all(
+      entries
+        .filter(entry => entry.isDirectory())
+        .map(async entry => {
+          const fullPath = resolve(projectsDir, entry.name)
+          const stats = await fs.stat(fullPath)
+          // Convert directory name back to path: -home-nosky-claude-go -> /home/nosky/claude-go
+          const projectPath = '/' + entry.name.slice(1).replace(/-/g, '/')
+          return { path: projectPath, mtime: stats.mtime.getTime() }
+        })
+    )
+
+    // Sort by most recently modified and return paths
+    return dirs
+      .sort((a, b) => b.mtime - a.mtime)
+      .map(d => d.path)
+  } catch (error) {
+    logger.debug('registry', `Failed to read Claude Code projects: ${error}`)
+    return []
+  }
 }
 
-async function fetchProjects(serverUrl: string, username: string, password: string): Promise<Project[]> {
-  const headers: Record<string, string> = {}
-  if (password) {
-    headers['Authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
-  }
-  const res = await fetch(`${serverUrl}/project`, {
-    headers,
-    signal: AbortSignal.timeout(5000),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const projects = await res.json() as Project[]
-  return projects.filter(p => p.worktree !== '/')
-}
 
 export function addbotCommand(state: StateStore, registry?: BotRegistryPort) {
   return async (ctx: Context) => {
@@ -80,7 +95,10 @@ export function addbotCommand(state: StateStore, registry?: BotRegistryPort) {
 
     await updateChatState(state, chatId, (chatState) => {
       chatState.awaitingInput = 'addbot_token'
+      chatState.awaitingInputStartedAt = Date.now()
     })
+
+    const kb = new InlineKeyboard().text('❌ Cancel', 'addbot_cancel')
 
     await ctx.reply(
       [
@@ -88,9 +106,9 @@ export function addbotCommand(state: StateStore, registry?: BotRegistryPort) {
         '',
         'Send the bot token from BotFather.',
         '',
-        'Type /cancel to cancel.',
+        'Type /cancel to cancel, or tap the button below.',
       ].join('\n'),
-      { parse_mode: 'HTML' },
+      { parse_mode: 'HTML', reply_markup: kb },
     )
   }
 }
@@ -150,6 +168,7 @@ export async function handleAddbotToken(
 
   await updateChatState(state, chatId, (chatState) => {
     chatState.awaitingInput = null
+    chatState.awaitingInputStartedAt = undefined
   })
 
   const buttons: Button[] = [
@@ -170,9 +189,7 @@ export async function handleAddbotRoleCallback(
   role: 'writer' | 'reader',
   state: StateStore,
   output: ChatOutputPort,
-  serverUrl: string,
-  serverUsername: string,
-  serverPassword: string,
+  registry: BotRegistryPort,
 ): Promise<void> {
   const wizard = wizards.get(chatId)
   if (!wizard) {
@@ -183,17 +200,18 @@ export async function handleAddbotRoleCallback(
   wizard.role = role
   wizards.set(chatId, wizard)
 
-  let projects: Project[] = []
-  try {
-    projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
-  } catch {
-    logger.debug('registry', 'Failed to fetch projects for addbot wizard')
-  }
+  // Get projects from both Claude Code recent projects and registered bots
+  const claudeProjects = await getClaudeCodeProjects()
+  const bots = await registry.list()
+  const registryProjects = bots.map(b => b.projectDir).filter(Boolean)
 
-  if (projects.length > 0) {
-    const buttons: Button[] = projects.map(p => ({
-      label: `📁 ${p.name || p.worktree.split('/').pop() || p.worktree}`,
-      callbackData: `addbot_proj:${p.worktree}`,
+  // Combine and deduplicate, prioritizing Claude Code recent projects
+  const allProjects = [...new Set([...claudeProjects, ...registryProjects])]
+
+  if (allProjects.length > 0) {
+    const buttons: Button[] = allProjects.map(dir => ({
+      label: `📁 ${dir.split('/').pop() || dir}`,
+      callbackData: `addbot_proj:${dir}`,
     }))
     buttons.push({ label: '✏️ Enter manually', callbackData: 'addbot_proj:__manual__' })
 
@@ -221,7 +239,6 @@ export async function handleAddbotProjectCallback(
   state: StateStore,
   output: ChatOutputPort,
   registry: BotRegistryPort,
-  serverUrl: string,
   customAgents?: CustomAgentPort,
 ): Promise<void> {
   if (projectDir === '__manual__') {
@@ -232,7 +249,7 @@ export async function handleAddbotProjectCallback(
     return
   }
 
-  await startCustomAgentSelection(chatId, projectDir, state, output, registry, serverUrl, customAgents)
+  await startCustomAgentSelection(chatId, projectDir, state, output, registry, customAgents)
 }
 
 export async function handleAddbotProjectText(
@@ -241,7 +258,6 @@ export async function handleAddbotProjectText(
   state: StateStore,
   output: ChatOutputPort,
   registry: BotRegistryPort,
-  serverUrl: string,
   customAgents?: CustomAgentPort,
 ): Promise<boolean> {
   const projectDir = text.trim()
@@ -250,7 +266,7 @@ export async function handleAddbotProjectText(
     return true
   }
 
-  await startCustomAgentSelection(chatId, projectDir, state, output, registry, serverUrl, customAgents)
+  await startCustomAgentSelection(chatId, projectDir, state, output, registry, customAgents)
   return true
 }
 
@@ -260,7 +276,6 @@ async function startCustomAgentSelection(
   state: StateStore,
   output: ChatOutputPort,
   registry: BotRegistryPort,
-  serverUrl: string,
   customAgents?: CustomAgentPort,
 ): Promise<void> {
   const wizard = wizards.get(chatId)
@@ -274,7 +289,7 @@ async function startCustomAgentSelection(
   wizards.set(chatId, wizard)
 
   if (!customAgents) {
-    await finishAddbot(chatId, projectDir, state, output, registry, serverUrl)
+    await finishAddbot(chatId, projectDir, state, output, registry)
     return
   }
 
@@ -301,7 +316,6 @@ export async function handleAddbotAgentCallback(
   state: StateStore,
   output: ChatOutputPort,
   registry: BotRegistryPort,
-  serverUrl: string,
 ): Promise<void> {
   const wizard = wizards.get(chatId)
   if (!wizard || !wizard.projectDir) {
@@ -321,7 +335,7 @@ export async function handleAddbotAgentCallback(
   wizard.customAgentId = agentId === '__skip__' ? undefined : agentId
   wizards.set(chatId, wizard)
 
-  await finishAddbot(chatId, wizard.projectDir, state, output, registry, serverUrl)
+  await finishAddbot(chatId, wizard.projectDir, state, output, registry)
 }
 
 async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boolean> {
@@ -350,7 +364,7 @@ async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boole
       `        BOT_ROLE: '${wizard.role}',`,
       ...(wizard.customAgentId ? [`        DEFAULT_CUSTOM_AGENT: '${wizard.customAgentId}',`] : []),
       `        GROUP_CHAT_ENABLED: 'true',`,
-      `        COORDINATION_DIR,`,
+      `        COORDINATION_DIR: '${process.env.COORDINATION_DIR ?? 'data/coordination'}',`,
       `      },`,
       `      autorestart: true,`,
       `      max_memory_restart: '512M',`,
@@ -374,7 +388,6 @@ async function finishAddbot(
   state: StateStore,
   output: ChatOutputPort,
   registry: BotRegistryPort,
-  serverUrl: string,
 ): Promise<void> {
   const wizard = wizards.get(chatId)
   if (!wizard || !wizard.role) {
@@ -406,7 +419,7 @@ async function finishAddbot(
     botUsername: wizard.username,
     botRole: wizard.role,
     projectDir,
-    serverUrl,
+    serverUrl: '',
     lastSeen: 0,
   })
 
@@ -577,15 +590,17 @@ export async function startAddbotWizard(
 
   const chatState = await state.getChatState(chatId)
   chatState.awaitingInput = 'addbot_token'
+  chatState.awaitingInputStartedAt = Date.now()
   await state.saveChatState(chatId, chatState)
 
-  await output.sendText(chatId, [
+  const buttons: Button[] = [{ label: '❌ Cancel', callbackData: 'addbot_cancel' }]
+  await output.sendInteraction(chatId, [
     '<b>🤖 Add Bot Wizard</b>',
     '',
     'Send the bot token from BotFather.',
     '',
-    'Type /cancel to cancel.',
-  ].join('\n'), 'HTML')
+    'Type /cancel to cancel, or tap the button below.',
+  ].join('\n'), buttons)
 }
 
 /** Clear addbot wizard state if active (used when other commands are invoked) */

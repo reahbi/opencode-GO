@@ -1,5 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test'
 
+import type { QueryHandle } from '../../domain/ports/ClaudeAgentPort.js'
+import type { ImageAttachment } from '../../domain/models.js'
 import type { SessionWatcher } from '../../app/usecases/sessionWatcher.js'
 import { createPromptFlow } from '../../app/usecases/promptFlow.js'
 import {
@@ -117,6 +119,50 @@ describe('promptFlow', () => {
     await flow.handleUserMessage(chatId, 'hello')
 
     expect(watcher.setPromptHandle).toHaveBeenCalledWith(chatId, 'msg-1', undefined)
+  })
+
+  it('queues text when another query is already active', async () => {
+    const activeHandle: QueryHandle = {
+      messages: (async function* () { })(),
+      abort: mock(() => undefined),
+      sessionId,
+    }
+    watcher = {
+      ...createWatcher(),
+      getActiveQueryHandle: mock(() => activeHandle),
+    }
+    const flow = createPromptFlow({ claude, output, state, watcher, config: { maxThinkingTokens: 0, maxBudgetUsd: null } })
+
+    await flow.handleUserMessage(chatId, 'queued text', { actorUserId: 9 })
+
+    expect(claude.runQuery).not.toHaveBeenCalled()
+    expect(state.saveChatState).toHaveBeenCalledWith(
+      chatId,
+      expect.objectContaining({
+        queuedMessages: [expect.objectContaining({ text: 'queued text', actorUserId: 9 })],
+      }),
+      undefined,
+    )
+    expect(output.sendText).toHaveBeenCalledWith(chatId, expect.stringContaining('Already processing. Queued at position'))
+  })
+
+  it('rejects image uploads while another query is active', async () => {
+    const activeHandle: QueryHandle = {
+      messages: (async function* () { })(),
+      abort: mock(() => undefined),
+      sessionId,
+    }
+    watcher = {
+      ...createWatcher(),
+      getActiveQueryHandle: mock(() => activeHandle),
+    }
+    const flow = createPromptFlow({ claude, output, state, watcher, config: { maxThinkingTokens: 0, maxBudgetUsd: null } })
+    const images: ImageAttachment[] = [{ mime: 'image/png', data: 'abc123' }]
+
+    await flow.handleUserMessage(chatId, 'image prompt', { images })
+
+    expect(claude.runQuery).not.toHaveBeenCalled()
+    expect(output.sendText).toHaveBeenCalledWith(chatId, expect.stringContaining('retry file/image upload'))
   })
 
   it('includes activeAgent when sending prompts', async () => {

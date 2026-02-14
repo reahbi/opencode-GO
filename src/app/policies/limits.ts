@@ -98,6 +98,19 @@ export const LIMITS = {
   /** Only consider sessions updated within this window for poll-based completion (ms) — 15 minutes */
   HOOK_COMPLETION_POLL_RECENT_WINDOW_MS: 15 * 60 * 1000,
 
+  // ── Turn Watcher ──────────────────────────────────────────
+  /** Polling interval for JSONL turn watcher (ms) */
+  TURN_WATCH_POLL_MS: 3_000,
+
+  /** Maximum bytes to read from JSONL tail per poll cycle */
+  TURN_WATCH_MAX_READ_BYTES: 512_000,
+
+  /** Maximum number of JSONL files to track per project */
+  TURN_WATCH_MAX_FILES: 50,
+
+  /** Ignore JSONL files not modified in this window (ms) — 1 hour */
+  TURN_WATCH_STALE_MS: 60 * 60 * 1000,
+
   // ── Rate Limiting ─────────────────────────────────────────
   /** Rate limit: max messages per user per minute */
   RATE_LIMIT_PER_MINUTE: 20,
@@ -134,6 +147,10 @@ export const LIMITS = {
 
   /** Token budget for deep thinking (keyword-triggered) */
   THINKING_DEEP_TOKENS: 50_000,
+
+  // ── Wizard Timeout ──────────────────────────────────────────
+  /** Time before wizard session auto-cancels (ms) — 5 minutes */
+  WIZARD_TIMEOUT_MS: 5 * 60 * 1000,
 
   // ── Delivery / Preview ──────────────────────────────────────
   /** Maximum characters for inline preview before file fallback */

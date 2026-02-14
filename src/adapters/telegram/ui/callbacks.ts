@@ -20,6 +20,7 @@ export type ParsedCallback =
   | { type: 'addbot_start'; instanceName: string }
   | { type: 'addbot_remove'; instanceName: string }
   | { type: 'addbot_new' }
+  | { type: 'addbot_cancel' }
   | { type: 'makeagent_save' }
   | { type: 'makeagent_regen' }
   | { type: 'makeagent_edit' }
@@ -184,6 +185,7 @@ export function parseCallback(data: string): ParsedCallback {
   }
 
   if (data === 'addbot_new') return { type: 'addbot_new' }
+  if (data === 'addbot_cancel') return { type: 'addbot_cancel' }
 
   if (data === 'ma:save') return { type: 'makeagent_save' }
   if (data === 'ma:regen') return { type: 'makeagent_regen' }

@@ -33,6 +33,48 @@ function getHookConfigPath(): string {
   return pathResolve(process.cwd(), raw)
 }
 
+/** Discover projects from server or registry file */
+async function discoverAvailableProjects(cfg: HookBotConfig): Promise<Array<{ directory: string; name: string }>> {
+  // Try server first
+  if (cfg.serverUrl) {
+    try {
+      const projects = await fetchServerProjects(cfg)
+      if (projects.length > 0) return projects
+    } catch {
+      // fall through
+    }
+  }
+
+  // Fall back to registry file
+  const registryPaths = [
+    pathResolve(process.cwd(), 'data', 'registry.json'),
+    pathResolve(process.env.STATE_DIR || 'data', 'registry.json'),
+  ]
+  for (const registryPath of registryPaths) {
+    try {
+      const raw = await fs.readFile(registryPath, 'utf-8')
+      const parsed = JSON.parse(raw) as { bots?: Record<string, { projectDir?: string; instanceName?: string }> }
+      const entries = Object.values(parsed.bots ?? {})
+      const projects = entries
+        .filter(e => e.projectDir && e.projectDir.length > 1)
+        .map(e => ({
+          directory: e.projectDir!,
+          name: e.instanceName || e.projectDir!.split('/').pop() || e.projectDir!,
+        }))
+      if (projects.length > 0) return projects
+    } catch {
+      // try next
+    }
+  }
+
+  // Fall back to config.projects
+  if (cfg.projects && cfg.projects.length > 0) {
+    return cfg.projects
+  }
+
+  return []
+}
+
 async function readHookConfig(): Promise<HookBotConfig | null> {
   try {
     const raw = await fs.readFile(getHookConfigPath(), 'utf-8')
@@ -296,6 +338,9 @@ export function createHookBotNotificationAdapter(
       }
 
       await sendText(sanitizeTelegramHtml(combined), 'HTML')
+      if (truncated) {
+        await sendFile(Buffer.from(n.lastMessage, 'utf-8'), 'completion-response.md', '📎 Full response attached.')
+      }
       return
     }
 
@@ -312,6 +357,53 @@ export function createHookBotNotificationAdapter(
     await sendText(text, 'HTML')
   }
 
+  async function notifyTurn(n: Extract<HookNotification, { type: 'turn' }>): Promise<void> {
+    const maxTotal = LIMITS.COMPLETION_SAFE_LENGTH
+
+    // Build header
+    const headerLines: string[] = []
+    headerLines.push(`💬 <b>Turn completed</b>`)
+    headerLines.push(`📁 ${escapeHtml(n.projectName)}`)
+
+    if (n.userPrompt) {
+      const rawPrompt = stripHtml(n.userPrompt).trim()
+      const promptPreview = rawPrompt.slice(0, 200)
+      headerLines.push(`\n👤 <b>User</b>\n<pre>${escapeHtml(promptPreview)}${rawPrompt.length > 200 ? '...' : ''}</pre>`)
+    }
+
+    if (n.costUsd !== undefined && n.costUsd > 0) {
+      headerLines.push(`\n💰 $${n.costUsd.toFixed(4)}`)
+    }
+
+    const header = headerLines.join('\n')
+
+    if (!n.assistantResponse || !n.assistantResponse.trim()) {
+      await sendText(sanitizeTelegramHtml(header), 'HTML')
+      return
+    }
+
+    const rawResponse = stripHtml(n.assistantResponse).trim()
+
+    // Dynamic space calculation (ope-go style)
+    const label = '\n\n🤖 <b>Assistant</b>'
+    const preWrap = '\n<pre></pre>'
+    const suffix = '\n<i>(truncated)</i>'
+    const overhead = label.length + preWrap.length
+    const available = Math.max(0, maxTotal - header.length - overhead)
+
+    if (rawResponse.length <= available) {
+      // Fits inline
+      const combined = `${header}${label}\n<pre>${escapeHtml(rawResponse)}</pre>`
+      await sendText(sanitizeTelegramHtml(combined), 'HTML')
+    } else {
+      // Doesn't fit inline — send preview + .md file
+      const preview = rawResponse.slice(0, Math.min(LIMITS.PREVIEW_MAX_CHARS, available - suffix.length - 3))
+      const inlineMsg = `${header}${label}\n<pre>${escapeHtml(preview)}...</pre>${suffix}`
+      await sendText(sanitizeTelegramHtml(inlineMsg), 'HTML')
+      await sendFile(Buffer.from(n.assistantResponse, 'utf-8'), 'turn-response.md', '📎 Full response attached.')
+    }
+  }
+
   return {
     async notify(notification: HookNotification): Promise<void> {
       try {
@@ -324,6 +416,9 @@ export function createHookBotNotificationAdapter(
             break
           case 'error':
             await notifyError(notification)
+            break
+          case 'turn':
+            await notifyTurn(notification)
             break
           case 'question': {
             if (!interactiveFlow) {
@@ -383,6 +478,7 @@ export function registerHookBotHandlers(
       return
     }
     const parsed = parseCallback(ctx.callbackQuery.data)
+    logger.debug('hookbot', `Callback parsed: type=${parsed.type}, data=${ctx.callbackQuery.data}`)
     await ctx.answerCallbackQuery()
 
     switch (parsed.type) {
@@ -561,7 +657,7 @@ export function registerHookBotHandlers(
       // selected
       const currentCfg = await readHookConfig()
       const baseCfg = currentCfg ?? config
-      const projects = await fetchServerProjects(baseCfg)
+      const projects = await discoverAvailableProjects(baseCfg)
       wizard.availableProjects = projects
       wizard.selectedProjects = []
       wizard.step = 'project_select'

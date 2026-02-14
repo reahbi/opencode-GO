@@ -125,6 +125,7 @@ interface RegisterCommandsDeps {
   tunnel?: import('../../../app/usecases/tunnelManager.js').TunnelManager
   voiceFlow?: VoiceFlow
   transcription?: import('../../../domain/ports/TranscriptionPort.js').TranscriptionPort
+  hookNotify?: (turn: { sessionId: string; directory: string; userPrompt: string; assistantResponse: string; costUsd?: number }) => void
 }
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
@@ -181,8 +182,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     output,
     getActiveQueryHandle: (chatId, threadId) => watcher?.getActiveQueryHandle(chatId, threadId) ?? null,
   })
-  const interactiveFlow = createInteractiveFlow({ state, output, botRole: deps.botRole })
 
+  let interactiveFlow: ReturnType<typeof createInteractiveFlow>
   let promptFlow: ReturnType<typeof createPromptFlow>
 
   watcher = createSessionWatcher({
@@ -193,13 +194,14 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const scopeKey = getQueueScopeKey(chatId, threadId)
       for (const msg of messages) {
         await queue.enqueue(scopeKey, () =>
-          promptFlow.handleUserMessage(chatId, msg.text, { actorUserId: msg.actorUserId, threadId })
+          promptFlow.handleUserMessage(chatId, msg.text, { actorUserId: msg.actorUserId, threadId, fromQueueDrain: true })
         )
       }
     },
     tunnel: deps.tunnel,
     voiceFlow: deps.voiceFlow,
     sessionStore,
+    hookNotify: deps.hookNotify,
   })
 
   promptFlow = createPromptFlow({
@@ -208,6 +210,18 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     botRole: deps.botRole,
     customAgents: deps.customAgents,
     config: deps.config,
+  })
+
+  interactiveFlow = createInteractiveFlow({
+    state,
+    output,
+    botRole: deps.botRole,
+    onAnswersSubmitted: async (chatId, formattedAnswers, threadId) => {
+      const scopeKey = getQueueScopeKey(chatId, threadId)
+      await queue.enqueue(scopeKey, () =>
+        promptFlow.handleUserMessage(chatId, formattedAnswers, { threadId, fromQueueDrain: false })
+      )
+    }
   })
 
   const mentionCommandMap = new Map<string, (ctx: Context) => Promise<void>>()
@@ -307,6 +321,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     const chatState = await state.getChatState(chatId, threadId)
     if (chatState.awaitingInput) {
       chatState.awaitingInput = null
+      chatState.awaitingInputStartedAt = undefined
       chatState.awaitingInteractionId = null
       await state.saveChatState(chatId, chatState, threadId)
       await ctx.reply('❌ Cancelled.')
@@ -369,6 +384,18 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await interactiveFlow.handleQuestionReset(chatId, parsed.interactionId, threadId)
         break
       case 'agent': {
+        let models: Awaited<ReturnType<ClaudeAgentPort['getSupportedModels']>>
+        try {
+          models = await claude.getSupportedModels()
+        } catch {
+          await ctx.answerCallbackQuery({ text: 'Failed to validate model selection.', show_alert: true }).catch(() => {})
+          break
+        }
+        const isSupported = models.some(model => model.id === parsed.agentName)
+        if (!isSupported) {
+          await ctx.answerCallbackQuery({ text: 'Model unavailable. Open model list and reselect.', show_alert: true }).catch(() => {})
+          break
+        }
         const chatState = await state.getChatState(chatId, threadId)
         chatState.activeAgent = parsed.agentName
         await state.saveChatState(chatId, chatState, threadId)
@@ -377,12 +404,24 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'settings_agent': {
+        let models: Awaited<ReturnType<ClaudeAgentPort['getSupportedModels']>>
+        try {
+          models = await claude.getSupportedModels()
+        } catch {
+          await ctx.answerCallbackQuery({ text: 'Failed to refresh model list.', show_alert: true }).catch(() => {})
+          break
+        }
+        const isSupported = models.some(model => model.id === parsed.agentName)
+        if (!isSupported) {
+          await ctx.answerCallbackQuery({ text: 'Model unavailable. Refresh models first.', show_alert: true }).catch(() => {})
+          break
+        }
+
         const chatState = await state.getChatState(chatId, threadId)
         chatState.activeAgent = parsed.agentName
         await state.saveChatState(chatId, chatState, threadId)
         await updateRegistryAgent(parsed.agentName)
         try {
-          const models = await claude.getSupportedModels()
           const agents = models.map(m => ({ name: m.id, description: m.name }))
           await ctx.editMessageText(
             agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole),
@@ -492,6 +531,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           case 'threshold':
             chatState.awaitingInput = 'threshold'
+            chatState.awaitingInputStartedAt = Date.now()
             await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(
               `📏 Enter summary trigger threshold in characters.\nResponses longer than this will be summarized.\n(Summary output is always compact ~${LIMITS.SUMMARY_OUTPUT_TARGET} chars)\n\nCurrent: ${chatState.settings.summaryThreshold.toLocaleString()} chars\nExamples: 3000, 6000, 10000`,
@@ -533,6 +573,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           case 'histlimit':
             chatState.awaitingInput = 'histlimit'
+            chatState.awaitingInputStartedAt = Date.now()
             await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(
               [
@@ -674,9 +715,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         if (deps.registry) {
           await handleAddbotRoleCallback(
             chatId, parsed.role, state, output,
-            '',
-            '',
-            '',
+            deps.registry,
           )
         }
         break
@@ -690,7 +729,6 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           await handleAddbotProjectCallback(
             chatId, parsed.projectDir, state, output,
             deps.registry,
-            '',
             deps.customAgents,
           )
         }
@@ -708,7 +746,6 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             state,
             output,
             deps.registry,
-            '',
           )
         }
         break
@@ -739,6 +776,21 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await startAddbotWizard(chatId, state, output)
         break
       }
+      case 'addbot_cancel': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
+        cancelAddbotWizard(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
+        if (chatState.awaitingInput === 'addbot_token' || chatState.awaitingInput === 'addbot_project') {
+          chatState.awaitingInput = null
+          chatState.awaitingInputStartedAt = undefined
+          await state.saveChatState(chatId, chatState, threadId)
+        }
+        await ctx.editMessageText('❌ Bot wizard cancelled.')
+        break
+      }
       case 'addhookbot_all': {
         if (cbChatType !== 'private') {
           await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
@@ -754,9 +806,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         }
         await handleAddhookbotProjectCb(
           chatId, parsed.projectDir, parsed.action, state, output,
-          '',
-          '',
-          '',
+          '', '', '',
+          deps.registry,
         )
         break
       }
@@ -792,9 +843,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await startAddhookbotReconfigure(
           chatId,
           output,
-          '',
-          '',
-          '',
+          '', '', '',
+          deps.registry,
         )
         break
       }
@@ -817,6 +867,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         const chatState = await state.getChatState(chatId, threadId)
         if (chatState.awaitingInput === 'makeagent_describe' || chatState.awaitingInput === 'makeagent_name' || chatState.awaitingInput === 'makeagent_edit') {
           chatState.awaitingInput = null
+          chatState.awaitingInputStartedAt = undefined
           await state.saveChatState(chatId, chatState, threadId)
         }
         await output.sendText(chatId, '❌ Custom agent wizard cancelled.')
@@ -850,6 +901,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'debaterounds': {
             const gsChatState = await state.getChatState(chatId, threadId)
             gsChatState.awaitingInput = 'debaterounds'
+            gsChatState.awaitingInputStartedAt = Date.now()
             await state.saveChatState(chatId, gsChatState, threadId)
             await ctx.editMessageText(
               `🎭 Enter number of debate rounds.\n\n0 = Unlimited\n\nCurrent: ${gs.debateRounds === 0 ? '♾️ Unlimited' : `${gs.debateRounds} rounds`}`,
@@ -906,6 +958,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'custom': {
             const chatState = await state.getChatState(chatId, threadId)
             chatState.awaitingInput = 'tunnel_port'
+            chatState.awaitingInputStartedAt = Date.now()
             await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText('Enter port number (1-65535):')
             break
@@ -942,12 +995,71 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     const threadId = isGroup && ctx.message.message_thread_id ? ctx.message.message_thread_id : undefined
 
     const chatState = await state.getChatState(chatId, threadId)
+
+    // Check for wizard timeout
+    if (chatState.awaitingInput && chatState.awaitingInput !== 'question' && chatState.awaitingInputStartedAt) {
+      const elapsed = Date.now() - chatState.awaitingInputStartedAt
+      if (elapsed > LIMITS.WIZARD_TIMEOUT_MS) {
+        const wizardType = chatState.awaitingInput.startsWith('addbot') ? 'addbot' :
+                          chatState.awaitingInput.startsWith('makeagent') ? 'makeagent' :
+                          chatState.awaitingInput.startsWith('addhookbot') ? 'addhookbot' : 'wizard'
+
+        if (wizardType === 'addbot') cancelAddbotWizard(chatId)
+        if (wizardType === 'makeagent') cancelMakeagentWizard(chatId)
+        if (wizardType === 'addhookbot') cancelAddhookbotWizard(chatId)
+
+        chatState.awaitingInput = null
+        chatState.awaitingInputStartedAt = undefined
+        chatState.awaitingInteractionId = null
+        await state.saveChatState(chatId, chatState, threadId)
+
+        await output.sendText(chatId, '⏱ Wizard session timed out after 5 minutes of inactivity. Use the command again to restart.')
+
+        // Don't process this message further
+        return
+      }
+    }
+
+    // Check if user is sending unrelated messages during a wizard session
+    if (chatState.awaitingInput && chatState.awaitingInput !== 'question') {
+      const wizardMessages: Record<string, string> = {
+        'addbot_token': '🤖 <b>봇 추가 진행 중</b>\n\n봇 토큰을 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'addbot_project': '🤖 <b>봇 추가 진행 중</b>\n\n프로젝트 경로를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'makeagent_describe': '🎭 <b>커스텀 에이전트 생성 중</b>\n\n에이전트 설명을 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'makeagent_name': '🎭 <b>커스텀 에이전트 생성 중</b>\n\n에이전트 이름을 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'makeagent_edit': '🎭 <b>커스텀 에이전트 수정 중</b>\n\n시스템 프롬프트를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'addhookbot_token': '🪝 <b>훅 봇 추가 진행 중</b>\n\n봇 토큰을 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'addhookbot_chatid': '🪝 <b>훅 봇 설정 중</b>\n\n채팅 ID를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'threshold': '📏 <b>요약 임계값 설정 중</b>\n\n문자 수를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'histlimit': '📜 <b>히스토리 제한 설정 중</b>\n\n메시지 수를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'debaterounds': '🎭 <b>토론 라운드 설정 중</b>\n\n라운드 수를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+        'tunnel_port': '🌐 <b>터널 포트 설정 중</b>\n\n포트 번호를 입력해주세요.\n\n• 취소하려면 /cancel을 입력하세요',
+      }
+
+      // Check if this is a valid input for the current wizard step
+      const isValidInput = (
+        (chatState.awaitingInput === 'addbot_token' && text.includes(':')) ||
+        (chatState.awaitingInput === 'addbot_project' && text.startsWith('/')) ||
+        (chatState.awaitingInput === 'threshold' && !isNaN(Number(text.trim()))) ||
+        (chatState.awaitingInput === 'histlimit' && (!isNaN(Number(text.trim())) || text.trim().toLowerCase() === 'all')) ||
+        (chatState.awaitingInput === 'debaterounds' && !isNaN(Number(text.trim()))) ||
+        (chatState.awaitingInput === 'tunnel_port' && !isNaN(Number(text.trim())))
+      )
+
+      // If the message doesn't look like valid input for the current step, show reminder
+      if (!isValidInput && wizardMessages[chatState.awaitingInput]) {
+        await output.sendText(chatId, wizardMessages[chatState.awaitingInput], 'HTML')
+        return
+      }
+    }
+
     if (chatState.awaitingInput === 'question') {
       const handled = await interactiveFlow.handleFreeTextAnswer(chatId, text, threadId)
       if (handled) return
     }
     if (chatState.awaitingInput === 'threshold') {
       chatState.awaitingInput = null
+      chatState.awaitingInputStartedAt = undefined
       const num = parseInt(text.trim(), 10)
       if (!Number.isFinite(num) || num < LIMITS.SUMMARY_MIN_TRIGGER || num > 50000) {
         await state.saveChatState(chatId, chatState, threadId)
@@ -966,15 +1078,14 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     if (chatState.awaitingInput === 'addhookbot_token') {
       const handled = await handleAddhookbotToken(
         chatId, text, state, output,
-        '',
-        '',
-        '',
+        '', '', '',
+        deps.registry,
       )
       if (handled) return
     }
     if (chatState.awaitingInput === 'addbot_project') {
       if (deps.registry) {
-        const handled = await handleAddbotProjectText(chatId, text, state, output, deps.registry, '', deps.customAgents)
+        const handled = await handleAddbotProjectText(chatId, text, state, output, deps.registry, deps.customAgents)
         if (handled) return
       }
     }
@@ -1002,6 +1113,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
     if (chatState.awaitingInput === 'debaterounds') {
       chatState.awaitingInput = null
+      chatState.awaitingInputStartedAt = undefined
       const num = parseInt(text.trim(), 10)
       if (!Number.isFinite(num) || num < 0 || num > 999) {
         await state.saveChatState(chatId, chatState, threadId)
@@ -1019,6 +1131,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
     if (chatState.awaitingInput === 'histlimit') {
       chatState.awaitingInput = null
+      chatState.awaitingInputStartedAt = undefined
       const trimmed = text.trim().toLowerCase()
       if (trimmed === 'all' || trimmed === '0') {
         chatState.settings.historyLimit = null

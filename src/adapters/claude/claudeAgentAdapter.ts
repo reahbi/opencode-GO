@@ -15,6 +15,11 @@ interface ClaudeAgentAdapterConfig {
   claudeCodePath?: string | null
 }
 
+function prepareSdkProcessEnv(): void {
+  delete process.env.CLAUDECODE
+  delete process.env.CLAUDE_CODE_ENTRYPOINT
+}
+
 // Type guard to narrow SDKResultMessage to error variant
 function isResultError(msg: SDKResultMessage): msg is SDKResultMessage & { subtype: 'error_during_execution' | 'error_max_turns' | 'error_max_budget_usd' | 'error_max_structured_output_retries' } {
   return msg.subtype !== 'success'
@@ -188,12 +193,10 @@ export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): Clau
         const errorMsg = error instanceof Error ? error.message : String(error)
         logger.error('claude', 'Query error:', errorMsg)
 
-        if (sessionId) {
-          yield {
-            type: 'error',
-            sessionId,
-            message: errorMsg,
-          }
+        yield {
+          type: 'error',
+          sessionId: sessionId ?? '',
+          message: errorMsg,
         }
       }
     } finally {
@@ -202,6 +205,8 @@ export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): Clau
   }
 
   function runQuery(options: QueryOptions): QueryHandle {
+    prepareSdkProcessEnv()
+
     const abortController = new AbortController()
     let capturedSessionId: string | null = null
 
@@ -320,6 +325,8 @@ export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): Clau
 
     // Try to get dynamic model list from SDK
     try {
+      prepareSdkProcessEnv()
+
       const tempQuery = query({
         prompt: '',
         options: {
@@ -328,6 +335,7 @@ export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): Clau
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           persistSession: false,
+          ...(claudeCodePath ? { pathToClaudeCodeExecutable: claudeCodePath } : {}),
         },
       })
 
@@ -341,16 +349,7 @@ export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): Clau
       return cachedModels
     } catch (err) {
       logger.warn('claude', `Failed to get models from SDK: ${err instanceof Error ? err.message : 'unknown'}`)
-      // Fallback to static list
-      return [
-        { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-        { id: 'claude-opus-4', name: 'Claude Opus 4' },
-        { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' },
-        { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' },
-        { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet' },
-        { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-        { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-      ]
+      return [{ id: defaultModel, name: defaultModel }]
     }
   }
 

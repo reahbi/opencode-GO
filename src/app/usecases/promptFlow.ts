@@ -9,6 +9,7 @@ import { getThinkingLevel } from '../../adapters/claude/claudeEventMapper.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
 import { updateChatState } from './stateUpdate.js'
+import { enqueueMessage } from '../queue/messageQueue.js'
 
 interface PromptFlowDeps {
   claude: ClaudeAgentPort
@@ -26,7 +27,7 @@ interface PromptFlowDeps {
 
 export function createPromptFlow(deps: PromptFlowDeps) {
 
-  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean; images?: ImageAttachment[]; threadId?: number }): Promise<void> {
+  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean; images?: ImageAttachment[]; threadId?: number; fromQueueDrain?: boolean }): Promise<void> {
     const state = await deps.state.getChatState(chatId, opts?.threadId)
     if (!state.activeProjectDirectory) {
       await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
@@ -39,6 +40,31 @@ export function createPromptFlow(deps: PromptFlowDeps) {
 
     const directory = state.activeProjectDirectory
     const sessionId = state.activeSessionId
+
+    const activeQuery = deps.watcher.getActiveQueryHandle(chatId, opts?.threadId)
+    if (activeQuery) {
+      if (opts?.images?.length) {
+        await deps.output.sendText(chatId, '⏳ A request is already processing. Please retry file/image upload after it completes.')
+        return
+      }
+
+      const queueResult = await updateChatState(deps.state, chatId, (chatState) =>
+        enqueueMessage(chatState, {
+          text,
+          timestamp: Date.now(),
+          actorUserId: opts?.actorUserId,
+        }),
+      opts?.threadId)
+
+      const droppedNotice = queueResult.dropped && queueResult.dropped > 0
+        ? ` (${queueResult.dropped} older message${queueResult.dropped === 1 ? '' : 's'} dropped)`
+        : ''
+      // Only show "Already processing" message if not from queue drain (to avoid duplicate notifications)
+      if (!opts?.fromQueueDrain) {
+        await deps.output.sendText(chatId, `⏳ Already processing. Queued at position ${queueResult.position}${droppedNotice}.`)
+      }
+      return
+    }
 
     await updateChatState(deps.state, chatId, (chatState) => {
       chatState.lastPrompt = text
@@ -80,26 +106,51 @@ export function createPromptFlow(deps: PromptFlowDeps) {
         isNewSession = !session || session.messageCount === 0
       }
 
+      let runtimeModel = state.activeAgent || undefined
+      if (state.activeAgent) {
+        try {
+          const supportedModels = await deps.claude.getSupportedModels()
+          const isModelAvailable = supportedModels.some(model => model.id === state.activeAgent)
+          if (!isModelAvailable) {
+            runtimeModel = undefined
+            await updateChatState(deps.state, chatId, (chatState) => {
+              chatState.activeAgent = null
+            }, opts?.threadId)
+            await deps.output.sendText(
+              chatId,
+              `⚠️ Selected model <code>${escapeHtml(state.activeAgent)}</code> is unavailable. Switched to default model.`,
+              'HTML',
+            )
+          }
+        } catch (modelErr) {
+          logger.warn('session', `Model availability check failed: ${modelErr instanceof Error ? modelErr.message : 'unknown'}`)
+        }
+      }
+
       const queryHandle = deps.claude.runQuery({
         prompt: effectiveText,
         sessionId,
         isNewSession,
         cwd: directory,
-        model: state.activeAgent || undefined,
+        model: runtimeModel,
         images: opts?.images,
         maxThinkingTokens: thinkingTokens,
         maxBudgetUsd: deps.config.maxBudgetUsd ?? undefined,
         systemPrompt,
       })
 
+      // Pass the query handle to the watcher for event processing
+      deps.watcher.watchQuery(chatId, queryHandle, opts?.threadId)
+
+      if (deps.sessionStore && !deps.watcher.isWatching(chatId, opts?.threadId)) {
+        throw new Error('Session watcher is unavailable. Please use /resume and retry.')
+      }
+
       // Mark session as busy
       if (deps.sessionStore) {
         deps.sessionStore.updateSession(sessionId, { status: 'busy' }).catch(err =>
           logger.warn('session', `Failed to mark session busy: ${err instanceof Error ? err.message : 'unknown'}`))
       }
-
-      // Pass the query handle to the watcher for event processing
-      deps.watcher.watchQuery(chatId, queryHandle, opts?.threadId)
 
       logger.debug('session', `Query started for session ${sessionId}`)
     } catch (error) {

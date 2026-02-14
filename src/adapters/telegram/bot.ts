@@ -66,11 +66,17 @@ export function createChatOutputAdapter(bot: BotInstance): ChatOutputPort {
 
     async sendInteraction(chatId: number, text: string, buttons: Button[]): Promise<OutputHandle> {
       const keyboard = new InlineKeyboard()
-      for (const btn of buttons) {
+      // Layout buttons in 2 columns for better visibility
+      for (let i = 0; i < buttons.length; i++) {
+        const btn = buttons[i]
         if (btn.url) {
-          keyboard.url(btn.label, btn.url).row()
+          keyboard.url(btn.label, btn.url)
         } else if (btn.callbackData) {
-          keyboard.text(btn.label, btn.callbackData).row()
+          keyboard.text(btn.label, btn.callbackData)
+        }
+        // Create new row every 2 buttons, or at the end
+        if ((i + 1) % 2 === 0 || i === buttons.length - 1) {
+          keyboard.row()
         }
       }
       const msg = await bot.api.sendMessage(chatId, text, { parse_mode: 'HTML', reply_markup: keyboard })
@@ -80,11 +86,17 @@ export function createChatOutputAdapter(bot: BotInstance): ChatOutputPort {
     async editInteraction(chatId: number, handle: OutputHandle, text: string, buttons: Button[]): Promise<void> {
       const messageId = parseInt(handle, 10)
       const keyboard = new InlineKeyboard()
-      for (const btn of buttons) {
+      // Layout buttons in 2 columns for better visibility
+      for (let i = 0; i < buttons.length; i++) {
+        const btn = buttons[i]
         if (btn.url) {
-          keyboard.url(btn.label, btn.url).row()
+          keyboard.url(btn.label, btn.url)
         } else if (btn.callbackData) {
-          keyboard.text(btn.label, btn.callbackData).row()
+          keyboard.text(btn.label, btn.callbackData)
+        }
+        // Create new row every 2 buttons, or at the end
+        if ((i + 1) % 2 === 0 || i === buttons.length - 1) {
+          keyboard.row()
         }
       }
       try {

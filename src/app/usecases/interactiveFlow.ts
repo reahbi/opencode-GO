@@ -11,6 +11,7 @@ interface InteractiveFlowDeps {
   state: StateStore
   output: ChatOutputPort
   botRole?: 'writer' | 'reader' | 'standalone'
+  onAnswersSubmitted?: (chatId: number, formattedAnswers: string, threadId?: number) => Promise<void>
 }
 
 export function answerLabel(answer: string[] | null): string {
@@ -158,8 +159,10 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       answerLines.push(`Q: ${q.text}\nA: ${answerText}`)
     }
 
+    const formattedAnswers = answerLines.join('\n\n')
+
     // Store formatted answer for next prompt
-    chatState.lastPrompt = answerLines.join('\n\n')
+    chatState.lastPrompt = formattedAnswers
 
     // Clean up interaction
     chatState.pendingInteractions = chatState.pendingInteractions.filter(
@@ -193,6 +196,12 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       } catch {
         await deps.output.sendText(chatId, summary)
       }
+    }
+
+    // Automatically submit answers to Claude SDK
+    if (deps.onAnswersSubmitted) {
+      logger.info('interactive', `Auto-submitting answers to Claude SDK for chat ${chatId}`)
+      await deps.onAnswersSubmitted(chatId, formattedAnswers, threadId)
     }
   }
 
@@ -583,10 +592,25 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       const questions = interaction.questions ?? []
       const currentIdx = interaction.currentQuestionIndex ?? 0
       const answers = interaction.collectedAnswers ?? new Array(questions.length).fill(null)
+      const currentQ = questions[currentIdx]
 
-      answers[currentIdx] = [text]
+      // For multiSelect questions, preserve existing selections and add the text input
+      if (currentQ?.multiple && answers[currentIdx] && Array.isArray(answers[currentIdx])) {
+        const existing = answers[currentIdx] as string[]
+        if (existing.length > 0) {
+          // User already selected options via toggle, append text input
+          answers[currentIdx] = [...existing, text]
+          logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text added to multiSelect: "${text}" (total: ${answers[currentIdx]?.length})`)
+        } else {
+          answers[currentIdx] = [text]
+          logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text: "${text}"`)
+        }
+      } else {
+        answers[currentIdx] = [text]
+        logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text: "${text}"`)
+      }
+
       interaction.collectedAnswers = answers
-      logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text: "${text}"`)
 
       await advanceToNext(chatId, interaction, chatState, threadId)
     })

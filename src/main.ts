@@ -22,6 +22,8 @@ import { registerCommands } from './adapters/telegram/commands/index.js'
 import { logger, setInstancePrefix } from './shared/logger.js'
 import { LIMITS } from './app/policies/limits.js'
 import { promises as fs } from 'node:fs'
+import { resolve as pathResolve } from 'node:path'
+import type { HookBotConfig } from './domain/hookBotTypes.js'
 
 async function main() {
   const config = loadEnvConfig()
@@ -183,6 +185,81 @@ async function main() {
     logger.info('bot', 'Coordination polling started')
   }
 
+  // Hook bot per-turn notification: read hook-config.json and create lightweight sender
+  let hookNotify: ((turn: { sessionId: string; directory: string; userPrompt: string; assistantResponse: string; costUsd?: number }) => void) | undefined
+  try {
+    const hookConfigPath = pathResolve(process.cwd(), process.env.HOOK_CONFIG_PATH || 'data/hook-config.json')
+    const hookRaw = await fs.readFile(hookConfigPath, 'utf-8')
+    const hookCfg = JSON.parse(hookRaw) as HookBotConfig
+    if (hookCfg.botToken && hookCfg.chatId) {
+      const projectName = config.instanceName
+      const apiBase = `https://api.telegram.org/bot${hookCfg.botToken}`
+      const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').trim()
+      const MAX_SAFE = 3900
+      const FILE_THRESHOLD = 15000
+      const PREVIEW_CHARS = 2000
+
+      const sendMsg = (text: string) =>
+        fetch(`${apiBase}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: hookCfg.chatId, text, parse_mode: 'HTML' }),
+        }).catch(err => logger.warn('hookbot', `Hook notify failed: ${err instanceof Error ? err.message : 'unknown'}`))
+
+      const sendDoc = (content: string, filename: string, caption: string) => {
+        const form = new FormData()
+        form.append('chat_id', String(hookCfg.chatId))
+        form.append('document', new Blob([content], { type: 'text/markdown' }), filename)
+        form.append('caption', caption)
+        return fetch(`${apiBase}/sendDocument`, { method: 'POST', body: form })
+          .catch(err => logger.warn('hookbot', `Hook file send failed: ${err instanceof Error ? err.message : 'unknown'}`))
+      }
+
+      hookNotify = (turn) => {
+        const headerLines = [
+          `💬 <b>Turn completed</b>`,
+          `📁 ${escHtml(projectName)}`,
+        ]
+        if (turn.userPrompt) {
+          const rawPrompt = stripHtml(turn.userPrompt).slice(0, 200)
+          headerLines.push(`\n👤 <b>User</b>\n<pre>${escHtml(rawPrompt)}${turn.userPrompt.length > 200 ? '...' : ''}</pre>`)
+        }
+        if (turn.costUsd && turn.costUsd > 0) {
+          headerLines.push(`\n💰 $${turn.costUsd.toFixed(4)}`)
+        }
+        const header = headerLines.join('\n')
+
+        if (!turn.assistantResponse?.trim()) {
+          void sendMsg(header)
+          return
+        }
+
+        const rawResponse = stripHtml(turn.assistantResponse)
+        const label = '\n\n🤖 <b>Assistant</b>'
+        const preWrap = '\n<pre></pre>'
+        const suffix = '\n<i>(truncated)</i>'
+        const overhead = label.length + preWrap.length
+        const available = Math.max(0, MAX_SAFE - header.length - overhead)
+
+        if (rawResponse.length <= available) {
+          void sendMsg(`${header}${label}\n<pre>${escHtml(rawResponse)}</pre>`)
+        } else if (rawResponse.length > FILE_THRESHOLD) {
+          const preview = rawResponse.slice(0, PREVIEW_CHARS)
+          void sendMsg(`${header}${label}\n<pre>${escHtml(preview)}...</pre>${suffix}`)
+            .then(() => sendDoc(turn.assistantResponse, 'turn-response.md', '📎 Full response attached.'))
+        } else {
+          const keep = Math.max(0, available - suffix.length - 3)
+          const preview = keep > 0 ? `${rawResponse.slice(0, keep)}...` : rawResponse.slice(0, available)
+          void sendMsg(`${header}${label}\n<pre>${escHtml(preview)}</pre>${suffix}`)
+        }
+      }
+      logger.info('hookbot', `Per-turn notifications enabled → chat ${hookCfg.chatId}`)
+    }
+  } catch {
+    // No hook config or invalid — skip silently
+  }
+
   registerCommands({
     bot,
     claude,
@@ -206,6 +283,7 @@ async function main() {
     tunnel,
     voiceFlow,
     transcription,
+    hookNotify,
   })
 
   bot.catch((err) => {

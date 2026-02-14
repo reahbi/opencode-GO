@@ -26,6 +26,7 @@ interface SessionWatcherDeps {
   tunnel?: TunnelManager
   voiceFlow?: { sendVoiceResponseDirect(chatId: number, content: string, directory: string): Promise<void> }
   sessionStore?: import('../../domain/ports/SessionStorePort.js').SessionStorePort
+  hookNotify?: (turn: { sessionId: string; directory: string; userPrompt: string; assistantResponse: string; costUsd?: number }) => void
 }
 
 interface ToolPartState {
@@ -381,6 +382,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     entry.textParts.clear()
     entry.toolParts.clear()
     entry.partOrder = []
+    entry.queryHandle = null
     entry.deliveryState = 'done'
     entry.accumulatedText = ''
     entry.currentTextPartId = null
@@ -485,6 +487,21 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       startTypingIndicator(chatId, entry)
     } catch (err) {
       logger.error('watcher', `Failed to create live message for chat ${chatId}: ${err}`)
+    }
+  }
+
+  async function reportTerminalError(chatId: number, entry: WatcherEntry, message: string): Promise<void> {
+    const handle = entry.liveMsgHandle ?? entry.promptHandle
+    if (handle) {
+      try {
+        await deps.output.editText(chatId, handle, message)
+        return
+      } catch {
+      }
+    }
+    try {
+      await deps.output.sendText(chatId, message)
+    } catch {
     }
   }
 
@@ -725,6 +742,21 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
                 }
               }
 
+              // Hook notification: per-turn relay to hookbot
+              if (deps.hookNotify && entry.lastContent) {
+                try {
+                  deps.hookNotify({
+                    sessionId: entry.sessionId,
+                    directory: entry.directory,
+                    userPrompt: entry.currentUserPrompt ?? '',
+                    assistantResponse: entry.lastContent,
+                    costUsd: event.costUsd,
+                  })
+                } catch (hookErr) {
+                  logger.warn('watcher', `Hook notify failed: ${hookErr instanceof Error ? hookErr.message : 'unknown'}`)
+                }
+              }
+
               // Save message history
               if (entry.lastContent) {
                 const assistantMessage = buildHistoryMessage(entry)
@@ -760,7 +792,10 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
               }
 
               if (deps.onQueueDrain && queued.length > 0) {
-                void deps.onQueueDrain(chatId, queued, entry.threadId)
+                // Process queued messages sequentially to avoid "Already processing" race condition
+                deps.onQueueDrain(chatId, queued, entry.threadId).catch(err => {
+                  logger.warn('watcher', `Queue drain error: ${err instanceof Error ? err.message : 'unknown'}`)
+                })
               }
             })
           } catch (err) {
@@ -796,7 +831,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           }
 
           const errorMsg = `❌ Error: ${escapeHtml(errorText)}`
-          try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
+          await reportTerminalError(chatId, entry, errorMsg)
 
           if (deps.sessionStore && entry.sessionId) {
             deps.sessionStore.updateSession(entry.sessionId, {
@@ -813,13 +848,14 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       case 'error': {
         logger.warn('watcher', `Stream error for chat ${chatId}: ${event.message}`)
         const errorMsg = `❌ Error: ${escapeHtml(event.message)}`
-        try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
+        await reportTerminalError(chatId, entry, errorMsg)
         if (deps.sessionStore && entry.sessionId) {
           deps.sessionStore.updateSession(entry.sessionId, {
             status: 'idle',
             lastActiveAt: Date.now(),
           }).catch(updateErr => logger.warn('watcher', `Failed to clear busy status after stream error: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
         }
+        resetTurnState(entry)
         break
       }
 
@@ -860,13 +896,33 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       }
 
       const errorMsg = `❌ Stream error: ${escapeHtml(err instanceof Error ? err.message : 'Unknown')}`
-      try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
+      await reportTerminalError(chatId, entry, errorMsg)
 
       if (deps.sessionStore && entry.sessionId) {
         deps.sessionStore.updateSession(entry.sessionId, {
           status: 'idle',
           lastActiveAt: Date.now(),
         }).catch(updateErr => logger.warn('watcher', `Failed to update session status after stream error: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
+      }
+
+      resetTurnState(entry)
+    } finally {
+      const current = watchers.get(entry.scopeKey)
+      if (!current || current !== entry) return
+      if (entry.queryHandle !== handle) return
+      if (entry.deliveryState === 'done') return
+
+      logger.warn('watcher', `Query stream ended without terminal result for chat ${chatId}`)
+
+      if (deps.sessionStore && entry.sessionId) {
+        deps.sessionStore.updateSession(entry.sessionId, {
+          status: 'idle',
+          lastActiveAt: Date.now(),
+        }).catch(updateErr => logger.warn('watcher', `Failed to clear busy status after terminal-missing stream end: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
+      }
+
+      if (!entry.lastContent) {
+        await reportTerminalError(chatId, entry, '❌ Query ended unexpectedly. Please retry.')
       }
 
       resetTurnState(entry)

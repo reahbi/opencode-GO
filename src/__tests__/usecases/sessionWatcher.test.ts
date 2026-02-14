@@ -139,11 +139,13 @@ describe('sessionWatcher', () => {
     const handle = createMockQueryHandle(events)
     watcher.watchQuery(chatId, handle)
 
-    await waitFor(() => expect(output.sendText).toHaveBeenCalled())
-
-    const calls = (output.sendText as any).mock.calls
-    const errorCall = calls.find((c: any) => c[1]?.includes('Error'))
-    expect(errorCall).toBeDefined()
+    await waitFor(() => {
+      const editCalls = (output.editText as any).mock.calls
+      const sendCalls = (output.sendText as any).mock.calls
+      const hasErrorEdit = editCalls.some((c: any) => c[2]?.includes('Error'))
+      const hasErrorSend = sendCalls.some((c: any) => c[1]?.includes('Error'))
+      expect(hasErrorEdit || hasErrorSend).toBe(true)
+    })
 
     watcher.stop(chatId)
   })
@@ -589,7 +591,13 @@ describe('sessionWatcher', () => {
       watcher.watchQuery(chatId, handle)
 
       await waitFor(() => expect(output.editText).toHaveBeenCalled())
-      await waitFor(() => expect(output.sendText).toHaveBeenCalled())
+      await waitFor(() => {
+        const editCalls = (output.editText as any).mock.calls
+        const sendCalls = (output.sendText as any).mock.calls
+        const hasErrorEdit = editCalls.some((c: any) => c[2]?.includes('Error'))
+        const hasErrorSend = sendCalls.some((c: any) => c[1]?.includes('Error'))
+        expect(hasErrorEdit || hasErrorSend).toBe(true)
+      })
 
       watcher.stop(chatId)
     })

@@ -2,6 +2,7 @@ import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
+import type { BotRegistryPort } from '../../../domain/ports/BotRegistryPort.js'
 import type { Button } from '../../../domain/models.js'
 import { logger } from '../../../shared/logger.js'
 import { escapeHtml } from '../../../shared/formatResponse.js'
@@ -14,6 +15,7 @@ interface AddhookbotWizardState {
   token: string
   username: string
   selectedProjects: { directory: string; name: string }[]
+  availableProjects: { directory: string; name: string }[]
   mode: 'all' | 'selected'
   chatId?: number
   tokenAttempts?: number
@@ -52,10 +54,40 @@ export async function startAddhookbotWizard(chatId: number, state: StateStore, o
   )
 }
 
-async function fetchProjects(serverUrl: string, username: string, password: string): Promise<Project[]> {
-  const cfg = { serverUrl, serverUsername: username, serverPassword: password } as Parameters<typeof fetchServerProjects>[0]
-  const results = await fetchServerProjects(cfg)
-  return results.map(r => ({ worktree: r.directory, name: r.name }))
+async function discoverProjects(
+  serverUrl: string,
+  username: string,
+  password: string,
+  registry?: BotRegistryPort,
+): Promise<Project[]> {
+  // Try registry first (always available in main bot context)
+  if (registry) {
+    try {
+      const bots = await registry.list()
+      const projects = bots
+        .filter(b => b.projectDir && b.projectDir.length > 1)
+        .map(b => ({
+          worktree: b.projectDir,
+          name: b.instanceName || b.projectDir.split('/').pop() || b.projectDir,
+        }))
+      if (projects.length > 0) return projects
+    } catch {
+      logger.debug('registry', 'Failed to fetch projects from registry')
+    }
+  }
+
+  // Fall back to server API
+  if (serverUrl) {
+    try {
+      const cfg = { serverUrl, serverUsername: username, serverPassword: password } as Parameters<typeof fetchServerProjects>[0]
+      const results = await fetchServerProjects(cfg)
+      return results.map(r => ({ worktree: r.directory, name: r.name }))
+    } catch {
+      logger.debug('registry', 'Failed to fetch projects from server')
+    }
+  }
+
+  return []
 }
 
 export function addhookbotCommand(state: StateStore) {
@@ -125,10 +157,15 @@ export async function handleAddhookbotToken(
   serverUrl: string,
   serverUsername: string,
   serverPassword: string,
+  registry?: BotRegistryPort,
 ): Promise<boolean> {
   const token = text.trim()
 
-  let wizard = wizards.get(chatId) || { token: '', username: '', selectedProjects: [], mode: 'all' as const, tokenAttempts: 0 }
+  let wizard = wizards.get(chatId)
+  if (!wizard) {
+    // Fresh wizard or state lost after restart — initialize
+    wizard = { token: '', username: '', selectedProjects: [], availableProjects: [], mode: 'all' as const, tokenAttempts: 0 }
+  }
   wizard.tokenAttempts = (wizard.tokenAttempts || 0) + 1
   wizards.set(chatId, wizard)
 
@@ -148,19 +185,21 @@ export async function handleAddhookbotToken(
   }
 
   const username = verified.username
-  wizard = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0, serverUrl, serverUsername, serverPassword }
+  wizard = { token, username, selectedProjects: [], availableProjects: [], mode: 'all', tokenAttempts: 0, serverUrl, serverUsername, serverPassword }
   wizards.set(chatId, wizard)
 
   const chatState = await state.getChatState(chatId)
   chatState.awaitingInput = null
   await state.saveChatState(chatId, chatState)
 
-  let projects: Project[] = []
-  try {
-    projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
-  } catch {
-    logger.debug('registry', 'Failed to fetch projects for addhookbot wizard')
-  }
+  const projects = await discoverProjects(serverUrl, serverUsername, serverPassword, registry)
+
+  // Store available projects in wizard for later use
+  wizard.availableProjects = projects.map(p => ({
+    directory: p.worktree,
+    name: p.name || p.worktree.split('/').pop() || p.worktree,
+  }))
+  wizards.set(chatId, wizard)
 
   if (projects.length > 0) {
     const buttons: Button[] = [
@@ -213,6 +252,16 @@ export async function handleAddhookbotAllCallback(
   wizard.selectedProjects = []
   wizards.set(chatId, wizard)
 
+  // If chatId is already set (from reconfigure), skip chat ID input and finish directly
+  if (wizard.chatId !== undefined) {
+    const chatState = await state.getChatState(chatId)
+    chatState.awaitingInput = null
+    await state.saveChatState(chatId, chatState)
+    await finishAddhookbot(chatId, state, output)
+    return
+  }
+
+  // Otherwise, ask for chat ID (new setup flow)
   const chatState = await state.getChatState(chatId)
   chatState.awaitingInput = 'addhookbot_chatid'
   await state.saveChatState(chatId, chatState)
@@ -228,11 +277,12 @@ export async function handleAddhookbotProjectCallback(
   chatId: number,
   projectDir: string,
   action: 'select' | 'deselect',
-  state: StateStore,
+  _state: StateStore,
   output: ChatOutputPort,
   serverUrl: string,
   serverUsername: string,
   serverPassword: string,
+  registry?: BotRegistryPort,
 ): Promise<void> {
   const wizard = wizards.get(chatId)
   if (!wizard) {
@@ -244,7 +294,8 @@ export async function handleAddhookbotProjectCallback(
 
   if (action === 'select') {
     if (!wizard.selectedProjects.find(p => p.directory === projectDir)) {
-      const name = projectDir.split('/').pop() || projectDir
+      const found = wizard.availableProjects.find(p => p.directory === projectDir)
+      const name = found?.name || projectDir.split('/').pop() || projectDir
       wizard.selectedProjects.push({ directory: projectDir, name })
     }
   } else {
@@ -252,11 +303,10 @@ export async function handleAddhookbotProjectCallback(
   }
   wizards.set(chatId, wizard)
 
-  let projects: Project[] = []
-  try {
-    projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
-  } catch {
-    logger.debug('registry', 'Failed to fetch projects for addhookbot wizard')
+  // Use cached available projects from wizard, or re-discover
+  let projects: Project[] = wizard.availableProjects.map(p => ({ worktree: p.directory, name: p.name }))
+  if (projects.length === 0) {
+    projects = await discoverProjects(serverUrl, serverUsername, serverPassword, registry)
   }
 
   const buttons: Button[] = [
@@ -296,6 +346,16 @@ export async function handleAddhookbotDoneCallback(
     return
   }
 
+  // If chatId is already set (from reconfigure), skip chat ID input and finish directly
+  if (wizard.chatId !== undefined) {
+    const chatState = await state.getChatState(chatId)
+    chatState.awaitingInput = null
+    await state.saveChatState(chatId, chatState)
+    await finishAddhookbot(chatId, state, output)
+    return
+  }
+
+  // Otherwise, ask for chat ID (new setup flow)
   const chatState = await state.getChatState(chatId)
   chatState.awaitingInput = 'addhookbot_chatid'
   await state.saveChatState(chatId, chatState)
@@ -319,7 +379,11 @@ export async function handleAddhookbotChatId(
 ): Promise<boolean> {
   const wizard = wizards.get(chatId)
   if (!wizard) {
-    await output.sendText(chatId, '❌ No wizard in progress. Start with /addhookbot.')
+    // Wizard state lost (bot restarted) — clear stuck awaitingInput and let message through
+    const chatState = await state.getChatState(chatId)
+    chatState.awaitingInput = null
+    await state.saveChatState(chatId, chatState)
+    await output.sendText(chatId, '⚠️ Hook bot wizard was interrupted (bot restarted). Use /addhookbot to start again.')
     return true
   }
 
@@ -348,7 +412,7 @@ export async function handleAddhookbotChatId(
   return true
 }
 
-async function appendHookBotToEcosystem(wizard: AddhookbotWizardState): Promise<boolean> {
+async function appendHookBotToEcosystem(_wizard: AddhookbotWizardState): Promise<boolean> {
   const configPath = resolve(process.cwd(), 'ecosystem.config.cjs')
   try {
     let content = await fs.readFile(configPath, 'utf-8')
@@ -397,10 +461,15 @@ async function finishAddhookbot(
 
   const targetChatId = wizard.chatId ?? chatId
 
+  // For 'all' mode, save all available projects so hookBot can watch them
+  const projectsToSave = wizard.mode === 'all' && wizard.availableProjects.length > 0
+    ? wizard.availableProjects
+    : wizard.selectedProjects
+
   const configData = {
     botToken: wizard.token,
     chatId: targetChatId,
-    projects: wizard.selectedProjects,
+    projects: projectsToSave,
     mode: wizard.mode,
     serverUrl: wizard.serverUrl ?? '',
     serverUsername: wizard.serverUsername ?? '',
@@ -541,13 +610,14 @@ export async function startAddhookbotReconfigure(
   serverUrl: string,
   serverUsername: string,
   serverPassword: string,
+  registry?: BotRegistryPort,
 ): Promise<void> {
   const configPath = resolve(process.cwd(), 'data', 'hook-config.json')
 
-  let config: { botToken?: string }
+  let config: { botToken?: string; chatId?: number; mode?: 'all' | 'selected'; projects?: { directory: string; name: string }[] }
   try {
     const raw = await fs.readFile(configPath, 'utf-8')
-    config = JSON.parse(raw) as { botToken?: string }
+    config = JSON.parse(raw) as { botToken?: string; chatId?: number; mode?: 'all' | 'selected'; projects?: { directory: string; name: string }[] }
   } catch {
     await output.sendText(chatId, '❌ No existing hook bot config found. Use /addhookbot to set up.')
     return
@@ -566,32 +636,52 @@ export async function startAddhookbotReconfigure(
   }
   const username = verified.username
 
-  const wizard: AddhookbotWizardState = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0, serverUrl, serverUsername, serverPassword }
-  wizards.set(chatId, wizard)
+  const projects = await discoverProjects(serverUrl, serverUsername, serverPassword, registry)
+  const availableProjects = projects.map(p => ({
+    directory: p.worktree,
+    name: p.name || p.worktree.split('/').pop() || p.worktree,
+  }))
 
-  let projects: Project[] = []
-  try {
-    projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
-  } catch {
-    logger.debug('registry', 'Failed to fetch projects for addhookbot reconfigure')
+  // Preserve existing chatId and selected projects from config
+  const existingChatId = config.chatId ?? chatId
+  const existingMode = config.mode ?? 'all'
+  const existingProjects = config.projects ?? []
+
+  const wizard: AddhookbotWizardState = {
+    token,
+    username,
+    selectedProjects: existingMode === 'selected' ? existingProjects : [],
+    availableProjects,
+    mode: existingMode,
+    chatId: existingChatId,
+    tokenAttempts: 0,
+    serverUrl,
+    serverUsername,
+    serverPassword,
   }
+  wizards.set(chatId, wizard)
 
   if (projects.length > 0) {
     const buttons: Button[] = [
-      { label: '📡 All projects', callbackData: 'ahb:all' },
+      { label: existingMode === 'all' ? '✅ All projects' : '⬜ All projects', callbackData: 'ahb:all' },
     ]
     for (const p of projects) {
       const name = p.name || p.worktree.split('/').pop() || p.worktree
+      const isSelected = existingMode === 'selected' && existingProjects.some(ep => ep.directory === p.worktree)
       buttons.push({
-        label: `⬜ ${name}`,
-        callbackData: `ahb_proj:${p.worktree}:select`,
+        label: `${isSelected ? '✅' : '⬜'} ${name}`,
+        callbackData: `ahb_proj:${p.worktree}:${isSelected ? 'deselect' : 'select'}`,
       })
     }
     buttons.push({ label: '✅ Done', callbackData: 'ahb:done' })
 
+    const currentModeText = existingMode === 'all'
+      ? '📡 All projects'
+      : `📁 ${existingProjects.length} project${existingProjects.length !== 1 ? 's' : ''}`
+
     await output.sendInteraction(
       chatId,
-      `🔄 <b>Reconfigure @${escapeHtml(username)}</b>\n\nSelect projects to monitor:\n<i>(Toggle individual projects or select all)</i>`,
+      `🔄 <b>Reconfigure @${escapeHtml(username)}</b>\n\nCurrent: ${currentModeText}\nChat ID: <code>${existingChatId}</code>\n\nSelect projects to monitor:\n<i>(Toggle individual projects or select all)</i>`,
       buttons,
     )
   } else {
@@ -600,7 +690,7 @@ export async function startAddhookbotReconfigure(
 
     await output.sendText(
       chatId,
-      `🔄 <b>Reconfigure @${escapeHtml(username)}</b>\n\nNo projects found on server. Mode set to <b>📡 All projects</b>.\n\nSend the chat ID for notifications.\nDefault: <code>${chatId}</code> (this chat)\n\nSend <code>default</code> to use current chat, or enter a numeric chat ID.`,
+      `🔄 <b>Reconfigure @${escapeHtml(username)}</b>\n\nNo projects found. Mode set to <b>📡 All projects</b>.\nChat ID: <code>${existingChatId}</code> (preserved from config)`,
       'HTML',
     )
   }

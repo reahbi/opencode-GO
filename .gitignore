@@ -13,3 +13,6 @@ docs/hookbot-improvement-plan.md
 
 # Sisyphus planning artifacts
 .sisyphus/
+
+# OMC local state
+.omc/

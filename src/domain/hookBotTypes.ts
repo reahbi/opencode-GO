@@ -51,3 +51,12 @@ export type HookNotification =
       requestId: string
       questions: Array<{ text: string; options?: string[]; multiple?: boolean }>
     }
+  | {
+      type: 'turn'
+      sessionId: string
+      directory: string
+      projectName: string
+      userPrompt: string
+      assistantResponse: string
+      costUsd?: number
+    }

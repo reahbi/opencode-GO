@@ -110,6 +110,7 @@ export interface ChatState {
   settings: UserSettings
   awaitingInput: 'threshold' | 'question' | 'histlimit' | 'debaterounds' | 'addbot_token' | 'addbot_project' | 'makeagent_describe' | 'makeagent_name' | 'makeagent_edit' | 'tunnel_port' | 'addhookbot_token' | 'addhookbot_chatid' | null
   awaitingInteractionId: string | null
+  awaitingInputStartedAt?: number
   queuedMessages: QueuedMessage[]
   lastAssistantMessageId?: string
   redoAvailable?: boolean
