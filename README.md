@@ -1,4 +1,4 @@
-[한국어](README-kr.md)
+[🇰🇷 한국어](README-kr.md)
 
 # Claude-Go
 
@@ -7,6 +7,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?labelColor=black&style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
+[![GitHub](https://img.shields.io/github/stars/reahbi/claude-go?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/claude-go)
 
 <div align="center">
 <br>
@@ -52,8 +53,8 @@ On your commute, at a cafe, in bed — command your AI to write code and get rea
 ```
 
 > [!IMPORTANT]
-> **Claude-Go runs as a single process.** Unlike the previous OpenCode-based version,
-> there is no separate server to start. Just run the bot and it handles everything.
+> **Claude-Go runs as a single process.** No separate server needed.
+> Just run the bot and it handles everything via the Claude Agent SDK.
 
 > [!TIP]
 > **Too lazy to read?** Just paste this README link to your AI agent. It'll handle the installation for you.
@@ -431,6 +432,13 @@ This project was inspired by and built upon ideas from:
 - [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — Agent configuration and tooling inspiration
 - [Kimaki](https://github.com/remorses/kimaki) — Implementation references and ideas
 - [linuz90/claude-telegram-bot](https://github.com/linuz90/claude-telegram-bot) — Claude Agent SDK + grammy patterns
+
+---
+
+## Disclaimer
+
+This project is not built by or affiliated with Anthropic.
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) is a product by [Anthropic](https://www.anthropic.com).
 
 ---
 

@@ -1,4 +1,4 @@
-[English](README.md)
+[🇺🇸 English](README.md)
 
 # Claude-Go
 
@@ -7,6 +7,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?labelColor=black&style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
+[![GitHub](https://img.shields.io/github/stars/reahbi/claude-go?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/claude-go)
 
 <div align="center">
 <br>
@@ -53,8 +54,7 @@
 
 > [!IMPORTANT]
 > **Claude-Go는 단일 프로세스로 실행됩니다.**
-> 이전 OpenCode 기반 버전과 달리 별도 서버를 시작할 필요가 없습니다.
-> 봇만 실행하면 모든 것이 처리됩니다.
+> 별도 서버 없이 봇만 실행하면 Claude Agent SDK를 통해 모든 것이 처리됩니다.
 
 > [!TIP]
 > **읽기 귀찮으세요?** AI 에이전트에게 이 README 링크를 던져주세요. 설치까지 알아서 해줍니다.
@@ -430,6 +430,13 @@ bun test           # 테스트 실행
 - [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — 에이전트 설정 및 툴링 영감
 - [Kimaki](https://github.com/remorses/kimaki) — 구현 참고 및 아이디어
 - [linuz90/claude-telegram-bot](https://github.com/linuz90/claude-telegram-bot) — Claude Agent SDK + grammy 패턴
+
+---
+
+## Disclaimer
+
+이 프로젝트는 Anthropic에서 만들었거나 공식 제휴된 프로젝트가 아닙니다.
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code)는 [Anthropic](https://www.anthropic.com)의 제품입니다.
 
 ---
 
