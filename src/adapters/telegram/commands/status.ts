@@ -1,30 +1,35 @@
 import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
-import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
 import type { TunnelManager } from '../../../app/usecases/tunnelManager.js'
+import { escapeHtml } from '../../../shared/formatResponse.js'
 
-export function statusCommand(state: StateStore, openCode: OpenCodePort, instanceName?: string, tunnel?: TunnelManager) {
+export function statusCommand(state: StateStore, instanceName?: string, tunnel?: TunnelManager) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
     const chatState = await state.getChatState(chatId)
-    const healthy = await openCode.healthCheck()
 
     const tunnelState = tunnel?.get(chatId)
     const tunnelActive = tunnelState?.isActive && tunnelState?.url
 
+    const dir = chatState.activeProjectDirectory || '(not set)'
+    const sid = chatState.activeSessionId || '(none)'
+    const agent = chatState.activeAgent || 'default'
+    const cost = chatState.sessionCostUsd !== undefined ? `$${chatState.sessionCostUsd.toFixed(4)}` : '—'
+
     const lines = [
-      `<b>Status</b>${instanceName ? ` — ${instanceName}` : ''}`,
-      `Server: ${healthy ? '🟢 Online' : '🔴 Offline'}`,
-      `Project: <code>${chatState.activeProjectDirectory ?? 'None'}</code>`,
-      `Session: <code>${chatState.activeSessionId ?? 'None'}</code>`,
-      `Agent: <code>${chatState.activeAgent ?? 'default'}</code>`,
-      `Pending interactions: ${chatState.pendingInteractions.length}`,
+      `📊 <b>Status</b>${instanceName ? ` [${escapeHtml(instanceName)}]` : ''}`,
+      '',
+      `📁 Project: <code>${escapeHtml(dir)}</code>`,
+      `💬 Session: <code>${escapeHtml(sid)}</code>`,
+      `🤖 Agent: ${escapeHtml(agent)}`,
+      `💰 Session cost: ${cost}`,
+      `📋 Pending interactions: ${chatState.pendingInteractions.length}`,
     ]
 
     if (tunnelActive) {
-      lines.push(`Tunnel: 🟢 <code>${tunnelState.url}</code>`)
+      lines.push(`🌐 Tunnel: <code>${escapeHtml(tunnelState.url!)}</code>`)
     }
 
     if (tunnelActive) {

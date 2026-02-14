@@ -26,7 +26,7 @@ function parseEnvFile(content: string): Record<string, string> {
 }
 
 async function main(): Promise<void> {
-  intro('OpenCode-Go Doctor');
+  intro('Claude-Go Doctor');
 
   const results: CheckResult[] = [];
   const envPath = resolve(process.cwd(), '.env');
@@ -144,31 +144,31 @@ async function main(): Promise<void> {
       }
     }
 
-    // Check 5: OpenCode server connection
+    // Check 5: Server connection
     const s5 = spinner();
-    const serverUrl = env.OPENCODE_SERVER_URL || 'http://127.0.0.1:4096';
-    s5.start(`Checking OpenCode server connection (${serverUrl})...`);
+    const serverUrl = env.CLAUDE_SERVER_URL || 'http://127.0.0.1:4096';
+    s5.start(`Checking server connection (${serverUrl})...`);
     try {
       const res = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
-        s5.stop(`OpenCode server: connected (${serverUrl})`);
-        results.push({ name: 'OpenCode server', passed: true, message: `connected (${serverUrl})` });
+        s5.stop(`Server: connected (${serverUrl})`);
+        results.push({ name: 'Server', passed: true, message: `connected (${serverUrl})` });
       } else {
-        s5.stop(`OpenCode server: response error (${res.status})`);
+        s5.stop(`Server: response error (${res.status})`);
         results.push({
-          name: 'OpenCode server',
+          name: 'Server',
           passed: false,
           message: `response error (${res.status})`,
-          fix: 'Check if opencode serve is running',
+          fix: 'Check if server is running',
         });
       }
     } catch {
-      s5.stop('OpenCode server: cannot connect');
+      s5.stop('Server: cannot connect');
       results.push({
-        name: 'OpenCode server',
+        name: 'Server',
         passed: false,
         message: 'cannot connect',
-        fix: `Run opencode serve (URL: ${serverUrl})`,
+        fix: `Check server status (URL: ${serverUrl})`,
       });
     }
 

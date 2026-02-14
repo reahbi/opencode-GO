@@ -44,16 +44,6 @@ export type HookNotification =
       error: string
     }
   | {
-      type: 'permission'
-      sessionId: string
-      directory: string
-      projectName: string
-      requestId: string
-      permission: string
-      patterns: string[]
-      title: string
-    }
-  | {
       type: 'question'
       sessionId: string
       directory: string

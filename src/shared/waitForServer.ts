@@ -38,7 +38,7 @@ export async function waitForServer(options: WaitForServerOptions): Promise<bool
       })
       if (resp.ok) {
         if (attempt > 1) {
-          logger.info(logContext, `OpenCode server is ready (after ${attempt} attempts)`)
+          logger.info(logContext, `Server is ready (after ${attempt} attempts)`)
         }
         return true
       }
@@ -47,9 +47,9 @@ export async function waitForServer(options: WaitForServerOptions): Promise<bool
     }
 
     if (attempt === 1) {
-      logger.info(logContext, `Waiting for OpenCode server at ${serverUrl}...`)
+      logger.info(logContext, `Waiting for server at ${serverUrl}...`)
     } else if (attempt % 10 === 0) {
-      logger.info(logContext, `Still waiting for OpenCode server... (attempt ${attempt}/${maxAttempts})`)
+      logger.info(logContext, `Still waiting for server... (attempt ${attempt}/${maxAttempts})`)
     }
 
     // Exponential backoff: 2s, 4s, 8s, 15s, 15s, ...
@@ -59,6 +59,6 @@ export async function waitForServer(options: WaitForServerOptions): Promise<bool
     await new Promise(resolve => setTimeout(resolve, baseDelay + jitter))
   }
 
-  logger.error(logContext, `OpenCode server did not become available after ${maxAttempts} attempts`)
+  logger.error(logContext, `Server did not become available after ${maxAttempts} attempts`)
   return false
 }

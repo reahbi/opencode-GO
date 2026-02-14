@@ -1,4 +1,5 @@
-export { createMockOpenCodePort } from './mockOpenCodePort.js'
+export { createMockClaudeAgentPort } from './mockClaudeAgentPort.js'
+export { createMockSessionStore } from './mockSessionStore.js'
 export { createMockChatOutputPort } from './mockChatOutputPort.js'
 export { createMockStateStore } from './mockStateStore.js'
 export { createMockCoordinationPort } from './mockCoordinationPort.js'

@@ -8,9 +8,7 @@ import type {
   BotRegistryEntry,
 } from '../../domain/models.js'
 import type {
-  OpenCodeEvent,
-  AgentOutput,
-  PermissionAsked,
+  ClaudeEvent,
   QuestionAsked,
   QuestionInfo,
 } from '../../domain/events.js'
@@ -51,57 +49,28 @@ export function buildPendingInteraction(
     interactionId: 'int-1',
     sessionId: 'ses-1',
     requestId: 'req-1',
-    type: 'permission',
+    type: 'question',
     expiresAt: Date.now() + 300000,
   }
 
   return { ...defaults, ...overrides }
 }
 
-export function buildAgentOutput(overrides: Partial<AgentOutput> = {}): AgentOutput {
-  const defaults: AgentOutput = {
-    sessionId: 'ses-1',
-    parts: [{ type: 'text', content: 'test output' }],
-  }
-
-  return { ...defaults, ...overrides }
-}
-
-export function buildPermissionEvent(overrides: Partial<PermissionAsked> = {}): OpenCodeEvent {
-  const defaults: PermissionAsked = {
-    requestId: 'req-1',
-    sessionId: 'ses-1',
-    permission: 'read',
-    patterns: [],
-    title: 'Permission requested',
-  }
-
-  return {
-    type: 'permission.asked',
-    data: { ...defaults, ...overrides },
-  }
-}
-
-export function buildQuestionEvent(overrides: Partial<QuestionAsked> = {}): OpenCodeEvent {
+export function buildQuestionEvent(overrides: Partial<QuestionAsked> = {}): QuestionAsked {
   const defaultQuestion: QuestionInfo = {
     id: 'q-1',
     text: 'Test question',
     options: ['Option A', 'Option B'],
   }
-
   const defaults: QuestionAsked = {
     requestId: 'req-1',
     sessionId: 'ses-1',
     questions: [defaultQuestion],
   }
-
   return {
-    type: 'question.asked',
-    data: {
-      ...defaults,
-      ...overrides,
-      questions: overrides.questions ?? defaults.questions,
-    },
+    ...defaults,
+    ...overrides,
+    questions: overrides.questions ?? defaults.questions,
   }
 }
 

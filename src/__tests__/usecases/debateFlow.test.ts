@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
 import { createDebateFlow } from '../../app/usecases/debateFlow.js'
 import {
-  createMockOpenCodePort,
+  createMockClaudeAgentPort,
   createMockStateStore,
   createMockChatOutputPort,
   createMockCoordinationPort,
@@ -9,19 +9,19 @@ import {
   createMockGroupSettingsPort,
   buildChatState,
   buildBotRegistryEntry,
-  buildAgentOutput,
   buildHistoryMessage,
   flushPromises,
 } from '../helpers/index.js'
-import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
+import type { ClaudeAgentPort } from '../../domain/ports/ClaudeAgentPort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { CoordinationPort, CoordinationEvent } from '../../domain/ports/CoordinationPort.js'
 import type { BotRegistryPort } from '../../domain/ports/BotRegistryPort.js'
 import type { GroupSettingsPort } from '../../domain/ports/GroupSettingsPort.js'
+import type { ClaudeEvent } from '../../domain/events.js'
 
 describe('debateFlow', () => {
-  let openCode: OpenCodePort
+  let claude: ClaudeAgentPort
   let state: StateStore
   let output: ChatOutputPort
   let coordination: CoordinationPort
@@ -33,7 +33,7 @@ describe('debateFlow', () => {
   const projectDir = '/test/project'
 
   beforeEach(() => {
-    openCode = createMockOpenCodePort()
+    claude = createMockClaudeAgentPort()
     state = createMockStateStore()
     output = createMockChatOutputPort()
     coordination = createMockCoordinationPort()
@@ -60,7 +60,7 @@ describe('debateFlow', () => {
       registry.findByRole = async () => [peerBot]
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -94,7 +94,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -123,7 +123,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -153,7 +153,7 @@ describe('debateFlow', () => {
       registry.findByRole = async () => []
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -182,7 +182,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -223,7 +223,7 @@ describe('debateFlow', () => {
       registry.findByRole = async () => [peerBot]
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -267,7 +267,7 @@ describe('debateFlow', () => {
       registry.findByRole = async () => [peerBot]
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -297,7 +297,7 @@ describe('debateFlow', () => {
       registry.findByRole = async () => []
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -328,15 +328,20 @@ describe('debateFlow', () => {
         activeSessionId: 'ses-1',
       })
 
-      let sendPromptAsyncCalled = false
-      
-      let msgCallCount = 0
-      openCode = createMockOpenCodePort({
-        sendPromptAsync: async () => { sendPromptAsyncCalled = true },
-        getSessionMessages: async () => {
-          msgCallCount++
-          if (msgCallCount <= 1) return []
-          return [buildHistoryMessage({ role: 'assistant', parts: [{ type: 'text', text: 'My debate argument' }] })]
+      let runQueryCalled = false
+
+      async function* mockMessages(): AsyncGenerator<ClaudeEvent, void, unknown> {
+        yield { type: 'text.done', sessionId: 'ses-1', content: 'My debate argument', uuid: 'msg-1' }
+      }
+
+      claude = createMockClaudeAgentPort({
+        runQuery: () => {
+          runQueryCalled = true
+          return {
+            messages: mockMessages(),
+            abort: () => undefined,
+            sessionId: 'ses-1',
+          }
         },
       })
 
@@ -351,7 +356,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -376,7 +381,7 @@ describe('debateFlow', () => {
 
       await flow.handleCoordinationEvent(chatId, event)
 
-      expect(sendPromptAsyncCalled).toBe(true)
+      expect(runQueryCalled).toBe(true)
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
         expect.stringContaining('My debate argument'),
@@ -398,7 +403,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -435,15 +440,20 @@ describe('debateFlow', () => {
         activeSessionId: 'ses-1',
       })
 
-      let sendPromptAsyncCalled = false
-      
-      let msgCallCount = 0
-      openCode = createMockOpenCodePort({
-        sendPromptAsync: async () => { sendPromptAsyncCalled = true },
-        getSessionMessages: async () => {
-          msgCallCount++
-          if (msgCallCount <= 1) return []
-          return [buildHistoryMessage({ role: 'assistant', parts: [{ type: 'text', text: 'Code review feedback' }] })]
+      let runQueryCalled = false
+
+      async function* mockMessages(): AsyncGenerator<ClaudeEvent, void, unknown> {
+        yield { type: 'text.done', sessionId: 'ses-1', content: 'Code review feedback', uuid: 'msg-1' }
+      }
+
+      claude = createMockClaudeAgentPort({
+        runQuery: () => {
+          runQueryCalled = true
+          return {
+            messages: mockMessages(),
+            abort: () => undefined,
+            sessionId: 'ses-1',
+          }
         },
       })
 
@@ -458,7 +468,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -483,7 +493,7 @@ describe('debateFlow', () => {
 
       await flow.handleCoordinationEvent(chatId, event)
 
-      expect(sendPromptAsyncCalled).toBe(true)
+      expect(runQueryCalled).toBe(true)
       expect(output.sendText).toHaveBeenCalledWith(
         chatId,
         expect.stringContaining('Code review feedback'),
@@ -505,7 +515,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -545,14 +555,16 @@ describe('debateFlow', () => {
         activeSessionId: 'ses-1',
       })
 
-      let msgCallCount = 0
-      openCode = createMockOpenCodePort({
-        sendPromptAsync: async () => {},
-        getSessionMessages: async () => {
-          msgCallCount++
-          if (msgCallCount <= 1) return []
-          return [buildHistoryMessage({ role: 'assistant', parts: [{ type: 'text', text: 'My rebuttal' }] })]
-        },
+      async function* mockMessages(): AsyncGenerator<ClaudeEvent, void, unknown> {
+        yield { type: 'text.done', sessionId: 'ses-1', content: 'My rebuttal', uuid: 'msg-1' }
+      }
+
+      claude = createMockClaudeAgentPort({
+        runQuery: () => ({
+          messages: mockMessages(),
+          abort: () => undefined,
+          sessionId: 'ses-1',
+        }),
       })
 
       const peerBot = buildBotRegistryEntry({
@@ -566,7 +578,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -640,7 +652,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -682,7 +694,7 @@ describe('debateFlow', () => {
           expect.objectContaining({ label: '❌ Ignore' }),
         ]),
       )
-      expect(openCode.sendPromptAsync).not.toHaveBeenCalled()
+      expect(claude.runQuery).not.toHaveBeenCalled()
       expect(coordination.publish).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'debate.end' }),
       )
@@ -707,7 +719,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -738,7 +750,7 @@ describe('debateFlow', () => {
       })
 
       expect((output.sendText as unknown as { mock: { calls: unknown[][] } }).mock.calls.length).toBe(initialSendCount)
-      expect(openCode.sendPromptAsync).not.toHaveBeenCalled()
+      expect(claude.runQuery).not.toHaveBeenCalled()
 
       await flow.handleCoordinationEvent(chatId, {
         id: 'evt-end',
@@ -757,7 +769,7 @@ describe('debateFlow', () => {
       const chatId = 324
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -781,7 +793,7 @@ describe('debateFlow', () => {
       })
 
       expect(output.sendText).not.toHaveBeenCalled()
-      expect(openCode.sendPromptAsync).not.toHaveBeenCalled()
+      expect(claude.runQuery).not.toHaveBeenCalled()
     })
 
     it('reports error when AI prompt fails and publishes debate.end', async () => {
@@ -793,8 +805,8 @@ describe('debateFlow', () => {
         activeSessionId: 'ses-1',
       })
 
-      openCode = createMockOpenCodePort({
-        sendPromptAsync: async () => {
+      claude = createMockClaudeAgentPort({
+        runQuery: () => {
           throw new Error('prompt error')
         },
       })
@@ -810,7 +822,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -869,7 +881,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -928,7 +940,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -982,8 +994,8 @@ describe('debateFlow', () => {
         activeSessionId: 'ses-1',
       })
 
-      openCode = createMockOpenCodePort({
-        sendPromptAsync: async () => {
+      claude = createMockClaudeAgentPort({
+        runQuery: () => {
           throw new Error('boom')
         },
       })
@@ -999,7 +1011,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -1053,7 +1065,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -1110,7 +1122,7 @@ describe('debateFlow', () => {
       })
 
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -1167,11 +1179,7 @@ describe('debateFlow', () => {
 
       let reviewDebateId = 'pending'
 
-      const processedOutput = buildAgentOutput({
-        parts: [{ type: 'text', content: 'Processed' }],
-      })
-      const processedPart = processedOutput.parts.find(part => part.type === 'text')
-      const processedMessage = processedPart ? processedPart.content : 'Processed'
+      const processedMessage = 'Processed'
 
       coordination = createMockCoordinationPort({
         publish: async (event) => {
@@ -1250,7 +1258,7 @@ describe('debateFlow', () => {
 
       try {
         const flow = createDebateFlow({
-          openCode,
+          claude,
           state,
           output,
           coordination,
@@ -1280,7 +1288,7 @@ describe('debateFlow', () => {
   describe('polling', () => {
     it('starts polling when startPolling is called', () => {
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,
@@ -1298,7 +1306,7 @@ describe('debateFlow', () => {
 
     it('stops polling when stopPolling is called', () => {
       const flow = createDebateFlow({
-        openCode,
+        claude,
         state,
         output,
         coordination,

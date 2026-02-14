@@ -3,8 +3,8 @@ import { createDefaultChatState, createDefaultUserSettings } from '../../domain/
 import {
   AppError,
   SessionNotFoundError,
-  OpenCodeConnectionError,
-  OpenCodeApiError,
+  QueryError,
+  QueryAbortedError,
 } from '../../domain/errors.js'
 
 describe('domain/models', () => {
@@ -110,64 +110,43 @@ describe('domain/errors', () => {
     })
   })
 
-  describe('OpenCodeConnectionError', () => {
-    it('has correct error code OPENCODE_CONNECTION_ERROR', () => {
-      const error = new OpenCodeConnectionError('http://localhost:4096')
-      
-      expect(error.code).toBe('OPENCODE_CONNECTION_ERROR')
+  describe('QueryError', () => {
+    it('has correct error code QUERY_ERROR', () => {
+      const error = new QueryError('Something went wrong')
+      expect(error.code).toBe('QUERY_ERROR')
     })
 
-    it('includes URL in message', () => {
-      const error = new OpenCodeConnectionError('http://localhost:4096')
-      
-      expect(error.message).toContain('http://localhost:4096')
+    it('includes message', () => {
+      const error = new QueryError('Something went wrong')
+      expect(error.message).toBe('Something went wrong')
     })
 
     it('preserves cause when provided', () => {
-      const cause = new Error('Network failure')
-      const error = new OpenCodeConnectionError('http://localhost:4096', cause)
-      
+      const cause = new Error('Original')
+      const error = new QueryError('Wrapped', cause)
       expect(error.cause).toBe(cause)
     })
 
     it('extends AppError', () => {
-      const error = new OpenCodeConnectionError('http://localhost:4096')
-      
+      const error = new QueryError('test')
       expect(error instanceof AppError).toBe(true)
-    })
-
-    it('is instance of Error', () => {
-      const error = new OpenCodeConnectionError('http://localhost:4096')
-      
-      expect(error instanceof Error).toBe(true)
     })
   })
 
-  describe('OpenCodeApiError', () => {
-    it('has correct error code OPENCODE_API_ERROR', () => {
-      const error = new OpenCodeApiError('POST', 500, 'Internal server error')
-      
-      expect(error.code).toBe('OPENCODE_API_ERROR')
+  describe('QueryAbortedError', () => {
+    it('has correct error code QUERY_ABORTED', () => {
+      const error = new QueryAbortedError()
+      expect(error.code).toBe('QUERY_ABORTED')
     })
 
-    it('includes method, status, and message in error message', () => {
-      const error = new OpenCodeApiError('POST', 500, 'Internal server error')
-      
-      expect(error.message).toContain('POST')
-      expect(error.message).toContain('500')
-      expect(error.message).toContain('Internal server error')
+    it('has abort message', () => {
+      const error = new QueryAbortedError()
+      expect(error.message).toContain('aborted')
     })
 
     it('extends AppError', () => {
-      const error = new OpenCodeApiError('GET', 404, 'Not found')
-      
+      const error = new QueryAbortedError()
       expect(error instanceof AppError).toBe(true)
-    })
-
-    it('is instance of Error', () => {
-      const error = new OpenCodeApiError('GET', 404, 'Not found')
-      
-      expect(error instanceof Error).toBe(true)
     })
   })
 })

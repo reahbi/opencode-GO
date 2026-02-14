@@ -9,7 +9,7 @@ describe('fileRegistryAdapter integration', () => {
   let tempDir = ''
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(join(tmpdir(), 'opencode-go-registry-'))
+    tempDir = await fs.mkdtemp(join(tmpdir(), 'claude-go-registry-'))
   })
 
   afterEach(async () => {

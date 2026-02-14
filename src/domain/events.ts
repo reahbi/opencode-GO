@@ -1,23 +1,22 @@
-/** Completed agent output from a prompt */
-export interface AgentOutput {
-  sessionId: string
-  parts: AgentOutputPart[]
-}
+import type { TokenUsage } from './ports/ClaudeAgentPort.js'
 
-export type AgentOutputPart =
-  | { type: 'text'; content: string }
-  | { type: 'tool'; tool: string; title: string; status: 'completed' | 'error' }
+/** Discriminated union of all events from Claude Agent SDK query */
+export type ClaudeEvent =
+  | { type: 'text.delta'; sessionId: string; content: string }
+  | { type: 'text.done'; sessionId: string; content: string; uuid: string }
+  | { type: 'thinking'; sessionId: string; content: string }
+  | { type: 'tool.use'; sessionId: string; toolName: string; input: unknown; toolUseId: string }
+  | { type: 'tool.result'; sessionId: string; toolUseId: string; output: string }
+  | { type: 'result'; sessionId: string; subtype: 'success' | 'error'; usage?: TokenUsage; costUsd?: number; errorMessage?: string }
+  | { type: 'system.init'; sessionId: string; model: string; tools: string[] }
+  | { type: 'error'; sessionId: string; message: string }
 
-/** Permission request from OpenCode */
-export interface PermissionAsked {
-  requestId: string
-  sessionId: string
-  permission: string
-  patterns: string[]
-  title: string
-}
+/** Handler callback for domain events */
+export type EventHandler = (event: ClaudeEvent) => void | Promise<void>
 
-/** Question request from OpenCode */
+// ── Legacy types kept for backward compatibility during migration ──
+
+/** Question request detected from AskUserQuestion tool */
 export interface QuestionAsked {
   requestId: string
   sessionId: string
@@ -30,59 +29,3 @@ export interface QuestionInfo {
   options?: string[]
   multiple?: boolean
 }
-
-/** Session became idle */
-export interface SessionIdle {
-  sessionId: string
-}
-
-/** Session is busy (actively processing) */
-export interface SessionBusy {
-  sessionId: string
-}
-
-/** Session is retrying after an error */
-export interface SessionRetry {
-  sessionId: string
-  attempt: number
-  message: string
-  next: number
-}
-
-/** Session error */
-export interface SessionError {
-  sessionId: string
-  error: string
-}
-
-/** Discriminated union of all domain events from OpenCode */
-export interface MessageUpdated {
-  sessionId: string
-  messageId: string
-  role: 'user' | 'assistant'
-}
-
-/** Tool part update - for showing tool usage status */
-export interface ToolPartUpdated {
-  sessionId: string
-  partId: string
-  messageId: string
-  tool: string
-  title: string
-  status: 'pending' | 'running' | 'completed' | 'error'
-}
-
-export type OpenCodeEvent =
-  | { type: 'agent.output'; data: AgentOutput }
-  | { type: 'permission.asked'; data: PermissionAsked }
-  | { type: 'question.asked'; data: QuestionAsked }
-  | { type: 'session.idle'; data: SessionIdle }
-  | { type: 'session.busy'; data: SessionBusy }
-  | { type: 'session.retry'; data: SessionRetry }
-  | { type: 'session.error'; data: SessionError }
-  | { type: 'message.updated'; data: MessageUpdated }
-  | { type: 'message.part.updated'; data: { sessionId: string; partId: string; messageId: string; content: string; finished: boolean } }
-  | { type: 'tool.part.updated'; data: ToolPartUpdated }
-
-/** Handler callback for domain events */
-export type EventHandler = (event: OpenCodeEvent) => void | Promise<void>

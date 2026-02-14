@@ -1,8 +1,7 @@
 import type { Context } from 'grammy'
-import type { OpenCodeEvent } from '../../../domain/events.js'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
-import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
+import type { ClaudeAgentPort } from '../../../domain/ports/ClaudeAgentPort.js'
 import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
 import type { Button, CustomAgent } from '../../../domain/models.js'
 import { logger } from '../../../shared/logger.js'
@@ -187,89 +186,34 @@ function generateAgentId(): string {
   return `ca_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 }
 
-async function runMakerSession(openCode: OpenCodePort, directory: string, userDescription: string): Promise<string> {
+async function runMakerSession(claude: ClaudeAgentPort, directory: string, userDescription: string): Promise<string> {
   const prompt = buildMakerPrompt(userDescription)
-  const session = await openCode.createSession(directory, MAKEAGENT_SESSION_TITLE)
-  const sessionId = session.id
+
+  const handle = claude.runQuery({
+    prompt,
+    cwd: directory,
+  })
+
+  let responseText = ''
+  const timeout = setTimeout(() => {
+    handle.abort()
+  }, MAKEAGENT_TIMEOUT_MS)
 
   try {
-    const abortController = new AbortController()
-    const assistantMessageIds = new Set<string>()
-    let responseText = ''
-
-    const eventHandler = async (event: OpenCodeEvent) => {
-      switch (event.type) {
-        case 'message.updated': {
-          if (event.data.sessionId !== sessionId) return
-          if (event.data.role === 'assistant') {
-            assistantMessageIds.add(event.data.messageId)
-          }
-          break
-        }
-        case 'message.part.updated': {
-          if (event.data.sessionId !== sessionId) return
-          if (event.data.messageId && !assistantMessageIds.has(event.data.messageId)) return
-          responseText = event.data.content
-          break
-        }
-        case 'session.idle': {
-          if (event.data.sessionId !== sessionId) return
-          abortController.abort()
-          break
-        }
-        case 'session.error': {
-          if (event.data.sessionId !== sessionId) return
-          logger.warn('summary', `Agent maker session error: ${event.data.error || '(empty)'}`)
-          abortController.abort()
-          break
-        }
-        default:
-          break
+    for await (const event of handle.messages) {
+      if (event.type === 'text.done') {
+        responseText = event.content
       }
     }
-
-    const ssePromise = openCode
-      .streamEvents(directory, eventHandler, abortController.signal)
-      .catch((err) => {
-        if (abortController.signal.aborted) return
-        logger.error('summary', `Agent maker SSE error: ${err instanceof Error ? err.message : 'unknown'}`)
-      })
-
-    await openCode.sendPromptAsync(sessionId, directory, prompt)
-
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
-    await Promise.race([
-      ssePromise,
-      new Promise<void>((resolve) => {
-        timeoutHandle = setTimeout(() => {
-          if (!abortController.signal.aborted) {
-            abortController.abort()
-          }
-          resolve()
-        }, MAKEAGENT_TIMEOUT_MS)
-      }),
-    ])
-
-    if (timeoutHandle !== null) {
-      clearTimeout(timeoutHandle)
-    }
-
-    if (!abortController.signal.aborted) {
-      abortController.abort()
-    }
-
-    if (!responseText.trim()) {
-      throw new Error('Agent maker produced no output')
-    }
-
-    return responseText
   } finally {
-    try {
-      await openCode.deleteSession(sessionId, directory)
-    } catch (err) {
-      logger.warn('summary', `Failed to delete agent maker temp session ${sessionId}: ${err instanceof Error ? err.message : 'unknown'}`)
-    }
+    clearTimeout(timeout)
   }
+
+  if (!responseText.trim()) {
+    throw new Error('Agent maker produced no output')
+  }
+
+  return responseText
 }
 
 async function generateAndShowDraft(
@@ -277,7 +221,7 @@ async function generateAndShowDraft(
   userDescription: string,
   state: StateStore,
   output: ChatOutputPort,
-  openCode: OpenCodePort,
+  claude: ClaudeAgentPort,
 ): Promise<boolean> {
   const chatState = await state.getChatState(chatId)
   const directory = chatState.activeProjectDirectory
@@ -290,7 +234,7 @@ async function generateAndShowDraft(
   const waitingHandle = await output.sendText(chatId, '🧪 Generating custom agent draft...')
 
   try {
-    const raw = await runMakerSession(openCode, directory, userDescription)
+    const raw = await runMakerSession(claude, directory, userDescription)
     const draft = normalizeDraft(raw, userDescription)
 
     wizards.set(chatId, {
@@ -336,7 +280,7 @@ export async function handleMakeagentDescribe(
   text: string,
   state: StateStore,
   output: ChatOutputPort,
-  openCode: OpenCodePort,
+  claude: ClaudeAgentPort,
   _customAgents: CustomAgentPort,
 ): Promise<boolean> {
   const userDescription = text.trim()
@@ -345,7 +289,7 @@ export async function handleMakeagentDescribe(
     return true
   }
 
-  await generateAndShowDraft(chatId, userDescription, state, output, openCode)
+  await generateAndShowDraft(chatId, userDescription, state, output, claude)
   return true
 }
 
@@ -371,7 +315,7 @@ export async function regenerateMakeagentDraft(
   chatId: number,
   state: StateStore,
   output: ChatOutputPort,
-  openCode: OpenCodePort,
+  claude: ClaudeAgentPort,
 ): Promise<void> {
   const wizard = wizards.get(chatId)
   if (!wizard) {
@@ -379,7 +323,7 @@ export async function regenerateMakeagentDraft(
     return
   }
 
-  await generateAndShowDraft(chatId, wizard.userDescription, state, output, openCode)
+  await generateAndShowDraft(chatId, wizard.userDescription, state, output, claude)
 }
 
 export async function startMakeagentEdit(chatId: number, state: StateStore, output: ChatOutputPort): Promise<void> {

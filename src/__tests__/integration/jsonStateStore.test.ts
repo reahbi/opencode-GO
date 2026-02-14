@@ -13,7 +13,7 @@ describe('jsonStateStore integration', () => {
   let tempDir = ''
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(join(tmpdir(), 'opencode-go-state-'))
+    tempDir = await fs.mkdtemp(join(tmpdir(), 'claude-go-state-'))
   })
 
   afterEach(async () => {

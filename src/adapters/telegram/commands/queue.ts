@@ -11,14 +11,9 @@ type PromptFlow = {
   sendPrompt(chatId: number, text: string, userId?: number): Promise<void>
 }
 
-type SessionStatuses = {
-  getSessionStatuses(directory: string): Promise<Record<string, { type: string }>>
-}
-
 export function queueCommand(
   state: StateStore,
   promptFlow: PromptFlow,
-  openCode: SessionStatuses
 ) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
@@ -31,17 +26,9 @@ export function queueCommand(
     }
 
     const chatState = await state.getChatState(chatId)
-    
+
     if (!chatState.activeSessionId || !chatState.activeProjectDirectory) {
       await ctx.reply('No active session. Use /new to create one.')
-      return
-    }
-
-    const statuses = await openCode.getSessionStatuses(chatState.activeProjectDirectory)
-    const sessionStatus = statuses[chatState.activeSessionId]
-    
-    if (!sessionStatus || sessionStatus.type === 'idle') {
-      await promptFlow.sendPrompt(chatId, text.trim(), ctx.from?.id)
       return
     }
 
@@ -50,7 +37,7 @@ export function queueCommand(
       timestamp: Date.now(),
       actorUserId: ctx.from?.id
     }
-    
+
     const result = enqueueMessage(chatState, msg)
     await state.saveChatState(chatId, chatState)
 

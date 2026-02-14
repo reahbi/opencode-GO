@@ -1,26 +1,18 @@
 import type { Context } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
-import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
+import { escapeHtml } from '../../../shared/formatResponse.js'
 
-export function startCommand(state: StateStore, openCode: OpenCodePort, instanceName?: string) {
+export function startCommand(state: StateStore, instanceName?: string) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
 
     const chatState = await state.getChatState(chatId)
-    let serverStatus: string
-    try {
-      const healthy = await openCode.healthCheck()
-      serverStatus = healthy ? 'Online' : 'Offline'
-    } catch {
-      serverStatus = 'Offline'
-    }
 
     const header = instanceName
-      ? `<b>OpenCode-Go</b> — ${instanceName}`
-      : `<b>OpenCode-Go</b>`
+      ? `<b>Claude-Go</b> — ${instanceName}`
+      : `<b>Claude-Go</b>`
 
-    const statusIcon = serverStatus === 'Online' ? '🟢' : '🔴'
     const sessionInfo = chatState.activeSessionId
       ? `Active session — send a message to continue`
       : `No active session — use /new to start one`
@@ -33,8 +25,8 @@ export function startCommand(state: StateStore, openCode: OpenCodePort, instance
       `Remotely control your AI coding assistant via Telegram.`,
       '',
       `<b>Status</b>`,
-      `  OpenCode Server: ${statusIcon} ${serverStatus}`,
-      `  Project: <code>${project}</code>`,
+      `  Claude: 🟢 Ready`,
+      `  Project: <code>${escapeHtml(project)}</code>`,
       `  Session: ${sessionInfo}`,
       '',
       `<b>Getting Started</b>`,

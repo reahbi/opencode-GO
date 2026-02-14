@@ -4,8 +4,7 @@ import { promises as fs } from 'node:fs'
 import { resolve as pathResolve } from 'node:path'
 import type { HookNotificationPort } from '../../domain/ports/HookNotificationPort.js'
 import type { HookNotification, HookBotConfig } from '../../domain/hookBotTypes.js'
-import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
-import type { PermissionAsked, QuestionAsked } from '../../domain/events.js'
+import type { QuestionAsked } from '../../domain/events.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/formatResponse.js'
 import { routeDelivery } from '../../app/policies/deliveryRouter.js'
@@ -106,7 +105,6 @@ function hookBotSettingsText(cfg: HookBotConfig | null): string {
     `Chat ID: <code>${cfg.chatId}</code>`,
     projectLine,
     '',
-    `Server: <code>${escapeHtml(cfg.serverUrl)}</code>`,
     `Config path: <code>${escapeHtml(getHookConfigPath())}</code>`,
   ].join('\n')
 }
@@ -144,7 +142,7 @@ function hookBotWizardProjectsKeyboard(
 }
 
 async function restartHookBotPm2(): Promise<{ ok: boolean; message: string }> {
-  const pm2Name = 'opencode-go-hookbot'
+  const pm2Name = 'claude-go-hookbot'
   try {
     const proc = Bun.spawn(['pm2', 'restart', pm2Name], { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' })
     const exitCode = await proc.exited
@@ -198,9 +196,7 @@ function formatDuration(ms: number): string {
 // ── Notification Adapter ─────────────────────────────────────
 
 export type HookBotInteractiveFlow = {
-  handlePermissionEvent(chatId: number, event: PermissionAsked, actorUserId?: number, directory?: string): Promise<void>
   handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number, directory?: string): Promise<void>
-  handlePermissionCallback(chatId: number, interactionId: string, response: 'once' | 'always' | 'reject'): Promise<void>
   handleQuestionAnswer(chatId: number, interactionId: string, questionIndex: number, answerIndex: number): Promise<void>
   handleQuestionToggle(chatId: number, interactionId: string, questionIndex: number, answerIndex: number): Promise<void>
   handleQuestionNext(chatId: number, interactionId: string, questionIndex: number): Promise<void>
@@ -215,7 +211,6 @@ export type HookBotInteractiveFlow = {
 export function createHookBotNotificationAdapter(
   bot: BotInstance,
   chatId: number,
-  openCode: OpenCodePort,
   config: HookBotConfig,
   interactiveFlow?: HookBotInteractiveFlow,
 ): HookNotificationPort {
@@ -338,21 +333,6 @@ export function createHookBotNotificationAdapter(
           case 'error':
             await notifyError(notification)
             break
-          case 'permission': {
-            if (!interactiveFlow) {
-              logger.warn('hookbot', 'Permission notification received but no interactiveFlow configured')
-              break
-            }
-            const permEvent: PermissionAsked = {
-              requestId: notification.requestId,
-              sessionId: notification.sessionId,
-              permission: notification.permission,
-              patterns: notification.patterns,
-              title: notification.title,
-            }
-            await interactiveFlow.handlePermissionEvent(chatId, permEvent, undefined, notification.directory)
-            break
-          }
           case 'question': {
             if (!interactiveFlow) {
               logger.warn('hookbot', 'Question notification received but no interactiveFlow configured')
@@ -398,27 +378,11 @@ interface HookBotExtras {
 
 export function registerHookBotHandlers(
   bot: BotInstance,
-  openCode: OpenCodePort,
   config: HookBotConfig,
   extras?: HookBotExtras,
 ): void {
   const chatId = config.chatId
   const iFlow = extras?.interactiveFlow
-
-  // Permission callback: perm:{interactionId}:{response}
-  bot.callbackQuery(/^perm:/, async (ctx) => {
-    if (!iFlow) {
-      await ctx.answerCallbackQuery('⚠️ Not configured')
-      return
-    }
-    const parsed = parseCallback(ctx.callbackQuery.data)
-    if (parsed.type !== 'permission') {
-      await ctx.answerCallbackQuery('⚠️ Invalid data')
-      return
-    }
-    await ctx.answerCallbackQuery()
-    await iFlow.handlePermissionCallback(chatId, parsed.interactionId, parsed.response)
-  })
 
   // Question callbacks: q:{interactionId}:{...}
   bot.callbackQuery(/^q:/, async (ctx) => {
@@ -543,7 +507,7 @@ export function registerHookBotHandlers(
       const kb = new InlineKeyboard()
         .text('✅ Yes, remove', 'hbs:remove_yes')
         .text('❌ Cancel', 'hbs:cancel')
-      await ctx.reply('🗑 <b>Remove hook bot config?</b>\nThis will delete <code>data/hook-config.json</code> and stop PM2 process <code>opencode-go-hookbot</code>.', {
+      await ctx.reply('🗑 <b>Remove hook bot config?</b>\nThis will delete <code>data/hook-config.json</code> and stop PM2 process <code>claude-go-hookbot</code>.', {
         parse_mode: 'HTML',
         reply_markup: kb,
       })
@@ -554,7 +518,7 @@ export function registerHookBotHandlers(
       const configPath = getHookConfigPath()
       try { await fs.unlink(configPath) } catch { /* ignore */ }
       try {
-        const proc = Bun.spawn(['pm2', 'delete', 'opencode-go-hookbot'], { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' })
+        const proc = Bun.spawn(['pm2', 'delete', 'claude-go-hookbot'], { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' })
         await proc.exited
       } catch { /* ignore */ }
       await pm2Save()

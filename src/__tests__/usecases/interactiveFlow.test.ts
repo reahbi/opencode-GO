@@ -4,10 +4,8 @@ import { createInteractiveFlow } from '../../app/usecases/interactiveFlow.js'
 import {
   buildChatState,
   buildPendingInteraction,
-  buildPermissionEvent,
   buildQuestionEvent,
   createMockChatOutputPort,
-  createMockOpenCodePort,
   createMockStateStore,
 } from '../helpers/index.js'
 
@@ -16,12 +14,10 @@ const directory = '/test'
 const sessionId = 'ses-1'
 
 describe('interactiveFlow', () => {
-  let openCode: ReturnType<typeof createMockOpenCodePort>
   let output: ReturnType<typeof createMockChatOutputPort>
   let state: ReturnType<typeof createMockStateStore>
 
   beforeEach(() => {
-    openCode = createMockOpenCodePort()
     output = createMockChatOutputPort()
     state = createMockStateStore(buildChatState({
       activeProjectDirectory: directory,
@@ -29,92 +25,8 @@ describe('interactiveFlow', () => {
     }))
   })
 
-  it('stores permission interactions and sends buttons', async () => {
-    const flow = createInteractiveFlow({ openCode, output, state })
-    const event = buildPermissionEvent({ sessionId })
-
-    if (event.type !== 'permission.asked') {
-      throw new Error('unexpected event type')
-    }
-
-    await flow.handlePermissionEvent(chatId, event.data)
-
-    const updated = state._store.get(chatId)
-    expect(updated?.pendingInteractions.length).toBe(1)
-    expect(updated?.pendingInteractions[0]?.type).toBe('permission')
-    expect(output.sendInteraction).toHaveBeenCalledWith(
-      chatId,
-      expect.any(String),
-      expect.arrayContaining([
-        expect.objectContaining({ callbackData: expect.stringContaining('perm:') }),
-      ]),
-    )
-  })
-
-  it('auto-rejects permissions in reader mode', async () => {
-    const flow = createInteractiveFlow({ openCode, output, state, botRole: 'reader' })
-    const event = buildPermissionEvent({ sessionId })
-
-    if (event.type !== 'permission.asked') {
-      throw new Error('unexpected event type')
-    }
-
-    await flow.handlePermissionEvent(chatId, event.data)
-
-    expect(openCode.replyPermission).toHaveBeenCalledWith(
-      event.data.requestId,
-      directory,
-      'reject',
-    )
-    expect(output.sendText).toHaveBeenCalledWith(chatId, expect.any(String))
-    const updated = state._store.get(chatId)
-    expect(updated?.pendingInteractions ?? []).toHaveLength(0)
-  })
-
-  it('handles permission callbacks and clears interactions', async () => {
-    const interaction = buildPendingInteraction({
-      interactionId: 'int-1',
-      requestId: 'req-9',
-      type: 'permission',
-      expiresAt: Date.now() + 10000,
-    })
-    state = createMockStateStore(buildChatState({
-      activeProjectDirectory: directory,
-      pendingInteractions: [interaction],
-    }))
-    const flow = createInteractiveFlow({ openCode, output, state })
-
-    await flow.handlePermissionCallback(chatId, 'int-1', 'once')
-
-    expect(openCode.replyPermission).toHaveBeenCalledWith('req-9', directory, 'once')
-    const updated = state._store.get(chatId)
-    expect(updated?.pendingInteractions.length).toBe(0)
-    expect(output.sendText).toHaveBeenCalledWith(chatId, expect.stringContaining('Permission'))
-  })
-
-  it('rejects expired permission callbacks', async () => {
-    const interaction = buildPendingInteraction({
-      interactionId: 'int-1',
-      requestId: 'req-9',
-      type: 'permission',
-      expiresAt: Date.now() - 1000,
-    })
-    state = createMockStateStore(buildChatState({
-      activeProjectDirectory: directory,
-      pendingInteractions: [interaction],
-    }))
-    const flow = createInteractiveFlow({ openCode, output, state })
-
-    await flow.handlePermissionCallback(chatId, 'int-1', 'once')
-
-    expect(openCode.replyPermission).not.toHaveBeenCalled()
-    expect(output.sendText).toHaveBeenCalledWith(chatId, expect.any(String))
-    const updated = state._store.get(chatId)
-    expect(updated?.pendingInteractions.length).toBe(0)
-  })
-
   it('stores question interactions and sends initial prompt', async () => {
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
     const event = buildQuestionEvent({
       sessionId,
       questions: [
@@ -123,11 +35,7 @@ describe('interactiveFlow', () => {
       ],
     })
 
-    if (event.type !== 'question.asked') {
-      throw new Error('unexpected event type')
-    }
-
-    await flow.handleQuestionEvent(chatId, event.data)
+    await flow.handleQuestionEvent(chatId, event)
 
     const updated = state._store.get(chatId)
     expect(updated?.pendingInteractions.length).toBe(1)
@@ -155,7 +63,7 @@ describe('interactiveFlow', () => {
       activeProjectDirectory: directory,
       pendingInteractions: [interaction],
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionAnswer(chatId, 'int-1', 0, 1)
 
@@ -183,7 +91,7 @@ describe('interactiveFlow', () => {
       activeProjectDirectory: directory,
       pendingInteractions: [interaction],
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionSkip(chatId, 'int-1', 0)
 
@@ -210,7 +118,7 @@ describe('interactiveFlow', () => {
       activeProjectDirectory: directory,
       pendingInteractions: [interaction],
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionBack(chatId, 'int-1', 1)
 
@@ -240,7 +148,7 @@ describe('interactiveFlow', () => {
       activeProjectDirectory: directory,
       pendingInteractions: [interaction],
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionBack(chatId, 'int-1', 1)
 
@@ -262,7 +170,7 @@ describe('interactiveFlow', () => {
       activeProjectDirectory: directory,
       pendingInteractions: [interaction],
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionType(chatId, 'int-1', 0)
 
@@ -291,7 +199,7 @@ describe('interactiveFlow', () => {
       awaitingInput: 'question',
       awaitingInteractionId: 'int-1',
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleFreeTextAnswer(chatId, 'typed')
 
@@ -324,11 +232,10 @@ describe('interactiveFlow', () => {
       awaitingInput: 'question',
       awaitingInteractionId: 'int-1',
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionConfirm(chatId, 'int-1')
 
-    expect(openCode.replyQuestion).toHaveBeenCalledWith('req-1', directory, [['A'], []])
     const updated = state._store.get(chatId)
     expect(updated?.pendingInteractions.length).toBe(0)
     expect(updated?.awaitingInput).toBe(null)
@@ -353,7 +260,7 @@ describe('interactiveFlow', () => {
       activeProjectDirectory: directory,
       pendingInteractions: [interaction],
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionReset(chatId, 'int-1')
 
@@ -368,7 +275,7 @@ describe('interactiveFlow', () => {
     const expired = buildPendingInteraction({ interactionId: 'int-old', expiresAt: Date.now() - 1000 })
     const active = buildPendingInteraction({ interactionId: 'int-new', expiresAt: Date.now() + 10000 })
     state = createMockStateStore(buildChatState({ pendingInteractions: [expired, active] }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.cleanupExpired(chatId)
 
@@ -391,12 +298,11 @@ describe('interactiveFlow', () => {
       pendingInteractions: [interaction],
       activeProjectDirectory: directory,
     }))
-    const flow = createInteractiveFlow({ openCode, output, state })
+    const flow = createInteractiveFlow({ output, state })
 
     await flow.handleQuestionAnswer(chatId, 'int-1', 0, 0)
 
     expect(output.sendText).toHaveBeenCalledWith(chatId, expect.any(String))
-    expect(openCode.replyQuestion).not.toHaveBeenCalled()
   })
 
 })

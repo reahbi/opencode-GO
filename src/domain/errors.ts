@@ -1,4 +1,4 @@
-/** Base class for all OpenCode-Go domain errors */
+/** Base class for all Claude-Go domain errors */
 export class AppError extends Error {
   constructor(
     public readonly code: string,
@@ -15,16 +15,16 @@ export class SessionNotFoundError extends AppError {
   }
 }
 
-export class OpenCodeConnectionError extends AppError {
-  constructor(url: string, cause?: unknown) {
-    super('OPENCODE_CONNECTION_ERROR', `Cannot connect to OpenCode server (${url}). Please check if the server is running.`)
+export class QueryError extends AppError {
+  constructor(message: string, cause?: unknown) {
+    super('QUERY_ERROR', message)
     if (cause) this.cause = cause
   }
 }
 
-export class OpenCodeApiError extends AppError {
-  constructor(method: string, status: number, message: string) {
-    super('OPENCODE_API_ERROR', `OpenCode API error — ${method} (${status}): ${message}`)
+export class QueryAbortedError extends AppError {
+  constructor() {
+    super('QUERY_ABORTED', 'Query was aborted by user.')
   }
 }
 

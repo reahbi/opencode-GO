@@ -1,7 +1,6 @@
 import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
-import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
 import type { CustomAgent, UserSettings } from '../../../domain/models.js'
 import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
 
@@ -297,7 +296,6 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
 
 export function settingsCommand(
   state: StateStore,
-  openCode: OpenCodePort,
   deps?: { instanceName?: string; botRole?: string; customAgents?: CustomAgentPort },
 ) {
   return async (ctx: Context) => {
@@ -305,8 +303,7 @@ export function settingsCommand(
     if (!chatId) return
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
     const chatState = await state.getChatState(chatId)
-    let healthy = false
-    try { healthy = await openCode.healthCheck() } catch { /* offline */ }
+    const healthy = true
 
     await ctx.reply(
       settingsMainText(chatState.settings, {

@@ -9,7 +9,7 @@ describe('fileCoordinationAdapter integration', () => {
   let tempDir = ''
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(join(tmpdir(), 'opencode-go-coord-'))
+    tempDir = await fs.mkdtemp(join(tmpdir(), 'claude-go-coord-'))
   })
 
   afterEach(async () => {

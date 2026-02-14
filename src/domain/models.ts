@@ -1,7 +1,7 @@
 /** Opaque handle for platform-specific message IDs */
 export type OutputHandle = string
 
-/** Reference to an OpenCode session */
+/** Reference to a session */
 export interface SessionRef {
   id: string
   title: string
@@ -14,7 +14,7 @@ export type SessionStatus =
   | { type: 'busy' }
   | { type: 'retry'; attempt: number; message: string; next: number }
 
-/** Summary of an OpenCode agent */
+/** Summary of an agent */
 export interface AgentInfo {
   name: string
   description?: string
@@ -37,12 +37,12 @@ export interface Button {
   url?: string
 }
 
-/** Pending interactive request (permission or question) */
+/** Pending interactive request (question) */
 export interface PendingInteraction {
   interactionId: string
   sessionId: string
   requestId: string
-  type: 'permission' | 'question'
+  type: 'question'
   expiresAt: number
   messageHandle?: string
   questions?: Array<{ text: string; options: string[]; multiple?: boolean }>
@@ -114,6 +114,10 @@ export interface ChatState {
   tunnelState?: TunnelState
   lastAssistantResponse?: LastAssistantResponse
   voiceResponses?: VoiceResponse[]
+  /** Total cost accumulated in the current session (USD) */
+  sessionCostUsd?: number
+  /** Whether Extended Thinking was active in the last query */
+  lastThinkingEnabled?: boolean
 }
 
 export function createDefaultUserSettings(): UserSettings {

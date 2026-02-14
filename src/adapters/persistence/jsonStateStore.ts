@@ -110,18 +110,24 @@ export function createJsonStateStore(dataDir?: string): StateStore {
     return state
   }
 
-  async function getChatState(chatId: number): Promise<ChatState> {
+  function getStateKey(chatId: number, threadId?: number): string {
+    return threadId ? `${chatId}:${threadId}` : String(chatId);
+  }
+
+  async function getChatState(chatId: number, threadId?: number): Promise<ChatState> {
     const state = await readState();
-    const raw = state[String(chatId)]
+    const key = getStateKey(chatId, threadId);
+    const raw = state[key];
     return raw ? migrateState(raw) : createDefaultChatState();
   }
 
-  async function saveChatState(chatId: number, chatState: ChatState): Promise<void> {
+  async function saveChatState(chatId: number, chatState: ChatState, threadId?: number): Promise<void> {
     await withFileLock(async () => {
       const state = await readState();
-      state[String(chatId)] = chatState;
+      const key = getStateKey(chatId, threadId);
+      state[key] = chatState;
       await atomicWrite(state);
-      logger.debug('state', `Saved state for chat ${chatId}`);
+      logger.debug('state', `Saved state for chat ${chatId}${threadId ? `:${threadId}` : ''}`);
     });
   }
 

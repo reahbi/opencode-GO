@@ -1,15 +1,10 @@
-import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
 import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
-import type { OpenCodeEvent } from '../../domain/events.js'
 import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../../app/policies/limits.js'
 
-export type { SummaryPort }
-export type SummaryService = SummaryPort
-
 const SUMMARY_TIMEOUT_MS = 60_000
-const SUMMARY_SESSION_TITLE = '_summary'
 const MAX_INPUT_CHARS = 30_000
+const SUMMARY_MODEL = 'claude-haiku-4-5'
 
 function truncateInput(content: string): string {
   return content.length > MAX_INPUT_CHARS
@@ -135,116 +130,69 @@ ${goodExample}
 ${truncateInput(content)}`
 }
 
-export function createSummaryService(openCode: OpenCodePort): SummaryPort {
+async function runClaudeCliSummary(prompt: string, claudeCodePath?: string | null): Promise<string> {
+  const executable = claudeCodePath || 'claude'
+  const args = ['-p', prompt, '--model', SUMMARY_MODEL, '--output-format', 'text', '--max-turns', '1']
 
-  async function runSummarySession(
-    directory: string,
-    prompt: string,
-    model: { providerID: string; modelID: string },
-    hardCap: number,
-    truncationSuffix: string,
-  ): Promise<string> {
-    const session = await openCode.createSession(directory, SUMMARY_SESSION_TITLE)
-    const sessionId = session.id
-    logger.debug('summary', `Created temp session ${sessionId}`)
+  const proc = Bun.spawn([executable, ...args], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env },
+  })
 
-    try {
-      const abortController = new AbortController()
-      let summaryText = ''
-      const assistantMessageIds = new Set<string>()
+  const timeoutId = setTimeout(() => {
+    proc.kill()
+  }, SUMMARY_TIMEOUT_MS)
 
-      const eventHandler = async (event: OpenCodeEvent) => {
-        switch (event.type) {
-          case 'message.updated': {
-            if (event.data.sessionId !== sessionId) return
-            if (event.data.role === 'assistant') {
-              assistantMessageIds.add(event.data.messageId)
-            }
-            break
-          }
-          case 'message.part.updated': {
-            if (event.data.sessionId !== sessionId) return
-            if (event.data.messageId && !assistantMessageIds.has(event.data.messageId)) return
-            summaryText = event.data.content
-            break
-          }
-          case 'session.idle': {
-            if (event.data.sessionId !== sessionId) return
-            abortController.abort()
-            break
-          }
-          case 'session.error': {
-            if (event.data.sessionId !== sessionId) return
-            logger.warn('summary', `Session error: ${event.data.error || '(empty)'}`)
-            abortController.abort()
-            break
-          }
-          default:
-            break
-        }
-      }
+  try {
+    const output = await new Response(proc.stdout).text()
+    const exitCode = await proc.exited
+    clearTimeout(timeoutId)
 
-      const ssePromise = openCode
-        .streamEvents(directory, eventHandler, abortController.signal)
-        .catch((err) => {
-          if (abortController.signal.aborted) return
-          logger.error('summary', `SSE error: ${err instanceof Error ? err.message : 'unknown'}`)
-        })
-
-      await openCode.sendPromptAsync(sessionId, directory, prompt, model)
-      logger.debug('summary', `Prompt sent to temp session ${sessionId}`)
-
-      let timeoutHandle: ReturnType<typeof setTimeout> | null = null
-      await Promise.race([
-        ssePromise,
-        new Promise<void>((resolve) => {
-          timeoutHandle = setTimeout(() => {
-            logger.warn('summary', `Summary timed out after ${SUMMARY_TIMEOUT_MS / 1000}s`)
-            if (!abortController.signal.aborted) {
-              abortController.abort()
-            }
-            resolve()
-          }, SUMMARY_TIMEOUT_MS)
-        }),
-      ])
-
-      if (timeoutHandle !== null) {
-        clearTimeout(timeoutHandle)
-      }
-
-      if (!abortController.signal.aborted) {
-        abortController.abort()
-      }
-
-      if (!summaryText) {
-        throw new Error('Summary produced no output')
-      }
-
-      if (summaryText.length > hardCap) {
-        summaryText = summaryText.slice(0, hardCap) + truncationSuffix
-      }
-
-      logger.info('summary', `Summary generated: ${summaryText.length} chars`)
-      return summaryText
-    } finally {
-      try {
-        await openCode.deleteSession(sessionId, directory)
-        logger.debug('summary', `Deleted temp session ${sessionId}`)
-      } catch (err) {
-        logger.warn('summary', `Failed to delete temp session ${sessionId}: ${err instanceof Error ? err.message : 'unknown'}`)
-      }
+    if (exitCode !== 0) {
+      const stderr = await new Response(proc.stderr).text()
+      throw new Error(`Claude CLI exited with code ${exitCode}: ${stderr.slice(0, 200)}`)
     }
-  }
 
+    return output.trim()
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+export function createClaudeSummaryService(claudeCodePath?: string | null): SummaryPort {
   return {
-    async summarize(directory, content, model, expertise) {
+    async summarize(_directory, content, _model, expertise) {
       const prompt = buildSummaryPrompt(content, expertise)
-      return runSummarySession(directory, prompt, model, LIMITS.SUMMARY_HTML_HARD_CAP, '\n\n<i>... (truncated)</i>')
+      try {
+        let result = await runClaudeCliSummary(prompt, claudeCodePath)
+        if (!result) throw new Error('Summary produced no output')
+        if (result.length > LIMITS.SUMMARY_HTML_HARD_CAP) {
+          result = result.slice(0, LIMITS.SUMMARY_HTML_HARD_CAP) + '\n\n<i>... (truncated)</i>'
+        }
+        logger.info('summary', `Summary generated: ${result.length} chars`)
+        return result
+      } catch (err) {
+        logger.error('summary', `CLI summary failed: ${err instanceof Error ? err.message : 'unknown'}`)
+        throw err
+      }
     },
 
-    async summarizeForVoice(directory, content, model, targetLength, language, hardCap, expertise) {
+    async summarizeForVoice(_directory, content, _model, targetLength, language, hardCap, expertise) {
       const prompt = buildVoiceSummaryPrompt(content, targetLength, language, expertise)
-      return runSummarySession(directory, prompt, model, hardCap, '...')
+      try {
+        let result = await runClaudeCliSummary(prompt, claudeCodePath)
+        if (!result) throw new Error('Voice summary produced no output')
+        if (result.length > hardCap) {
+          result = result.slice(0, hardCap) + '...'
+        }
+        logger.info('summary', `Voice summary generated: ${result.length} chars`)
+        return result
+      } catch (err) {
+        logger.error('summary', `CLI voice summary failed: ${err instanceof Error ? err.message : 'unknown'}`)
+        throw err
+      }
     },
   }
 }

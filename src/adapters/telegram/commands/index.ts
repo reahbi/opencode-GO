@@ -2,7 +2,9 @@ import { InlineKeyboard } from 'grammy'
 import type { Context } from 'grammy'
 import type { BotInstance } from '../bot.js'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
-import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
+import type { ClaudeAgentPort } from '../../../domain/ports/ClaudeAgentPort.js'
+import type { SessionStorePort } from '../../../domain/ports/SessionStorePort.js'
+import type { SummaryPort } from '../../../domain/ports/SummaryPort.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
 import type { ChatQueue } from '../../../app/queue/chatQueue.js'
 import { newCommand } from './new.js'
@@ -68,10 +70,8 @@ import { createPromptFlow } from '../../../app/usecases/promptFlow.js'
 import { createInteractiveFlow } from '../../../app/usecases/interactiveFlow.js'
 import { createDebateFlow } from '../../../app/usecases/debateFlow.js'
 import { createSessionWatcher } from '../../../app/usecases/sessionWatcher.js'
-import { createSummaryService } from '../../opencode/summaryService.js'
 import type { VoiceFlow } from '../../../app/usecases/voiceFlow.js'
 import { parseCallback } from '../ui/callbacks.js'
-import type { ModelInfo } from '../../../domain/ports/OpenCodePort.js'
 import { escapeHtml } from '../../../shared/formatResponse.js'
 import { logger } from '../../../shared/logger.js'
 import { LIMITS } from '../../../app/policies/limits.js'
@@ -82,36 +82,11 @@ function stripBotMention(text: string, botUsername: string): string {
   return text.replace(pattern, '').trim()
 }
 
-const EXCLUDE_MODEL = /embed|tts|audio|image|live/i
-const OLD_MODEL = /1\.5-|20240|3-opus|3-sonnet-2024/i
-const DATED_PREVIEW = /preview-\d{2}-\d{2}|\d{8}$/i
-const LIGHTWEIGHT = /\bflash\b|\blite\b|\bhaiku\b|\bmini\b|\bnano\b/i
-
-function isSummaryCandidate(m: ModelInfo): boolean {
-  const id = m.modelID
-  if (EXCLUDE_MODEL.test(id)) return false
-  if (OLD_MODEL.test(id)) return false
-  if (DATED_PREVIEW.test(id)) return false
-  if (LIGHTWEIGHT.test(id)) return true
-  if (m.providerID === 'opencode') return true
-  if (m.providerID === 'antigravity') return true
-  return false
-}
-
-function sortSummaryModels(models: ModelInfo[]): ModelInfo[] {
-  return [...models].sort((a, b) => {
-    const aIsAntigravity = a.providerID === 'antigravity'
-    const bIsAntigravity = b.providerID === 'antigravity'
-    if (aIsAntigravity && !bIsAntigravity) return -1
-    if (!aIsAntigravity && bIsAntigravity) return 1
-    if (a.providerID !== b.providerID) return a.providerID.localeCompare(b.providerID)
-    return a.name.localeCompare(b.name)
-  })
-}
-
 interface RegisterCommandsDeps {
   bot: BotInstance
-  openCode: OpenCodePort
+  claude: ClaudeAgentPort
+  sessionStore: SessionStorePort
+  summary: SummaryPort
   state: StateStore
   output: ChatOutputPort
   queue: ChatQueue
@@ -122,16 +97,18 @@ interface RegisterCommandsDeps {
   registry?: import('../../../domain/ports/BotRegistryPort.js').BotRegistryPort
   customAgents?: import('../../../domain/ports/CustomAgentPort.js').CustomAgentPort
   groupSettings?: import('../../../domain/ports/GroupSettingsPort.js').GroupSettingsPort
-  serverUrl?: string
-  serverUsername?: string
-  serverPassword?: string
+  config: {
+    maxThinkingTokens: number
+    maxBudgetUsd: number | null
+  }
   debateFlow?: ReturnType<typeof createDebateFlow>
   tunnel?: import('../../../app/usecases/tunnelManager.js').TunnelManager
   voiceFlow?: VoiceFlow
+  transcription?: import('../../../domain/ports/TranscriptionPort.js').TranscriptionPort
 }
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
-  const { bot, openCode, state, output, queue } = deps
+  const { bot, claude, sessionStore, summary, state, output, queue } = deps
 
   async function getCustomAgentName(customAgentId: string | null | undefined): Promise<string | null> {
     if (!customAgentId || !deps.customAgents) return null
@@ -176,15 +153,13 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
   }
 
-  const summary = createSummaryService(openCode)
-  const sessionCommands = createSessionCommands({ openCode, state, output })
-  const interactiveFlow = createInteractiveFlow({ openCode, state, output, botRole: deps.botRole })
-  
+  const sessionCommands = createSessionCommands({ sessionStore, state, output })
+  const interactiveFlow = createInteractiveFlow({ state, output, botRole: deps.botRole })
+
   let promptFlow: ReturnType<typeof createPromptFlow>
-  
+
   const watcher = createSessionWatcher({
-    openCode, state, output, summary,
-    onPermissionAsked: (cid, e, uid) => interactiveFlow.handlePermissionEvent(cid, e, uid),
+    state, output, summary,
     onQuestionAsked: (cid, e, uid) => interactiveFlow.handleQuestionEvent(cid, e, uid),
     isDebateActive: deps.debateFlow ? (chatId) => deps.debateFlow!.isActive(chatId) : undefined,
     onQueueDrain: async (chatId, messages) => {
@@ -194,12 +169,15 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     },
     tunnel: deps.tunnel,
     voiceFlow: deps.voiceFlow,
+    sessionStore,
   })
-  
+
   promptFlow = createPromptFlow({
-    openCode, state, output, watcher,
+    claude, state, output, watcher,
+    sessionStore,
     botRole: deps.botRole,
     customAgents: deps.customAgents,
+    config: deps.config,
   })
 
   const mentionCommandMap = new Map<string, (ctx: Context) => Promise<void>>()
@@ -239,16 +217,16 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('history', historyCommand(sessionCommands, output))
   reg('queue', queueCommand(state, {
     sendPrompt: (chatId, text, userId) => promptFlow.handleUserMessage(chatId, text, { actorUserId: userId })
-  }, openCode))
+  }))
   reg('clearqueue', clearQueueCommand(state))
   reg('showqueue', showQueueCommand(state))
   reg('undo', undoCommand(sessionCommands))
   reg('redo', redoCommand(sessionCommands))
   reg('help', helpCommand(deps.instanceName))
-  reg('start', startCommand(state, openCode, deps.instanceName))
-  reg('status', statusCommand(state, openCode, deps.instanceName, deps.tunnel))
+  reg('start', startCommand(state, deps.instanceName))
+  reg('status', statusCommand(state, deps.instanceName, deps.tunnel))
   reg('git', gitCommand(state))
-  reg('agents', agentsCommand(state, openCode))
+  reg('agents', agentsCommand(state, claude))
   if (deps.customAgents) {
     reg('makeagent', makeagentCommand(state, output))
   }
@@ -259,7 +237,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       cancelAddhookbotWizard(chatId)
       cancelMakeagentWizard(chatId)
     }
-    await settingsCommand(state, openCode, {
+    await settingsCommand(state, {
       instanceName: deps.instanceName,
       botRole: deps.botRole,
       customAgents: deps.customAgents,
@@ -304,7 +282,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
   })
 
-  // Handle callback queries (permission/question buttons)
+  // Handle callback queries (question buttons)
   bot.on('callback_query:data', async (ctx) => {
     const data = ctx.callbackQuery.data
     const chatId = ctx.chat?.id ?? ctx.callbackQuery.message?.chat.id
@@ -332,9 +310,6 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
 
     switch (parsed.type) {
-      case 'permission':
-        await interactiveFlow.handlePermissionCallback(chatId, parsed.interactionId, parsed.response)
-        break
       case 'question_answer':
         await interactiveFlow.handleQuestionAnswer(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex)
         break
@@ -373,7 +348,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await state.saveChatState(chatId, chatState)
         await updateRegistryAgent(parsed.agentName)
         try {
-          const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
+          const models = await claude.getSupportedModels()
+          const agents = models.map(m => ({ name: m.id, description: m.name }))
           await ctx.editMessageText(
             agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole),
             { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, parsed.agentName) },
@@ -419,7 +395,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         switch (parsed.action) {
           case 'sub_agent': {
             try {
-              const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
+              const models = await claude.getSupportedModels()
+              const agents = models.map(m => ({ name: m.id, description: m.name }))
               await ctx.editMessageText(
                 agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
                 { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
@@ -458,7 +435,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             chatState.settings.reviewMode = !current
             await state.saveChatState(chatId, chatState)
             try {
-              const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
+              const models = await claude.getSupportedModels()
+              const agents = models.map(m => ({ name: m.id, description: m.name }))
               await ctx.editMessageText(
                 agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
                 { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
@@ -507,18 +485,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           }
 
           case 'model': {
-            try {
-              const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
-              const summaryModels = sortSummaryModels(allModels.filter(isSummaryCandidate))
-              const kb = new InlineKeyboard()
-              for (const m of summaryModels) {
-                kb.text(`${m.name} (${m.providerID})`, `sm:${m.providerID}/${m.modelID}`).row()
-              }
-              kb.text('◀️ Back', 'settings:sub_summary')
-              await ctx.editMessageText('🤖 Select summary model:', { parse_mode: 'HTML', reply_markup: kb })
-            } catch {
-              await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
-            }
+            await ctx.editMessageText(
+              'Summary model selection is not available with Claude SDK. Using default model.',
+              { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) },
+            )
             break
           }
 
@@ -595,8 +565,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           }
           case 'back': {
-            let healthy = false
-            try { healthy = await openCode.healthCheck() } catch { /* offline */ }
+            const healthy = true
             const rendered = await renderSettingsMain(chatState, healthy, groupInstanceName)
             await ctx.editMessageText(
               rendered.text,
@@ -662,9 +631,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         if (deps.registry) {
           await handleAddbotRoleCallback(
             chatId, parsed.role, state, output,
-            deps.serverUrl ?? '',
-            deps.serverUsername ?? 'opencode',
-            deps.serverPassword ?? '',
+            '',
+            '',
+            '',
           )
         }
         break
@@ -674,7 +643,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           await handleAddbotProjectCallback(
             chatId, parsed.projectDir, state, output,
             deps.registry,
-            deps.serverUrl ?? '',
+            '',
             deps.customAgents,
           )
         }
@@ -688,7 +657,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             state,
             output,
             deps.registry,
-            deps.serverUrl ?? '',
+            '',
           )
         }
         break
@@ -714,9 +683,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       case 'addhookbot_project': {
         await handleAddhookbotProjectCb(
           chatId, parsed.projectDir, parsed.action, state, output,
-          deps.serverUrl ?? '',
-          deps.serverUsername ?? 'opencode',
-          deps.serverPassword ?? '',
+          '',
+          '',
+          '',
         )
         break
       }
@@ -736,9 +705,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await startAddhookbotReconfigure(
           chatId,
           output,
-          deps.serverUrl ?? '',
-          deps.serverUsername ?? 'opencode',
-          deps.serverPassword ?? '',
+          '',
+          '',
+          '',
         )
         break
       }
@@ -748,7 +717,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'makeagent_regen': {
         if (deps.customAgents) {
-          await regenerateMakeagentDraft(chatId, state, output, openCode)
+          await regenerateMakeagentDraft(chatId, state, output, claude)
         }
         break
       }
@@ -876,13 +845,16 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
   })
 
-  // Handle text messages (prompts to OpenCode)
+  // Handle text messages (prompts to Claude)
   bot.on('message:text', async (ctx) => {
     const chatId = ctx.chat.id
     const text = ctx.message.text
     if (text.startsWith('/')) return
 
-    const chatState = await state.getChatState(chatId)
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const threadId = isGroup && ctx.message.message_thread_id ? ctx.message.message_thread_id : undefined
+
+    const chatState = await state.getChatState(chatId, threadId)
     if (chatState.awaitingInput === 'question') {
       const handled = await interactiveFlow.handleFreeTextAnswer(chatId, text)
       if (handled) return
@@ -891,12 +863,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       chatState.awaitingInput = null
       const num = parseInt(text.trim(), 10)
       if (!Number.isFinite(num) || num < LIMITS.SUMMARY_MIN_TRIGGER || num > 50000) {
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
         await output.sendText(chatId, `Invalid value. Enter a number between ${LIMITS.SUMMARY_MIN_TRIGGER.toLocaleString()} and 50,000, or send /settings to go back.`)
         return
       }
       chatState.settings.summaryThreshold = num
-      await state.saveChatState(chatId, chatState)
+      await state.saveChatState(chatId, chatState, threadId)
       await output.sendText(chatId, `✅ Summary threshold set to ${num.toLocaleString()} chars.`)
       return
     }
@@ -907,15 +879,15 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     if (chatState.awaitingInput === 'addhookbot_token') {
       const handled = await handleAddhookbotToken(
         chatId, text, state, output,
-        deps.serverUrl ?? '',
-        deps.serverUsername ?? 'opencode',
-        deps.serverPassword ?? '',
+        '',
+        '',
+        '',
       )
       if (handled) return
     }
     if (chatState.awaitingInput === 'addbot_project') {
       if (deps.registry) {
-        const handled = await handleAddbotProjectText(chatId, text, state, output, deps.registry, deps.serverUrl ?? '', deps.customAgents)
+        const handled = await handleAddbotProjectText(chatId, text, state, output, deps.registry, '', deps.customAgents)
         if (handled) return
       }
     }
@@ -925,7 +897,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
     if (chatState.awaitingInput === 'makeagent_describe') {
       if (deps.customAgents) {
-        const handled = await handleMakeagentDescribe(chatId, text, state, output, openCode, deps.customAgents)
+        const handled = await handleMakeagentDescribe(chatId, text, state, output, claude, deps.customAgents)
         if (handled) return
       }
     }
@@ -945,11 +917,11 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       chatState.awaitingInput = null
       const num = parseInt(text.trim(), 10)
       if (!Number.isFinite(num) || num < 0 || num > 999) {
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
         await output.sendText(chatId, 'Enter a number between 0-999. (0 = unlimited)')
         return
       }
-      await state.saveChatState(chatId, chatState)
+      await state.saveChatState(chatId, chatState, threadId)
       if (deps.groupSettings) {
         const gs = await deps.groupSettings.getGroupSettings()
         gs.debateRounds = num
@@ -963,18 +935,18 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const trimmed = text.trim().toLowerCase()
       if (trimmed === 'all' || trimmed === '0') {
         chatState.settings.historyLimit = null
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
         await output.sendText(chatId, '✅ History export: all messages (full history)')
         return
       }
       const num = parseInt(trimmed, 10)
       if (!Number.isFinite(num) || num < 1 || num > 10000) {
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
         await output.sendText(chatId, 'Invalid value. Enter a number between 1 and 10,000, or type <code>all</code> / <code>0</code>.', 'HTML')
         return
       }
       chatState.settings.historyLimit = num
-      await state.saveChatState(chatId, chatState)
+      await state.saveChatState(chatId, chatState, threadId)
       await output.sendText(chatId, `✅ History export: last ${num} messages only`)
       return
     }
@@ -983,7 +955,6 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       if (handled) return
     }
 
-    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
     const cleanedText = isGroup ? stripBotMention(text, deps.botUsername ?? '') : text
 
     if (isGroup && cleanedText.startsWith('/')) {
@@ -1014,13 +985,15 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       return
     }
 
-    const chatState = await state.getChatState(chatId)
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const threadId = isGroup && ctx.message.message_thread_id ? ctx.message.message_thread_id : undefined
+
+    const chatState = await state.getChatState(chatId, threadId)
     if (!chatState.activeSessionId) {
       await output.sendText(chatId, 'No active session. Use /new to start one.')
       return
     }
 
-    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
     const actorUserId = ctx.from?.id
 
     const largestPhoto = photos[photos.length - 1]
@@ -1081,13 +1054,15 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       return
     }
 
-    const chatState = await state.getChatState(chatId)
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const threadId = isGroup && ctx.message.message_thread_id ? ctx.message.message_thread_id : undefined
+
+    const chatState = await state.getChatState(chatId, threadId)
     if (!chatState.activeSessionId) {
       await output.sendText(chatId, 'No active session. Use /new to start one.')
       return
     }
 
-    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
     const actorUserId = ctx.from?.id
 
     try {
@@ -1126,6 +1101,59 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       logger.error('bot', `Document handling failed: ${msg}`)
       await output.sendText(chatId, `❌ Failed to process file: ${escapeHtml(msg)}`)
+    }
+  })
+
+  bot.on('message:voice', async (ctx) => {
+    const chatId = ctx.chat.id
+    if (!deps.transcription) {
+      await output.sendText(chatId, '🎙 Voice-to-text is not configured. Set OPENAI_API_KEY in .env.')
+      return
+    }
+
+    const chatState = await state.getChatState(chatId)
+    if (!chatState.activeSessionId) {
+      await output.sendText(chatId, 'No active session. Use /new to start one.')
+      return
+    }
+
+    try {
+      const voiceFile = await ctx.api.getFile(ctx.message.voice.file_id)
+      if (!voiceFile.file_path) {
+        await output.sendText(chatId, 'Failed to get voice file.')
+        return
+      }
+
+      const fileUrl = `https://api.telegram.org/file/bot${bot.token}/${voiceFile.file_path}`
+      const response = await fetch(fileUrl)
+      if (!response.ok) {
+        await output.sendText(chatId, `Failed to download voice: ${response.status}`)
+        return
+      }
+
+      const audioData = new Uint8Array(await response.arrayBuffer())
+      const format = voiceFile.file_path.split('.').pop() ?? 'ogg'
+
+      await output.sendText(chatId, '🎙 Transcribing...')
+      const transcription = await deps.transcription.transcribe(audioData, format)
+
+      if (!transcription.trim()) {
+        await output.sendText(chatId, '🎙 No speech detected.')
+        return
+      }
+
+      await output.sendText(chatId, `🎙 <i>${escapeHtml(transcription)}</i>`, 'HTML')
+
+      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+      const actorUserId = ctx.from?.id
+
+      void queue.enqueue(chatId, () =>
+        promptFlow.handleUserMessage(chatId, transcription, { actorUserId, isGroup })
+      ).catch(err => logger.error('bot', `Voice prompt failed: ${err instanceof Error ? err.message : err}`))
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      logger.error('bot', `Voice handling failed: ${msg}`)
+      await output.sendText(chatId, `❌ Voice transcription failed: ${escapeHtml(msg)}`)
     }
   })
 }

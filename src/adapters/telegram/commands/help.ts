@@ -2,8 +2,8 @@ import type { Context } from 'grammy'
 
 export function helpCommand(instanceName?: string) {
   const header = instanceName
-    ? `<b>OpenCode-Go — ${instanceName}</b>`
-    : `<b>OpenCode-Go Commands</b>`
+    ? `<b>Claude-Go — ${instanceName}</b>`
+    : `<b>Claude-Go Commands</b>`
 
   const helpText = `${header}
 
@@ -45,7 +45,7 @@ export function helpCommand(instanceName?: string) {
 /status — Current status
 /help — This message
 
-Send any text to chat with OpenCode.`
+Send any text to chat with the AI server.`
 
   return async (ctx: Context) => {
     await ctx.reply(helpText, { parse_mode: 'HTML' })

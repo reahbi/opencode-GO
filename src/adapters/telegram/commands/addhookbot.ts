@@ -16,7 +16,7 @@ interface AddhookbotWizardState {
   tokenAttempts?: number
 }
 
-interface OpenCodeProject {
+interface Project {
   worktree: string
   name?: string
 }
@@ -59,7 +59,7 @@ function escapeHtml(t: string): string {
   return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-async function fetchProjects(serverUrl: string, username: string, password: string): Promise<OpenCodeProject[]> {
+async function fetchProjects(serverUrl: string, username: string, password: string): Promise<Project[]> {
   const headers: Record<string, string> = {}
   if (password) {
     headers['Authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
@@ -69,7 +69,7 @@ async function fetchProjects(serverUrl: string, username: string, password: stri
     signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const projects = await res.json() as OpenCodeProject[]
+  const projects = await res.json() as Project[]
   return projects.filter(p => p.worktree !== '/')
 }
 
@@ -188,7 +188,7 @@ export async function handleAddhookbotToken(
   chatState.awaitingInput = null
   await state.saveChatState(chatId, chatState)
 
-  let projects: OpenCodeProject[] = []
+  let projects: Project[] = []
   try {
     projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
   } catch {
@@ -285,7 +285,7 @@ export async function handleAddhookbotProjectCallback(
   }
   wizards.set(chatId, wizard)
 
-  let projects: OpenCodeProject[] = []
+  let projects: Project[] = []
   try {
     projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
   } catch {
@@ -386,22 +386,20 @@ async function appendHookBotToEcosystem(wizard: AddhookbotWizardState): Promise<
   try {
     let content = await fs.readFile(configPath, 'utf-8')
 
-    if (content.includes(`name: 'opencode-go-hookbot'`)) {
+    if (content.includes(`name: 'claude-go-hookbot'`)) {
       return true
     }
 
     const entry = [
       `    {`,
-      `      name: 'opencode-go-hookbot',`,
+      `      name: 'claude-go-hookbot',`,
       `      script: 'src/hookBot.ts',`,
       `      interpreter: 'bun',`,
       `      cwd: '${process.cwd()}',`,
       `      env: {`,
       '        PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,',
       `        HOOK_CONFIG_PATH: 'data/hook-config.json',`,
-      `        OPENCODE_SERVER_URL: '${process.env.OPENCODE_SERVER_URL ?? 'http://127.0.0.1:4096'}',`,
-      `        OPENCODE_SERVER_USERNAME: '${process.env.OPENCODE_SERVER_USERNAME ?? 'opencode'}',`,
-      `        OPENCODE_SERVER_PASSWORD: '${process.env.OPENCODE_SERVER_PASSWORD ?? ''}',`,
+      `        CLAUDE_MODEL: '${process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5'}',`,
       `      },`,
       `      autorestart: true,`,
       `      max_memory_restart: '512M',`,
@@ -431,17 +429,11 @@ async function finishAddhookbot(
   }
 
   const targetChatId = wizard.chatId ?? chatId
-  const serverUrl = process.env.OPENCODE_SERVER_URL ?? 'http://127.0.0.1:4096'
-  const serverUsername = process.env.OPENCODE_SERVER_USERNAME ?? 'opencode'
-  const serverPassword = process.env.OPENCODE_SERVER_PASSWORD ?? ''
 
   const configData = {
     botToken: wizard.token,
     chatId: targetChatId,
     projects: wizard.selectedProjects,
-    serverUrl,
-    serverUsername,
-    serverPassword,
     mode: wizard.mode,
   }
 
@@ -509,7 +501,7 @@ export async function handleAddhookbotStartCallback(
     return
   }
 
-  const pm2Name = 'opencode-go-hookbot'
+  const pm2Name = 'claude-go-hookbot'
   await output.sendText(chatId, `🚀 Starting <code>${escapeHtml(pm2Name)}</code>...`, 'HTML')
 
   // If process already exists, prefer restart so new config is applied.
@@ -543,9 +535,7 @@ export async function handleAddhookbotStartCallback(
         env: {
           PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
           HOOK_CONFIG_PATH: 'data/hook-config.json',
-          OPENCODE_SERVER_URL: process.env.OPENCODE_SERVER_URL ?? 'http://127.0.0.1:4096',
-          OPENCODE_SERVER_USERNAME: process.env.OPENCODE_SERVER_USERNAME ?? 'opencode',
-          OPENCODE_SERVER_PASSWORD: process.env.OPENCODE_SERVER_PASSWORD ?? '',
+          CLAUDE_MODEL: process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5',
         },
       }],
     }
@@ -618,7 +608,7 @@ export async function startAddhookbotReconfigure(
   const wizard: AddhookbotWizardState = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0 }
   wizards.set(chatId, wizard)
 
-  let projects: OpenCodeProject[] = []
+  let projects: Project[] = []
   try {
     projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
   } catch {
@@ -669,7 +659,7 @@ export async function handleAddhookbotRemoveCallback(
     await fs.unlink(configPath)
   } catch { /* config may already be gone */ }
 
-  const pm2Name = 'opencode-go-hookbot'
+  const pm2Name = 'claude-go-hookbot'
   try {
     const proc = Bun.spawn(['pm2', 'delete', pm2Name], {
       cwd: process.cwd(),
@@ -690,7 +680,7 @@ async function removeHookBotFromEcosystem(): Promise<boolean> {
   const configPath = resolve(process.cwd(), 'ecosystem.config.cjs')
   try {
     let content = await fs.readFile(configPath, 'utf-8')
-    const marker = `name: 'opencode-go-hookbot'`
+    const marker = `name: 'claude-go-hookbot'`
     if (!content.includes(marker)) return true
 
     const idx = content.indexOf(marker)

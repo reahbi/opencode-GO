@@ -1,9 +1,12 @@
 import { loadEnvConfig } from './config/env.js'
 import { createBot, createChatOutputAdapter } from './adapters/telegram/bot.js'
 import { createAuthMiddleware } from './adapters/telegram/authMiddleware.js'
+import { createRateLimitMiddleware } from './adapters/telegram/rateLimitMiddleware.js'
 import { createGroupMiddleware } from './adapters/telegram/groupMiddleware.js'
 import { createAwaitingInputMiddleware } from './adapters/telegram/awaitingInputMiddleware.js'
-import { createOpenCodeAdapter } from './adapters/opencode/opencodeAdapter.js'
+import { createClaudeAgentAdapter } from './adapters/claude/claudeAgentAdapter.js'
+import { createJsonSessionStore as createSessionStore } from './adapters/claude/jsonSessionStore.js'
+import { createClaudeSummaryService } from './adapters/claude/claudeSummaryService.js'
 import { createJsonStateStore } from './adapters/persistence/jsonStateStore.js'
 import { createFileCoordinationAdapter } from './adapters/coordination/fileCoordinationAdapter.js'
 import { createFileRegistryAdapter } from './adapters/coordination/fileRegistryAdapter.js'
@@ -14,10 +17,9 @@ import { createDebateFlow } from './app/usecases/debateFlow.js'
 import { createTunnelManager } from './app/usecases/tunnelManager.js'
 import { createVoiceFlow } from './app/usecases/voiceFlow.js'
 import { createEdgeTtsAdapter } from './adapters/tts/edgeTtsAdapter.js'
-import { createSummaryService } from './adapters/opencode/summaryService.js'
+import { createOpenAIWhisperAdapter } from './adapters/whisper/openaiWhisperAdapter.js'
 import { registerCommands } from './adapters/telegram/commands/index.js'
 import { logger, setInstancePrefix } from './shared/logger.js'
-import { waitForServer, isRunningUnderPM2 } from './shared/waitForServer.js'
 import { LIMITS } from './app/policies/limits.js'
 import { promises as fs } from 'node:fs'
 
@@ -28,23 +30,32 @@ async function main() {
     setInstancePrefix(config.instanceName)
   }
 
-  logger.info('bot', `Starting OpenCode-Go v2.1 [${config.instanceName}]...`)
+  logger.info('bot', `Starting Claude-Go v1.0 [${config.instanceName}]...`)
 
   const bot = createBot(config.botToken)
   const output = createChatOutputAdapter(bot)
-  const openCode = createOpenCodeAdapter(config.openCodeServerUrl, config.openCodeServerUsername, config.openCodeServerPassword)
+  const claude = createClaudeAgentAdapter({
+    model: config.claudeModel,
+    claudeCodePath: config.claudeCodePath,
+  })
+  const sessionStore = createSessionStore(config.stateDir)
+  const summary = createClaudeSummaryService(config.claudeCodePath)
   const state = createJsonStateStore(config.stateDir)
   const queue = createChatQueue()
   const tunnel = createTunnelManager()
 
   const tts = createEdgeTtsAdapter()
-  const summary = createSummaryService(openCode)
   const voiceFlow = createVoiceFlow({ summary, tts, output, state })
+
+  const transcription = config.openaiApiKey
+    ? createOpenAIWhisperAdapter(config.openaiApiKey)
+    : undefined
 
   const botInfo = await bot.api.getMe()
   const botUsername = botInfo.username ?? ''
 
   bot.use(createAuthMiddleware(config.allowedUserIds))
+  bot.use(createRateLimitMiddleware())
   bot.use(createGroupMiddleware(botUsername, config.groupChatEnabled))
   bot.use(createAwaitingInputMiddleware(state))
 
@@ -118,7 +129,7 @@ async function main() {
     botUserId: botInfo.id,
     botRole: config.botRole,
     projectDir: config.defaultProject,
-    serverUrl: config.openCodeServerUrl,
+    serverUrl: '',
     lastSeen: Date.now(),
     currentAgent: initialAgent,
   })
@@ -135,7 +146,7 @@ async function main() {
         botUserId: botInfo.id,
         botRole: config.botRole,
         projectDir: config.defaultProject,
-        serverUrl: config.openCodeServerUrl,
+        serverUrl: '',
         lastSeen: Date.now(),
         currentAgent: current?.currentAgent ?? config.defaultAgent ?? null,
       })
@@ -148,7 +159,7 @@ async function main() {
   let debateFlow = undefined
   if (coordination && config.botRole !== 'standalone' && registry) {
     debateFlow = createDebateFlow({
-      openCode,
+      claude,
       state,
       output,
       coordination,
@@ -168,7 +179,9 @@ async function main() {
 
   registerCommands({
     bot,
-    openCode,
+    claude,
+    sessionStore,
+    summary,
     state,
     output,
     queue,
@@ -179,12 +192,14 @@ async function main() {
     registry,
     customAgents,
     groupSettings,
-    serverUrl: config.openCodeServerUrl,
-    serverUsername: config.openCodeServerUsername,
-    serverPassword: config.openCodeServerPassword ?? undefined,
+    config: {
+      maxThinkingTokens: config.maxThinkingTokens,
+      maxBudgetUsd: config.maxBudgetUsd,
+    },
     debateFlow,
     tunnel,
     voiceFlow,
+    transcription,
   })
 
   bot.catch((err) => {
@@ -198,21 +213,7 @@ async function main() {
   logger.info('bot', `Default project: ${config.defaultProject}`)
   logger.info('bot', `Allowed users: ${config.allowedUserIds.length > 0 ? config.allowedUserIds.join(', ') : 'all'}`)
 
-  if (isRunningUnderPM2()) {
-    await waitForServer({
-      serverUrl: config.openCodeServerUrl,
-      username: config.openCodeServerUsername,
-      password: config.openCodeServerPassword,
-      logContext: 'bot',
-    })
-  } else {
-    const healthy = await openCode.healthCheck()
-    if (healthy) {
-      logger.info('bot', 'OpenCode server is reachable')
-    } else {
-      logger.warn('bot', 'OpenCode server is not reachable. Bot will start anyway.')
-    }
-  }
+  logger.info('bot', 'Claude Agent SDK initialized (in-process)')
 
   // Graceful shutdown
   async function shutdown(signal: string) {
@@ -262,7 +263,7 @@ async function main() {
 
   await bot.start({
     drop_pending_updates: true,
-    onStart: () => logger.info('bot', `OpenCode-Go is running! (@${botUsername})`),
+    onStart: () => logger.info('bot', `Claude-Go is running! (@${botUsername})`),
   })
 }
 

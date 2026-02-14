@@ -94,4 +94,11 @@ export const LIMITS = {
 
   /** Only consider sessions updated within this window for poll-based completion (ms) — 15 minutes */
   HOOK_COMPLETION_POLL_RECENT_WINDOW_MS: 15 * 60 * 1000,
+
+  // ── Rate Limiting ─────────────────────────────────────────
+  /** Rate limit: max messages per user per minute */
+  RATE_LIMIT_PER_MINUTE: 20,
+
+  /** Rate limit: cooldown message */
+  RATE_LIMIT_COOLDOWN_MS: 60_000,
 } as const

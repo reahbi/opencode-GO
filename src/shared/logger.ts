@@ -1,6 +1,6 @@
 const PREFIXES = {
   telegram: '[TELEGRAM]',
-  opencode: '[OPENCODE]',
+  claude: '[CLAUDE]',
   session: '[SESSION]',
   state: '[STATE]',
   bot: '[BOT]',

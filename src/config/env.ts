@@ -1,4 +1,3 @@
-import { DEFAULT_SERVER_URL } from '../shared/constants.js'
 import { basename, resolve } from 'node:path'
 
 export type BotRole = 'writer' | 'reader' | 'standalone'
@@ -6,9 +5,6 @@ export type BotRole = 'writer' | 'reader' | 'standalone'
 export interface EnvConfig {
   botToken: string
   allowedUserIds: number[]
-  openCodeServerUrl: string
-  openCodeServerUsername: string
-  openCodeServerPassword: string | null
   defaultProject: string
   defaultAgent: string | null
   defaultCustomAgent: string | null
@@ -17,6 +13,16 @@ export interface EnvConfig {
   botRole: BotRole
   groupChatEnabled: boolean
   coordinationDir: string
+  /** Claude model ID for the agent SDK (e.g. claude-sonnet-4-5) */
+  claudeModel: string
+  /** Path to Claude Code executable (optional) */
+  claudeCodePath: string | null
+  /** Default max thinking tokens (0 = disabled) */
+  maxThinkingTokens: number
+  /** Max budget per session in USD (optional) */
+  maxBudgetUsd: number | null
+  /** OpenAI API key for Whisper STT (optional, Phase 4) */
+  openaiApiKey: string | null
 }
 
 export function loadEnvConfig(): EnvConfig {
@@ -40,9 +46,6 @@ export function loadEnvConfig(): EnvConfig {
     throw new Error('ALLOWED_USER_IDS is required. At least one Telegram user ID must be set.')
   }
 
-  const openCodeServerUrl = process.env.OPENCODE_SERVER_URL ?? DEFAULT_SERVER_URL
-  const openCodeServerUsername = process.env.OPENCODE_SERVER_USERNAME ?? 'opencode'
-  const openCodeServerPassword = process.env.OPENCODE_SERVER_PASSWORD || null
   const defaultProject = process.env.DEFAULT_PROJECT ?? ''
 
   if (!defaultProject) {
@@ -63,12 +66,16 @@ export function loadEnvConfig(): EnvConfig {
   const defaultAgent = process.env.DEFAULT_AGENT || null
   const defaultCustomAgent = process.env.DEFAULT_CUSTOM_AGENT || null
 
+  const claudeModel = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5'
+  const claudeCodePath = process.env.CLAUDE_CODE_PATH || null
+  const maxThinkingTokens = parseInt(process.env.MAX_THINKING_TOKENS ?? '0', 10) || 0
+  const rawBudget = process.env.MAX_BUDGET_USD
+  const maxBudgetUsd = rawBudget ? parseFloat(rawBudget) : null
+  const openaiApiKey = process.env.OPENAI_API_KEY || null
+
   return {
     botToken,
     allowedUserIds,
-    openCodeServerUrl,
-    openCodeServerUsername,
-    openCodeServerPassword,
     defaultProject,
     defaultAgent,
     defaultCustomAgent,
@@ -77,5 +84,10 @@ export function loadEnvConfig(): EnvConfig {
     botRole,
     groupChatEnabled,
     coordinationDir,
+    claudeModel,
+    claudeCodePath,
+    maxThinkingTokens,
+    maxBudgetUsd,
+    openaiApiKey,
   }
 }

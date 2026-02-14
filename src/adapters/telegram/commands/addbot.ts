@@ -26,12 +26,12 @@ function escapeHtml(t: string): string {
   return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-interface OpenCodeProject {
+interface Project {
   worktree: string
   name?: string
 }
 
-async function fetchProjects(serverUrl: string, username: string, password: string): Promise<OpenCodeProject[]> {
+async function fetchProjects(serverUrl: string, username: string, password: string): Promise<Project[]> {
   const headers: Record<string, string> = {}
   if (password) {
     headers['Authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
@@ -41,7 +41,7 @@ async function fetchProjects(serverUrl: string, username: string, password: stri
     signal: AbortSignal.timeout(5000),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const projects = await res.json() as OpenCodeProject[]
+  const projects = await res.json() as Project[]
   return projects.filter(p => p.worktree !== '/')
 }
 
@@ -185,7 +185,7 @@ export async function handleAddbotRoleCallback(
   wizard.role = role
   wizards.set(chatId, wizard)
 
-  let projects: OpenCodeProject[] = []
+  let projects: Project[] = []
   try {
     projects = await fetchProjects(serverUrl, serverUsername, serverPassword)
   } catch {
@@ -331,13 +331,13 @@ async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boole
   try {
     let content = await fs.readFile(configPath, 'utf-8')
 
-    if (content.includes(`name: 'opencode-go-${wizard.instanceName}'`)) {
+    if (content.includes(`name: 'claude-go-${wizard.instanceName}'`)) {
       return true
     }
 
     const entry = [
       `    {`,
-      `      name: 'opencode-go-${wizard.instanceName}',`,
+      `      name: 'claude-go-${wizard.instanceName}',`,
       `      script: 'src/main.ts',`,
       `      interpreter: 'bun',`,
       `      cwd: '${process.cwd()}',`,
@@ -348,9 +348,7 @@ async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boole
       `        DEFAULT_PROJECT: '${wizard.projectDir}',`,
       `        INSTANCE_NAME: '${wizard.instanceName}',`,
       `        STATE_DIR: 'data/instances/${wizard.instanceName}',`,
-      `        OPENCODE_SERVER_URL: '${process.env.OPENCODE_SERVER_URL ?? 'http://127.0.0.1:4096'}',`,
-      `        OPENCODE_SERVER_USERNAME: '${process.env.OPENCODE_SERVER_USERNAME ?? 'opencode'}',`,
-      `        OPENCODE_SERVER_PASSWORD: '${process.env.OPENCODE_SERVER_PASSWORD ?? ''}',`,
+      `        CLAUDE_MODEL: '${process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5'}',`,
       `        BOT_ROLE: '${wizard.role}',`,
       ...(wizard.customAgentId ? [`        DEFAULT_CUSTOM_AGENT: '${wizard.customAgentId}',`] : []),
       `        GROUP_CHAT_ENABLED: 'true',`,
@@ -463,7 +461,7 @@ export async function handleAddbotStartCallback(
     return
   }
 
-  const pm2Name = `opencode-go-${instanceName}`
+  const pm2Name = `claude-go-${instanceName}`
   await output.sendText(chatId, `🚀 Starting <code>${escapeHtml(pm2Name)}</code>...`, 'HTML')
 
   const tmpConfigPath = `/tmp/${pm2Name}.config.json`
@@ -483,13 +481,11 @@ export async function handleAddbotStartCallback(
           DEFAULT_PROJECT: wizard.projectDir,
           INSTANCE_NAME: instanceName,
           STATE_DIR: `data/instances/${instanceName}`,
-          OPENCODE_SERVER_URL: process.env.OPENCODE_SERVER_URL ?? 'http://127.0.0.1:4096',
-          OPENCODE_SERVER_USERNAME: process.env.OPENCODE_SERVER_USERNAME ?? 'opencode',
-          OPENCODE_SERVER_PASSWORD: process.env.OPENCODE_SERVER_PASSWORD ?? '',
+          CLAUDE_MODEL: process.env.CLAUDE_MODEL ?? 'claude-sonnet-4-5',
           BOT_ROLE: wizard.role,
           ...(wizard.customAgentId ? { DEFAULT_CUSTOM_AGENT: wizard.customAgentId } : {}),
           GROUP_CHAT_ENABLED: 'true',
-          COORDINATION_DIR: process.env.COORDINATION_DIR ?? '/tmp/opencode-go-coordination',
+          COORDINATION_DIR: process.env.COORDINATION_DIR ?? '/tmp/claude-go-coordination',
           ...(process.env.DEFAULT_AGENT ? { DEFAULT_AGENT: process.env.DEFAULT_AGENT } : {}),
         },
       }],
@@ -532,7 +528,7 @@ export async function handleAddbotRemoveCallback(
   try {
     await registry.unregister(instanceName)
 
-    const pm2Name = `opencode-go-${instanceName}`
+    const pm2Name = `claude-go-${instanceName}`
     try {
       const proc = Bun.spawn(['pm2', 'delete', pm2Name], {
         cwd: process.cwd(),
@@ -555,7 +551,7 @@ async function removeFromEcosystemConfig(instanceName: string): Promise<boolean>
   const configPath = resolve(process.cwd(), 'ecosystem.config.cjs')
   try {
     let content = await fs.readFile(configPath, 'utf-8')
-    const marker = `name: 'opencode-go-${instanceName}'`
+    const marker = `name: 'claude-go-${instanceName}'`
     if (!content.includes(marker)) return true
 
     const idx = content.indexOf(marker)

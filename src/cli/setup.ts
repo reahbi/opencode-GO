@@ -18,7 +18,7 @@ import { resolve, dirname } from 'node:path';
 // Types
 // ============================================================================
 
-interface OpenCodeProject {
+interface Project {
   id: string;
   worktree: string;
   vcs?: string;
@@ -98,10 +98,10 @@ function validateUserIds(input: string | undefined): string | undefined {
 }
 
 // ============================================================================
-// Project Selection from OpenCode Server
+// Project Selection from Server
 // ============================================================================
 
-async function fetchProjects(serverUrl: string, username: string, password: string): Promise<OpenCodeProject[]> {
+async function fetchProjects(serverUrl: string, username: string, password: string): Promise<Project[]> {
   const headers: Record<string, string> = {};
   if (password) {
     headers['Authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
@@ -111,14 +111,14 @@ async function fetchProjects(serverUrl: string, username: string, password: stri
     signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json() as OpenCodeProject[];
+  return await res.json() as Project[];
 }
 
 async function selectProjectDir(serverUrl: string, username: string, password: string): Promise<string> {
   const s = spinner();
-  s.start('Fetching project list from OpenCode server...');
+  s.start('Fetching project list from server...');
 
-  let projects: OpenCodeProject[] = [];
+  let projects: Project[] = [];
   try {
     projects = await fetchProjects(serverUrl, username, password);
     // Filter out global root "/" and sort by most recently updated
@@ -183,17 +183,17 @@ async function runPreflightChecks(token: string, serverUrl: string, projectDir: 
     s.stop('Cannot connect to Telegram API (you can continue)');
   }
 
-  // Check 2: OpenCode Server
-  s.start('Checking OpenCode server connection...');
+  // Check 2: Server
+  s.start('Checking server connection...');
   try {
     const res = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
-      s.stop(`OpenCode server connected: ${serverUrl}`);
+      s.stop(`Server connected: ${serverUrl}`);
     } else {
-      s.stop(`OpenCode server response error (${res.status}) — you can start it later`);
+      s.stop(`Server response error (${res.status}) — you can start it later`);
     }
   } catch {
-    s.stop('Cannot connect to OpenCode server — you can start it later');
+    s.stop('Cannot connect to server — you can start it later');
   }
 
   // Check 3: Project Directory
@@ -226,19 +226,19 @@ async function setupEnv(): Promise<void> {
   if (isCancel(userIds)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const serverUrl = await text({
-    message: 'OpenCode server URL',
+    message: 'Server URL',
     initialValue: 'http://127.0.0.1:4096',
   });
   if (isCancel(serverUrl)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const username = await text({
-    message: 'OpenCode server username',
-    initialValue: 'opencode',
+    message: 'Server username (legacy, optional)',
+    initialValue: '',
   });
   if (isCancel(username)) { cancel('Setup cancelled.'); process.exit(0); }
 
   const password = await text({
-    message: 'OpenCode server password (leave empty if none)',
+    message: 'Server password (legacy, optional)',
     initialValue: '',
   });
   if (isCancel(password)) { cancel('Setup cancelled.'); process.exit(0); }
@@ -278,12 +278,8 @@ BOT_TOKEN=${(botToken as string).trim()}
 # Allowed Telegram user IDs (comma separated)
 ALLOWED_USER_IDS=${(userIds as string).split(',').map(id => id.trim()).join(',')}
 
-# OpenCode server URL
-OPENCODE_SERVER_URL=${(serverUrl as string).trim()}
-
-# OpenCode server credentials (optional, for HTTP Basic Auth)
-OPENCODE_SERVER_USERNAME=${(username as string).trim()}
-OPENCODE_SERVER_PASSWORD=${(password as string).trim()}
+# Claude Configuration
+CLAUDE_MODEL=claude-sonnet-4-5
 
 # Default project path
 DEFAULT_PROJECT=${projectDir}
@@ -342,7 +338,7 @@ function generateAppConfig(config: InstanceConfig): PM2AppConfig {
   const currentPath = process.env.PATH || '';
 
   return {
-    name: `opencode-go-${config.name}`,
+    name: `claude-go-${config.name}`,
     script: 'src/main.ts',
     interpreter: 'bun',
     cwd: projectRoot,
@@ -353,9 +349,7 @@ function generateAppConfig(config: InstanceConfig): PM2AppConfig {
       DEFAULT_PROJECT: config.projectDir,
       INSTANCE_NAME: config.name,
       STATE_DIR: `data/instances/${config.name}`,
-      OPENCODE_SERVER_URL: config.serverUrl,
-      OPENCODE_SERVER_USERNAME: config.username,
-      OPENCODE_SERVER_PASSWORD: config.password,
+      CLAUDE_MODEL: config.username,
     },
     autorestart: true,
     max_memory_restart: '512M',
@@ -466,7 +460,7 @@ async function setupPM2(): Promise<void> {
 
   // 5. Server URL
   const serverUrl = await text({
-    message: 'OpenCode server URL',
+    message: 'Server URL',
     placeholder: 'http://127.0.0.1:4096',
     initialValue: 'http://127.0.0.1:4096',
   });
@@ -476,26 +470,14 @@ async function setupPM2(): Promise<void> {
     process.exit(0);
   }
 
-  // 6. Server Username
-  const username = await text({
-    message: 'OpenCode server username',
-    placeholder: 'opencode',
-    initialValue: 'opencode',
+  // 6. Claude Model (optional)
+  const claudeModel = await text({
+    message: 'Claude model ID',
+    placeholder: 'claude-sonnet-4-5',
+    initialValue: 'claude-sonnet-4-5',
   });
 
-  if (isCancel(username)) {
-    cancel('Setup cancelled.');
-    process.exit(0);
-  }
-
-  // 7. Server Password
-  const password = await text({
-    message: 'OpenCode server password (optional, leave empty if none)',
-    placeholder: '(empty for no auth)',
-    initialValue: '',
-  });
-
-  if (isCancel(password)) {
+  if (isCancel(claudeModel)) {
     cancel('Setup cancelled.');
     process.exit(0);
   }
@@ -506,8 +488,8 @@ async function setupPM2(): Promise<void> {
     botToken: (botToken as string).trim(),
     userIds: (userIds as string).split(',').map((id) => id.trim()).join(', '),
     serverUrl: (serverUrl as string).trim(),
-    username: (username as string).trim(),
-    password: (password as string).trim(),
+    username: (claudeModel as string).trim(),
+    password: '',
   };
 
   // 8. Show Summary
@@ -517,8 +499,7 @@ Project Dir:      ${config.projectDir}
 Bot Token:        ${config.botToken.substring(0, 20)}...
 User IDs:         ${config.userIds}
 Server URL:       ${config.serverUrl}
-Server Username:  ${config.username}
-Server Password:  ${config.password ? '***' : '(none)'}
+Claude Model:     ${config.username}
 `;
 
   note(summary, 'Configuration Summary');
@@ -539,7 +520,7 @@ Server Password:  ${config.password ? '***' : '(none)'}
 
   if (existingConfig) {
     const existingAppIndex = existingConfig.apps.findIndex(
-      (app) => app.name === `opencode-go-${config.name}`
+      (app) => app.name === `claude-go-${config.name}`
     );
 
     if (existingAppIndex >= 0) {
@@ -589,7 +570,7 @@ Server Password:  ${config.password ? '***' : '(none)'}
    pm2 start ecosystem.config.cjs
 
 3. Or start only this instance:
-   pm2 start ecosystem.config.cjs --only opencode-go-${config.name}
+   pm2 start ecosystem.config.cjs --only claude-go-${config.name}
 
 4. View logs:
    pm2 logs
@@ -599,9 +580,7 @@ Server Password:  ${config.password ? '***' : '(none)'}
    BOT_TOKEN="${config.botToken}" \\
    ALLOWED_USER_IDS="${config.userIds}" \\
    DEFAULT_PROJECT="${config.projectDir}" \\
-   OPENCODE_SERVER_URL="${config.serverUrl}" \\
-   OPENCODE_SERVER_USERNAME="${config.username}" \\
-   OPENCODE_SERVER_PASSWORD="${config.password}" \\
+   CLAUDE_MODEL="${config.username}" \\
    bun run src/main.ts
 `;
 
@@ -617,7 +596,7 @@ Server Password:  ${config.password ? '***' : '(none)'}
 async function main(): Promise<void> {
   console.clear();
   
-  intro('OpenCode-Go Setup');
+  intro('Claude-Go Setup');
 
   const mode = await select({
     message: 'Select setup mode',

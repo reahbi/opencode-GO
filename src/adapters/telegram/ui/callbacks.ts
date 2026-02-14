@@ -1,5 +1,4 @@
 export type ParsedCallback =
-  | { type: 'permission'; interactionId: string; response: 'once' | 'always' | 'reject' }
   | { type: 'question_answer'; interactionId: string; questionIndex: number; answerIndex: number }
   | { type: 'question_toggle'; interactionId: string; questionIndex: number; answerIndex: number }
   | { type: 'question_next'; interactionId: string; questionIndex: number }
@@ -42,19 +41,7 @@ export type ParsedCallback =
   | { type: 'restart'; action: string }
   | { type: 'unknown'; raw: string }
 
-const VALID_PERM_RESPONSES = new Set(['once', 'always', 'reject'] as const)
-
 export function parseCallback(data: string): ParsedCallback {
-  if (data.startsWith('perm:')) {
-    const parts = data.split(':')
-    const interactionId = parts[1]
-    const response = parts[2]
-    if (!interactionId || !response || !VALID_PERM_RESPONSES.has(response as 'once' | 'always' | 'reject')) {
-      return { type: 'unknown', raw: data }
-    }
-    return { type: 'permission', interactionId, response: response as 'once' | 'always' | 'reject' }
-  }
-
   if (data.startsWith('agent:')) {
     const agentName = data.slice('agent:'.length)
     if (!agentName) {

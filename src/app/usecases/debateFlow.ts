@@ -1,4 +1,4 @@
-import type { OpenCodePort } from '../../domain/ports/OpenCodePort.js'
+import type { ClaudeAgentPort } from '../../domain/ports/ClaudeAgentPort.js'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { CoordinationPort, CoordinationEvent } from '../../domain/ports/CoordinationPort.js'
@@ -8,7 +8,7 @@ import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../policies/limits.js'
 
 interface DebateFlowDeps {
-  openCode: OpenCodePort
+  claude: ClaudeAgentPort
   state: StateStore
   output: ChatOutputPort
   coordination: CoordinationPort
@@ -92,87 +92,35 @@ async function sendWithRetry(
   }
 }
 
-async function waitForResponse(
-  openCode: OpenCodePort,
+async function sendPromptAndWaitForResponse(
+  claude: ClaudeAgentPort,
   sessionId: string,
   directory: string,
-  beforeCount: number,
+  prompt: string,
 ): Promise<string> {
-  const deadline = Date.now() + RESPONSE_POLL_TIMEOUT_MS
-  logger.info('debate', `[waitForResponse] session=${sessionId} dir=${directory} beforeCount=${beforeCount}`)
+  logger.info('debate', `[sendPromptAndWaitForResponse] session=${sessionId} dir=${directory}`)
 
-  let sawBusy = false
-  let pollCount = 0
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, RESPONSE_POLL_INTERVAL_MS))
-    pollCount++
+  const handle = claude.runQuery({
+    prompt,
+    sessionId,
+    cwd: directory,
+  })
 
-    // Check status — but treat missing/empty status map as "unknown", NOT idle
-    const statuses = await openCode.getSessionStatuses(directory)
-    const status = statuses[sessionId]
+  const textParts: string[] = []
 
-    if (status && (status.type === 'busy' || status.type === 'retry')) {
-      sawBusy = true
-      if (pollCount % 5 === 0) logger.info('debate', `[waitForResponse] still busy (poll #${pollCount})`)
-      continue
-    }
-
-    // Only treat explicit idle as completion — undefined means "not in map" (unreliable)
-    if (sawBusy && status?.type === 'idle') {
-      logger.info('debate', `[waitForResponse] busy→idle transition detected (poll #${pollCount})`)
-      break
-    }
-
-    // Always check message count as a fallback (regardless of sawBusy)
-    const currentMessages = await openCode.getSessionMessages(sessionId, directory)
-    if (currentMessages.length > beforeCount) {
-      // Verify the new message is an assistant message with actual text
-      const lastMsg = currentMessages[currentMessages.length - 1]
-      if (lastMsg && lastMsg.role === 'assistant') {
-        const hasText = lastMsg.parts.some(p => p.type === 'text')
-        if (hasText) {
-          logger.info('debate', `[waitForResponse] new assistant message detected (poll #${pollCount}, count ${beforeCount}→${currentMessages.length})`)
-          break
-        }
+  try {
+    for await (const event of handle.messages) {
+      if (event.type === 'text.done') {
+        textParts.push(event.content)
       }
     }
-
-    if (pollCount % 10 === 0) {
-      logger.info('debate', `[waitForResponse] polling... #${pollCount} sawBusy=${sawBusy} status=${status?.type ?? 'undefined'} msgCount=${currentMessages?.length ?? '?'}`)
-    }
+  } catch (error) {
+    logger.error('debate', `Query stream error: ${error instanceof Error ? error.message : String(error)}`)
   }
 
-  // Extract the last assistant text that appeared AFTER our prompt
-  const messages = await openCode.getSessionMessages(sessionId, directory)
-  logger.info('debate', `[waitForResponse] final msgCount=${messages.length} (was ${beforeCount})`)
-
-  // Look for assistant messages after beforeCount index
-  for (let i = messages.length - 1; i >= beforeCount; i--) {
-    if (messages[i].role === 'assistant') {
-      const textParts = messages[i].parts
-        .filter(p => p.type === 'text')
-        .map(p => (p as { type: 'text'; text: string }).text)
-      const text = textParts.join('\n').trim()
-      if (text) return text
-    }
-  }
-
-  // Fallback: if no new assistant message found, try the last one in the entire session
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'assistant') {
-      const textParts = messages[i].parts
-        .filter(p => p.type === 'text')
-        .map(p => (p as { type: 'text'; text: string }).text)
-      const text = textParts.join('\n').trim()
-      if (text) {
-        logger.warn('debate', `[waitForResponse] using fallback: last assistant msg at index ${i} (beforeCount was ${beforeCount})`)
-        return text
-      }
-    }
-  }
-
-  logger.warn('debate', `[waitForResponse] no assistant response found after ${pollCount} polls`)
-  return ''
+  const result = textParts.join('\n').trim()
+  logger.info('debate', `[sendPromptAndWaitForResponse] got ${textParts.length} text parts, ${result.length} chars total`)
+  return result
 }
 
 const ACCEPTANCE_TTL_MS = 30 * 60 * 1000
@@ -438,18 +386,11 @@ export function createDebateFlow(deps: DebateFlowDeps) {
 
     try {
       const prompt = `You are in a structured debate.\nTopic: ${topic}\nRound ${round}.\nProvide your opening argument.`
-      const msgsBefore = await deps.openCode.getSessionMessages(context.sessionId, context.directory)
-      const beforeCount = msgsBefore.length
-      logger.info('debate', `[handleDebateRequest] sending prompt to session ${context.sessionId} (beforeCount=${beforeCount})`)
-      await deps.openCode.sendPromptAsync(
-        context.sessionId,
-        context.directory,
-        prompt,
-      )
+      logger.info('debate', `[handleDebateRequest] sending prompt to session ${context.sessionId}`)
 
-      const responseText = await waitForResponse(deps.openCode, context.sessionId, context.directory, beforeCount)
+      const responseText = await sendPromptAndWaitForResponse(deps.claude, context.sessionId, context.directory, prompt)
       logger.info('debate', `[handleDebateRequest] got response (${responseText.length} chars): "${responseText.slice(0, 80)}..."`)
-      
+
       session.messages.push({ from: 'self', round, text: responseText || '(empty response)' })
 
       await sendWithRetry(() => deps.output.sendText(
@@ -520,14 +461,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
 
     try {
       const prompt = `You are debating the topic: ${session.topic}.\nRound ${round}.\nOpponent says:\n${opponentMessage}\n\nRespond with your argument.`
-      const msgsBefore = await deps.openCode.getSessionMessages(session.sessionId, session.directory)
-      const beforeCount = msgsBefore.length
-      await deps.openCode.sendPromptAsync(
-        session.sessionId,
-        session.directory,
-        prompt,
-      )
-      const responseText = await waitForResponse(deps.openCode, session.sessionId, session.directory, beforeCount)
+      const responseText = await sendPromptAndWaitForResponse(deps.claude, session.sessionId, session.directory, prompt)
 
       session.messages.push({ from: 'self', round: round + 1, text: responseText || '(empty response)' })
 
@@ -579,14 +513,7 @@ export function createDebateFlow(deps: DebateFlowDeps) {
 
     try {
       const prompt = `Provide a concise code review.\nTarget: ${target}\n${description}\nFocus on risks, correctness, and improvements.`
-      const msgsBefore = await deps.openCode.getSessionMessages(context.sessionId, context.directory)
-      const beforeCount = msgsBefore.length
-      await deps.openCode.sendPromptAsync(
-        context.sessionId,
-        context.directory,
-        prompt,
-      )
-      const responseText = await waitForResponse(deps.openCode, context.sessionId, context.directory, beforeCount) || '(empty response)'
+      const responseText = await sendPromptAndWaitForResponse(deps.claude, context.sessionId, context.directory, prompt) || '(empty response)'
 
       await deps.output.sendText(
         chatId,
@@ -750,7 +677,17 @@ export function createDebateFlow(deps: DebateFlowDeps) {
     ))
 
     try {
-      await deps.openCode.sendPromptAsync(acceptance.sessionId, acceptance.directory, prompt)
+      const handle = deps.claude.runQuery({
+        prompt,
+        sessionId: acceptance.sessionId,
+        cwd: acceptance.directory,
+      })
+      // Fire and forget - we don't wait for the response
+      void (async () => {
+        for await (const _event of handle.messages) {
+          // Consume the stream
+        }
+      })()
     } catch (error) {
       logger.error('debate', `Acceptance prompt failed: ${error instanceof Error ? error.message : String(error)}`)
       await deps.output.sendText(chatId, escapeHtml('❌ Failed to send acceptance prompt'), 'HTML')
