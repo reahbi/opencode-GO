@@ -2,13 +2,9 @@ import type { SummaryPort } from '../../domain/ports/SummaryPort.js'
 import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../../app/policies/limits.js'
 
-const SUMMARY_TIMEOUT_MS = 60_000
-const MAX_INPUT_CHARS = 30_000
-const SUMMARY_MODEL = 'claude-haiku-4-5'
-
 function truncateInput(content: string): string {
-  return content.length > MAX_INPUT_CHARS
-    ? content.slice(0, MAX_INPUT_CHARS) + '\n\n[... truncated]'
+  return content.length > LIMITS.SUMMARY_MAX_INPUT_CHARS
+    ? content.slice(0, LIMITS.SUMMARY_MAX_INPUT_CHARS) + '\n\n[... truncated]'
     : content
 }
 
@@ -130,9 +126,10 @@ ${goodExample}
 ${truncateInput(content)}`
 }
 
-async function runClaudeCliSummary(prompt: string, claudeCodePath?: string | null): Promise<string> {
+async function runClaudeCliSummary(prompt: string, claudeCodePath?: string | null, summaryModel?: string): Promise<string> {
   const executable = claudeCodePath || 'claude'
-  const args = ['-p', prompt, '--model', SUMMARY_MODEL, '--output-format', 'text', '--max-turns', '1']
+  const model = summaryModel || 'claude-haiku-4-5'
+  const args = ['-p', prompt, '--model', model, '--output-format', 'text', '--max-turns', '1']
 
   const proc = Bun.spawn([executable, ...args], {
     stdout: 'pipe',
@@ -142,7 +139,7 @@ async function runClaudeCliSummary(prompt: string, claudeCodePath?: string | nul
 
   const timeoutId = setTimeout(() => {
     proc.kill()
-  }, SUMMARY_TIMEOUT_MS)
+  }, LIMITS.SUMMARY_TIMEOUT_MS)
 
   try {
     const output = await new Response(proc.stdout).text()
@@ -161,12 +158,12 @@ async function runClaudeCliSummary(prompt: string, claudeCodePath?: string | nul
   }
 }
 
-export function createClaudeSummaryService(claudeCodePath?: string | null): SummaryPort {
+export function createClaudeSummaryService(claudeCodePath?: string | null, summaryModel?: string): SummaryPort {
   return {
     async summarize(_directory, content, _model, expertise) {
       const prompt = buildSummaryPrompt(content, expertise)
       try {
-        let result = await runClaudeCliSummary(prompt, claudeCodePath)
+        let result = await runClaudeCliSummary(prompt, claudeCodePath, summaryModel)
         if (!result) throw new Error('Summary produced no output')
         if (result.length > LIMITS.SUMMARY_HTML_HARD_CAP) {
           result = result.slice(0, LIMITS.SUMMARY_HTML_HARD_CAP) + '\n\n<i>... (truncated)</i>'
@@ -182,7 +179,7 @@ export function createClaudeSummaryService(claudeCodePath?: string | null): Summ
     async summarizeForVoice(_directory, content, _model, targetLength, language, hardCap, expertise) {
       const prompt = buildVoiceSummaryPrompt(content, targetLength, language, expertise)
       try {
-        let result = await runClaudeCliSummary(prompt, claudeCodePath)
+        let result = await runClaudeCliSummary(prompt, claudeCodePath, summaryModel)
         if (!result) throw new Error('Voice summary produced no output')
         if (result.length > hardCap) {
           result = result.slice(0, hardCap) + '...'

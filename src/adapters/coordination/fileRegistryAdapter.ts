@@ -1,16 +1,13 @@
 import type { BotRegistryPort } from '../../domain/ports/BotRegistryPort.js'
 import type { BotRegistryEntry } from '../../domain/models.js'
 import { logger } from '../../shared/logger.js'
+import { LIMITS } from '../../app/policies/limits.js'
 import { promises as fs } from 'node:fs'
 import { resolve } from 'node:path'
 
 interface RegistryData {
   bots: Record<string, BotRegistryEntry>
 }
-
-const READ_RETRY_DELAY_MS = 50
-const READ_MAX_RETRIES = 3
-const LOCK_STALE_MS = 10_000
 
 export function createFileRegistryAdapter(baseDir: string): BotRegistryPort {
   const filepath = resolve(baseDir, 'registry.json')
@@ -23,7 +20,7 @@ export function createFileRegistryAdapter(baseDir: string): BotRegistryPort {
   }
 
   async function acquireLock(): Promise<void> {
-    const maxAttempts = 20
+    const maxAttempts = LIMITS.LOCK_MAX_ATTEMPTS
     for (let i = 0; i < maxAttempts; i++) {
       try {
         await fs.writeFile(lockPath, `${process.pid}:${Date.now()}`, { flag: 'wx' })
@@ -33,12 +30,12 @@ export function createFileRegistryAdapter(baseDir: string): BotRegistryPort {
           try {
             const content = await fs.readFile(lockPath, 'utf-8')
             const timestamp = parseInt(content.split(':')[1] || '0', 10)
-            if (Date.now() - timestamp > LOCK_STALE_MS) {
+            if (Date.now() - timestamp > LIMITS.LOCK_STALE_MS) {
               try { await fs.unlink(lockPath) } catch {}
               continue
             }
           } catch {}
-          await new Promise(r => setTimeout(r, READ_RETRY_DELAY_MS + Math.random() * 50))
+          await new Promise(r => setTimeout(r, LIMITS.LOCK_READ_RETRY_DELAY_MS + Math.random() * 50))
           continue
         }
         throw error
@@ -53,7 +50,7 @@ export function createFileRegistryAdapter(baseDir: string): BotRegistryPort {
   }
 
   async function read(): Promise<RegistryData> {
-    for (let attempt = 0; attempt < READ_MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt < LIMITS.LOCK_READ_MAX_RETRIES; attempt++) {
       try {
         const content = await fs.readFile(filepath, 'utf-8')
         return JSON.parse(content) as RegistryData
@@ -61,8 +58,8 @@ export function createFileRegistryAdapter(baseDir: string): BotRegistryPort {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           return { bots: {} }
         }
-        if (error instanceof SyntaxError && attempt < READ_MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, READ_RETRY_DELAY_MS))
+        if (error instanceof SyntaxError && attempt < LIMITS.LOCK_READ_MAX_RETRIES - 1) {
+          await new Promise(r => setTimeout(r, LIMITS.LOCK_READ_RETRY_DELAY_MS))
           continue
         }
         logger.warn('registry', `Failed to read registry: ${error}`)

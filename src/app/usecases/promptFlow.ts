@@ -8,6 +8,7 @@ import type { SessionWatcher } from './sessionWatcher.js'
 import { getThinkingLevel } from '../../adapters/claude/claudeEventMapper.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
+import { updateChatState } from './stateUpdate.js'
 
 interface PromptFlowDeps {
   claude: ClaudeAgentPort
@@ -25,8 +26,8 @@ interface PromptFlowDeps {
 
 export function createPromptFlow(deps: PromptFlowDeps) {
 
-  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean; images?: ImageAttachment[] }): Promise<void> {
-    const state = await deps.state.getChatState(chatId)
+  async function handleUserMessage(chatId: number, text: string, opts?: { actorUserId?: number; isGroup?: boolean; images?: ImageAttachment[]; threadId?: number }): Promise<void> {
+    const state = await deps.state.getChatState(chatId, opts?.threadId)
     if (!state.activeProjectDirectory) {
       await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
       return
@@ -39,18 +40,19 @@ export function createPromptFlow(deps: PromptFlowDeps) {
     const directory = state.activeProjectDirectory
     const sessionId = state.activeSessionId
 
-    state.lastPrompt = text
-    await deps.state.saveChatState(chatId, state)
+    await updateChatState(deps.state, chatId, (chatState) => {
+      chatState.lastPrompt = text
+    }, opts?.threadId)
 
-    await deps.watcher.ensureWatching(chatId)
+    await deps.watcher.ensureWatching(chatId, opts?.threadId)
     deps.watcher.setPromptContext(chatId, {
       actorUserId: opts?.actorUserId,
       liveUpdatesEnabled: !opts?.isGroup,
       userPrompt: text,
-    })
+    }, opts?.threadId)
 
     const handle = await deps.output.sendText(chatId, '⏳ Processing...')
-    deps.watcher.setPromptHandle(chatId, handle)
+    deps.watcher.setPromptHandle(chatId, handle, opts?.threadId)
 
     try {
       const isReview = state.settings.reviewMode !== undefined
@@ -83,14 +85,21 @@ export function createPromptFlow(deps: PromptFlowDeps) {
         sessionId,
         isNewSession,
         cwd: directory,
+        model: state.activeAgent || undefined,
         images: opts?.images,
         maxThinkingTokens: thinkingTokens,
         maxBudgetUsd: deps.config.maxBudgetUsd ?? undefined,
         systemPrompt,
       })
 
+      // Mark session as busy
+      if (deps.sessionStore) {
+        deps.sessionStore.updateSession(sessionId, { status: 'busy' }).catch(err =>
+          logger.warn('session', `Failed to mark session busy: ${err instanceof Error ? err.message : 'unknown'}`))
+      }
+
       // Pass the query handle to the watcher for event processing
-      deps.watcher.watchQuery(chatId, queryHandle)
+      deps.watcher.watchQuery(chatId, queryHandle, opts?.threadId)
 
       logger.debug('session', `Query started for session ${sessionId}`)
     } catch (error) {

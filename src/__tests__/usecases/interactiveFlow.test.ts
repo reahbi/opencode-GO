@@ -37,7 +37,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionEvent(chatId, event)
 
-    const updated = state._store.get(chatId)
+    const updated = state._store.get(String(chatId))
     expect(updated?.pendingInteractions.length).toBe(1)
     expect(updated?.pendingInteractions[0]?.type).toBe('question')
     expect(updated?.pendingInteractions[0]?.collectedAnswers?.length).toBe(2)
@@ -67,7 +67,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionAnswer(chatId, 'int-1', 0, 1)
 
-    const updated = state._store.get(chatId)?.pendingInteractions[0]
+    const updated = state._store.get(String(chatId))?.pendingInteractions[0]
     expect(updated?.collectedAnswers?.[0]).toEqual(['B'])
     expect(updated?.currentQuestionIndex).toBe(1)
     expect(updated?.phase).toBe('answering')
@@ -95,7 +95,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionSkip(chatId, 'int-1', 0)
 
-    const updated = state._store.get(chatId)?.pendingInteractions[0]
+    const updated = state._store.get(String(chatId))?.pendingInteractions[0]
     expect(updated?.collectedAnswers?.[0]).toEqual([])
     expect(updated?.currentQuestionIndex).toBe(1)
     expect(output.editInteraction).toHaveBeenCalledWith(chatId, 'msg-1', expect.any(String), expect.any(Array))
@@ -122,7 +122,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionBack(chatId, 'int-1', 1)
 
-    const updated = state._store.get(chatId)?.pendingInteractions[0]
+    const updated = state._store.get(String(chatId))?.pendingInteractions[0]
     expect(updated?.currentQuestionIndex).toBe(0)
     expect(updated?.phase).toBe('answering')
     expect(output.editInteraction).toHaveBeenCalledWith(chatId, 'msg-1', expect.any(String), expect.any(Array))
@@ -153,7 +153,7 @@ describe('interactiveFlow', () => {
     await flow.handleQuestionBack(chatId, 'int-1', 1)
 
     expect(output.sendInteraction).toHaveBeenCalledWith(chatId, expect.any(String), expect.any(Array))
-    const updated = state._store.get(chatId)?.pendingInteractions[0]
+    const updated = state._store.get(String(chatId))?.pendingInteractions[0]
     expect(updated?.messageHandle).toBe('interaction-1')
   })
 
@@ -174,7 +174,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionType(chatId, 'int-1', 0)
 
-    const updated = state._store.get(chatId)
+    const updated = state._store.get(String(chatId))
     expect(updated?.awaitingInput).toBe('question')
     expect(updated?.awaitingInteractionId).toBe('int-1')
     expect(output.sendText).toHaveBeenCalledWith(chatId, expect.stringContaining('Type your answer'))
@@ -203,7 +203,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleFreeTextAnswer(chatId, 'typed')
 
-    const updated = state._store.get(chatId)
+    const updated = state._store.get(String(chatId))
     const stored = updated?.pendingInteractions[0]
     expect(updated?.awaitingInput).toBe(null)
     expect(updated?.awaitingInteractionId).toBe(null)
@@ -236,7 +236,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionConfirm(chatId, 'int-1')
 
-    const updated = state._store.get(chatId)
+    const updated = state._store.get(String(chatId))
     expect(updated?.pendingInteractions.length).toBe(0)
     expect(updated?.awaitingInput).toBe(null)
     expect(updated?.awaitingInteractionId).toBe(null)
@@ -264,7 +264,7 @@ describe('interactiveFlow', () => {
 
     await flow.handleQuestionReset(chatId, 'int-1')
 
-    const updated = state._store.get(chatId)?.pendingInteractions[0]
+    const updated = state._store.get(String(chatId))?.pendingInteractions[0]
     expect(updated?.collectedAnswers).toEqual([null, null])
     expect(updated?.currentQuestionIndex).toBe(0)
     expect(updated?.phase).toBe('answering')
@@ -279,7 +279,7 @@ describe('interactiveFlow', () => {
 
     await flow.cleanupExpired(chatId)
 
-    const updated = state._store.get(chatId)
+    const updated = state._store.get(String(chatId))
     expect(updated?.pendingInteractions.length).toBe(1)
     expect(updated?.pendingInteractions[0]?.interactionId).toBe('int-new')
   })

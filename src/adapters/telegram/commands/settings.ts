@@ -1,5 +1,6 @@
 import type { Context } from 'grammy'
 import { InlineKeyboard } from 'grammy'
+import { execFileSync } from 'node:child_process'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { CustomAgent, UserSettings } from '../../../domain/models.js'
 import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
@@ -175,6 +176,36 @@ export function summarySubKeyboard(s: UserSettings): InlineKeyboard {
     .text('◀️ Back', 'settings:back')
 }
 
+// ── Model Selection Submenu ──
+
+const SUMMARY_MODELS = [
+  { id: 'claude-haiku-4-5', label: 'Haiku 4.5', description: 'Fast & cheap' },
+  { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5', description: 'Balanced' },
+  { id: 'claude-opus-4-6', label: 'Opus 4.6', description: 'Most capable' },
+] as const
+
+export function modelSelectText(s: UserSettings): string {
+  const current = s.summaryModel?.modelID || 'not selected'
+  return [
+    '<b>🤖 Summary Model</b>',
+    '',
+    `Current: <code>${current}</code>`,
+    '',
+    'Select a model for AI summary generation:',
+  ].join('\n')
+}
+
+export function modelSelectKeyboard(s: UserSettings): InlineKeyboard {
+  const kb = new InlineKeyboard()
+  for (const m of SUMMARY_MODELS) {
+    const isActive = s.summaryModel?.modelID === m.id
+    const label = isActive ? `✅ ${m.label}` : `${m.label} — ${m.description}`
+    kb.text(label, `sm:anthropic/${m.id}`).row()
+  }
+  kb.text('◀️ Back', 'settings:sub_summary')
+  return kb
+}
+
 // ── Output Submenu ──
 
 export function outputSubText(s: UserSettings): string {
@@ -303,7 +334,11 @@ export function settingsCommand(
     if (!chatId) return
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
     const chatState = await state.getChatState(chatId)
-    const healthy = true
+    let healthy = false
+    try {
+      execFileSync('claude', ['--version'], { timeout: 3000, stdio: 'ignore' })
+      healthy = true
+    } catch { /* Claude Code CLI not available */ }
 
     await ctx.reply(
       settingsMainText(chatState.settings, {

@@ -54,6 +54,36 @@ describe('jsonStateStore integration', () => {
     expect(loaded).toEqual(state)
   })
 
+  it('keeps thread-scoped states isolated for same chat', async () => {
+    const store = createStore()
+    const chatId = 500
+    const threadA = 10
+    const threadB = 20
+
+    const stateA: ChatState = {
+      ...createDefaultChatState(),
+      activeProjectDirectory: '/tmp/project-a',
+      activeSessionId: 'ses-a',
+      lastPrompt: 'from-a',
+    }
+
+    const stateB: ChatState = {
+      ...createDefaultChatState(),
+      activeProjectDirectory: '/tmp/project-b',
+      activeSessionId: 'ses-b',
+      lastPrompt: 'from-b',
+    }
+
+    await store.saveChatState(chatId, stateA, threadA)
+    await store.saveChatState(chatId, stateB, threadB)
+
+    const loadedA = await store.getChatState(chatId, threadA)
+    const loadedB = await store.getChatState(chatId, threadB)
+
+    expect(loadedA).toEqual(stateA)
+    expect(loadedB).toEqual(stateB)
+  })
+
   it('persists across instances', async () => {
     const chatId = 7
     const state: ChatState = {

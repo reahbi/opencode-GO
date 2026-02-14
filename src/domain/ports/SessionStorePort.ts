@@ -10,6 +10,8 @@ export interface SessionMeta {
   cwd: string
   totalCostUsd?: number
   messages?: HistoryMessage[]
+  /** Session origin: 'bot' = created via Telegram, 'local' = discovered from CLI */
+  source?: 'bot' | 'local'
 }
 
 export interface SessionStorePort {

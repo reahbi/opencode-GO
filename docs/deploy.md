@@ -2,7 +2,7 @@
 
 # PM2 Deployment Guide
 
-This document explains how to reliably deploy and manage OpenCode-Go using the PM2 process manager.
+This document explains how to reliably deploy and manage Claude-Go using the PM2 process manager.
 
 ## PM2 Overview
 
@@ -77,12 +77,12 @@ Additional configuration is required to enable bot collaboration in a group chat
 ### ecosystem.config.cjs Example
 
 ```javascript
-const COORDINATION_DIR = '/tmp/opencode-go-coordination'
+const COORDINATION_DIR = '/tmp/claude-go-coordination'
 
 module.exports = {
   apps: [
     {
-      name: 'opencode-go-writer',
+      name: 'claude-go-writer',
       script: 'src/main.ts',
       interpreter: 'bun',
       env: {
@@ -97,7 +97,7 @@ module.exports = {
       },
     },
     {
-      name: 'opencode-go-reader',
+      name: 'claude-go-reader',
       script: 'src/main.ts',
       interpreter: 'bun',
       env: {

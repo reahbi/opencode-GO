@@ -1,16 +1,16 @@
-[🇰🇷 한국어](telegram-kr.md)
+[Korean](telegram-kr.md)
 
 # Telegram Bot Setup Guide
 
-This document explains how to create a Telegram bot for controlling OpenCode-Go and obtain the necessary credentials.
+This document explains how to create a Telegram bot for controlling Claude-Go and obtain the necessary credentials.
 
 ## Bot Creation Process
 
 1. Search for @BotFather in the Telegram app and start a conversation.
 2. Send the `/start` message.
 3. Send the `/newbot` command to begin creating a new bot.
-4. Enter a name for your bot. (e.g., My OpenCode-Go)
-5. Enter a username for your bot. This must end with `_bot`. (e.g., my_opencode_go_bot)
+4. Enter a name for your bot. (e.g., My Claude-Go)
+5. Enter a username for your bot. This must end with `_bot`. (e.g., my_claude_go_bot)
 6. Upon completion, you'll receive your bot token.
 
 ## Bot Token Format
@@ -22,7 +22,7 @@ Bot tokens follow this format:
 
 ## Finding Your Telegram User ID
 
-OpenCode-Go is configured to allow only authorized users. To find your User ID, follow these steps:
+Claude-Go is configured to allow only authorized users. To find your User ID, follow these steps:
 
 1. Send any message to @userinfobot (https://t.me/userinfobot).
 2. The numeric value in the bot's response is your User ID.
@@ -42,7 +42,7 @@ Additional BotFather configuration is required to use group chat in multi-bot mo
 3. `Bot Settings` → `Allow Groups?` → `Turn groups on`
 4. (Optional) `Group Privacy` → `Turn off` — Allows the bot to see all messages in the group
 
-**Note**: OpenCode-Go only processes @mentioned messages by default, so you don't need to turn off Group Privacy.
+**Note**: Claude-Go only processes @mentioned messages by default, so you don't need to turn off Group Privacy.
 
 ## Troubleshooting
 

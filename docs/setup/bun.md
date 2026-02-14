@@ -2,7 +2,7 @@
 
 # Bun Installation Guide
 
-OpenCode-Go runs on the Bun runtime. This document guides you through installing and configuring Bun.
+Claude-Go runs on the Bun runtime. This document guides you through installing and configuring Bun.
 
 ## Bun Overview
 

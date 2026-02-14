@@ -5,20 +5,7 @@ import type { QuestionAsked } from '../../domain/events.js'
 import { LIMITS } from '../policies/limits.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
-
-// Use globalThis.crypto.randomUUID() instead of node:crypto to maintain Clean Architecture
-// (app/ layer should not import Node.js built-in modules directly)
-function generateUUID(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID()
-  }
-  // Fallback for environments without WebCrypto
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.random() * 16 | 0
-    const v = c === 'x' ? r : (r & 0x3 | 0x8)
-    return v.toString(16)
-  })
-}
+import { generateUUID } from '../../shared/uuid.js'
 
 interface InteractiveFlowDeps {
   state: StateStore
@@ -156,6 +143,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     chatId: number,
     interaction: PendingInteraction,
     chatState: Awaited<ReturnType<typeof deps.state.getChatState>>,
+    threadId?: number,
   ): Promise<void> {
     const answers = toSubmitAnswers(interaction)
     logger.info('interactive', `Submitting ${answers.length} answers for requestId=${interaction.requestId}: ${JSON.stringify(answers)}`)
@@ -179,7 +167,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     )
     chatState.awaitingInput = null
     chatState.awaitingInteractionId = null
-    await deps.state.saveChatState(chatId, chatState)
+    await deps.state.saveChatState(chatId, chatState, threadId)
 
     // Update UI
     if (interaction.messageHandle) {
@@ -208,7 +196,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number, directory?: string): Promise<void> {
+  async function handleQuestionEvent(chatId: number, event: QuestionAsked, actorUserId?: number, directory?: string, threadId?: number): Promise<void> {
     try {
       const interactionId = generateUUID()
       const questions = event.questions.map(q => ({
@@ -238,15 +226,15 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         directory,
       }
 
-      const chatState = await deps.state.getChatState(chatId)
+      const chatState = await deps.state.getChatState(chatId, threadId)
       chatState.pendingInteractions.push(interaction)
-      await deps.state.saveChatState(chatId, chatState)
+      await deps.state.saveChatState(chatId, chatState, threadId)
       logger.info('interactive', `Stored ${questions.length} question(s) as interaction ${interactionId} (requestId=${event.requestId})`)
 
       const { text, buttons } = buildQuestionMessage(interaction)
       const handle = await deps.output.sendInteraction(chatId, text, buttons)
       interaction.messageHandle = handle
-      await deps.state.saveChatState(chatId, chatState)
+      await deps.state.saveChatState(chatId, chatState, threadId)
     } catch (error) {
       logger.error('interactive', 'Failed to handle question event', { chatId, error })
       await deps.output.sendText(chatId, '❌ Failed to process question')
@@ -265,10 +253,11 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     interactionId: string,
     questionIndex: number,
     answerIndex: number,
+    threadId?: number,
   ): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -291,7 +280,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
         logger.info('interactive', `Q${questionIndex + 1}/${questions.length} answered: "${label}"`)
 
-        await advanceToNext(chatId, interaction, chatState)
+        await advanceToNext(chatId, interaction, chatState, threadId)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question answer', { chatId, interactionId, error })
@@ -304,10 +293,11 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     interactionId: string,
     questionIndex: number,
     answerIndex: number,
+    threadId?: number,
   ): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -336,9 +326,8 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
         logger.info('interactive', `Q${questionIndex + 1}/${questions.length} toggled: "${label}" (now ${answers[questionIndex]?.length ?? 0} selected)`)
 
-        await deps.state.saveChatState(chatId, chatState)
         await editOrSendQuestion(chatId, interaction)
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question toggle', { chatId, interactionId, error })
@@ -350,10 +339,11 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     chatId: number,
     interactionId: string,
     questionIndex: number,
+    threadId?: number,
   ): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -375,7 +365,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
         logger.info('interactive', `Q${questionIndex + 1}/${questions.length} confirmed with ${answers[questionIndex]?.length ?? 0} selections`)
 
-        await advanceToNext(chatId, interaction, chatState)
+        await advanceToNext(chatId, interaction, chatState, threadId)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question next', { chatId, interactionId, error })
@@ -387,10 +377,11 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     chatId: number,
     interactionId: string,
     questionIndex: number,
+    threadId?: number,
   ): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -409,7 +400,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
         logger.info('interactive', `Q${questionIndex + 1}/${questions.length} skipped`)
 
-        await advanceToNext(chatId, interaction, chatState)
+        await advanceToNext(chatId, interaction, chatState, threadId)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question skip', { chatId, interactionId, error })
@@ -421,10 +412,11 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     chatId: number,
     interactionId: string,
     questionIndex: number,
+    threadId?: number,
   ): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -440,9 +432,8 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         interaction.currentQuestionIndex = prevIdx
         interaction.phase = 'answering'
 
-        await deps.state.saveChatState(chatId, chatState)
         await editOrSendQuestion(chatId, interaction)
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question back', { chatId, interactionId, error })
@@ -454,10 +445,11 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     chatId: number,
     interactionId: string,
     questionIndex: number,
+    threadId?: number,
   ): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -472,7 +464,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         interaction.currentQuestionIndex = questionIndex
         chatState.awaitingInput = 'question'
         chatState.awaitingInteractionId = interactionId
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
         await deps.output.sendText(chatId, '✏️ Type your answer and send it as a message:')
       })
     } catch (error) {
@@ -481,10 +473,10 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleQuestionConfirm(chatId: number, interactionId: string): Promise<void> {
+  async function handleQuestionConfirm(chatId: number, interactionId: string, threadId?: number): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -496,7 +488,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         }
 
         refreshTTL(interaction)
-        await submitAllAnswers(chatId, interaction, chatState)
+        await submitAllAnswers(chatId, interaction, chatState, threadId)
       })
     } catch (error) {
       logger.error('interactive', 'Failed to handle question confirm', { chatId, interactionId, error })
@@ -504,10 +496,10 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     }
   }
 
-  async function handleQuestionReset(chatId: number, interactionId: string): Promise<void> {
+  async function handleQuestionReset(chatId: number, interactionId: string, threadId?: number): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         chatState.pendingInteractions = chatState.pendingInteractions.filter(i => now <= i.expiresAt)
         
@@ -524,9 +516,8 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
         interaction.currentQuestionIndex = 0
         interaction.phase = 'answering'
 
-        await deps.state.saveChatState(chatId, chatState)
         await editOrSendQuestion(chatId, interaction)
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
 
         logger.info('interactive', `Reset all answers for interaction ${interactionId}`)
       })
@@ -540,12 +531,13 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
     chatId: number,
     interaction: PendingInteraction,
     chatState: Awaited<ReturnType<typeof deps.state.getChatState>>,
+    threadId?: number,
   ): Promise<void> {
     const questions = interaction.questions ?? []
     const answers = interaction.collectedAnswers ?? []
 
     if (questions.length === 1) {
-      await submitAllAnswers(chatId, interaction, chatState)
+      await submitAllAnswers(chatId, interaction, chatState, threadId)
       return
     }
 
@@ -553,29 +545,27 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
     if (nextUnanswered === -1) {
       interaction.phase = 'confirm'
-      await deps.state.saveChatState(chatId, chatState)
       await editOrSendQuestion(chatId, interaction)
-      await deps.state.saveChatState(chatId, chatState)
+      await deps.state.saveChatState(chatId, chatState, threadId)
     } else {
       interaction.currentQuestionIndex = nextUnanswered
       interaction.phase = 'answering'
-      await deps.state.saveChatState(chatId, chatState)
       await editOrSendQuestion(chatId, interaction)
-      await deps.state.saveChatState(chatId, chatState)
+      await deps.state.saveChatState(chatId, chatState, threadId)
     }
   }
 
-  async function handleFreeTextAnswer(chatId: number, text: string): Promise<boolean> {
+  async function handleFreeTextAnswer(chatId: number, text: string, threadId?: number): Promise<boolean> {
     let handled = false
     await deps.state.withChatLock(chatId, async () => {
-      const chatState = await deps.state.getChatState(chatId)
+      const chatState = await deps.state.getChatState(chatId, threadId)
       const interactionId = chatState.awaitingInteractionId
 
       chatState.awaitingInput = null
       chatState.awaitingInteractionId = null
 
       if (!interactionId) {
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
         return
       }
 
@@ -584,7 +574,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       
       const interaction = chatState.pendingInteractions.find(i => i.interactionId === interactionId)
       if (!interaction || now > interaction.expiresAt) {
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
         return
       }
 
@@ -598,15 +588,15 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
       interaction.collectedAnswers = answers
       logger.info('interactive', `Q${currentIdx + 1}/${questions.length} free-text: "${text}"`)
 
-      await advanceToNext(chatId, interaction, chatState)
+      await advanceToNext(chatId, interaction, chatState, threadId)
     })
     return handled
   }
 
-  async function cleanupExpired(chatId: number): Promise<void> {
+  async function cleanupExpired(chatId: number, threadId?: number): Promise<void> {
     try {
       await deps.state.withChatLock(chatId, async () => {
-        const chatState = await deps.state.getChatState(chatId)
+        const chatState = await deps.state.getChatState(chatId, threadId)
         const now = Date.now()
         const originalCount = chatState.pendingInteractions.length
 
@@ -616,7 +606,7 @@ export function createInteractiveFlow(deps: InteractiveFlowDeps) {
 
         if (chatState.pendingInteractions.length < originalCount) {
           logger.info('interactive', `cleanupExpired removed ${originalCount - chatState.pendingInteractions.length} for chat ${chatId}`)
-          await deps.state.saveChatState(chatId, chatState)
+          await deps.state.saveChatState(chatId, chatState, threadId)
         }
       })
     } catch (error) {

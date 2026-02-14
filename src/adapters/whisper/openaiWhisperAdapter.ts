@@ -1,7 +1,10 @@
 import type { TranscriptionPort } from '../../domain/ports/TranscriptionPort.js'
 import { logger } from '../../shared/logger.js'
+import { LIMITS } from '../../app/policies/limits.js'
 
-export function createOpenAIWhisperAdapter(apiKey: string): TranscriptionPort {
+export function createOpenAIWhisperAdapter(apiKey: string, apiBaseUrl?: string): TranscriptionPort {
+  const baseUrl = apiBaseUrl || 'https://api.openai.com/v1'
+
   return {
     async transcribe(audio: Uint8Array, format: string): Promise<string> {
       const formData = new FormData()
@@ -10,13 +13,13 @@ export function createOpenAIWhisperAdapter(apiKey: string): TranscriptionPort {
       formData.append('file', blob, `audio.${format}`)
       formData.append('model', 'whisper-1')
 
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      const response = await fetch(`${baseUrl}/audio/transcriptions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
         },
         body: formData,
-        signal: AbortSignal.timeout(60_000),
+        signal: AbortSignal.timeout(LIMITS.WHISPER_TIMEOUT_MS),
       })
 
       if (!response.ok) {

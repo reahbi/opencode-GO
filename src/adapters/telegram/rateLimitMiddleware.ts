@@ -8,33 +8,68 @@ interface RateLimitEntry {
 }
 
 export function createRateLimitMiddleware() {
-  const limits = new Map<number, RateLimitEntry>()
+  const messageLimits = new Map<number, RateLimitEntry>()
+  const callbackLimits = new Map<number, RateLimitEntry>()
 
   // Cleanup old entries every 5 minutes
-  setInterval(() => {
+  const cleanupTimer = setInterval(() => {
     const now = Date.now()
-    for (const [userId, entry] of limits) {
+    for (const [userId, entry] of messageLimits) {
       if (now > entry.resetAt) {
-        limits.delete(userId)
+        messageLimits.delete(userId)
+      }
+    }
+    for (const [userId, entry] of callbackLimits) {
+      if (now > entry.resetAt) {
+        callbackLimits.delete(userId)
       }
     }
   }, 5 * 60_000)
+  cleanupTimer.unref()
+
+  function getOrCreateEntry(
+    bucket: Map<number, RateLimitEntry>,
+    userId: number,
+    now: number,
+  ): RateLimitEntry {
+    let entry = bucket.get(userId)
+    if (!entry || now > entry.resetAt) {
+      entry = { count: 0, resetAt: now + LIMITS.RATE_LIMIT_COOLDOWN_MS, warned: false }
+      bucket.set(userId, entry)
+    }
+    return entry
+  }
 
   return async (ctx: Context, next: NextFunction) => {
     const userId = ctx.from?.id
     if (!userId) return next()
 
-    // Only rate-limit message events (not callbacks, etc.)
-    if (!ctx.message) return next()
-
     const now = Date.now()
-    let entry = limits.get(userId)
 
-    if (!entry || now > entry.resetAt) {
-      entry = { count: 0, resetAt: now + LIMITS.RATE_LIMIT_COOLDOWN_MS, warned: false }
-      limits.set(userId, entry)
+    if (ctx.callbackQuery) {
+      const callbackData = ctx.callbackQuery.data ?? ''
+      if (callbackData.startsWith('q:')) {
+        return next()
+      }
+
+      const entry = getOrCreateEntry(callbackLimits, userId, now)
+      entry.count++
+
+      if (entry.count > LIMITS.RATE_LIMIT_CALLBACKS_PER_MINUTE) {
+        if (!entry.warned) {
+          entry.warned = true
+          const remaining = Math.ceil((entry.resetAt - now) / 1000)
+          await ctx.answerCallbackQuery({ text: `Rate limit exceeded. Wait ${remaining}s.` }).catch(() => {})
+        }
+        return
+      }
+
+      return next()
     }
 
+    if (!ctx.message) return next()
+
+    const entry = getOrCreateEntry(messageLimits, userId, now)
     entry.count++
 
     if (entry.count > LIMITS.RATE_LIMIT_PER_MINUTE) {
@@ -43,7 +78,7 @@ export function createRateLimitMiddleware() {
         const remaining = Math.ceil((entry.resetAt - now) / 1000)
         await ctx.reply(`⚠️ Rate limit exceeded. Please wait ${remaining}s.`, { parse_mode: 'HTML' })
       }
-      return // Drop the message
+      return
     }
 
     return next()

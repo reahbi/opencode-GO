@@ -83,6 +83,9 @@ export const LIMITS = {
   VOICE_AUTO_MIN_CONTENT: 200,
 
   // ── Hook Bot ──────────────────────────────────────────────
+  /** Time without file activity before a hook session is considered completed (ms) — 90 seconds */
+  HOOK_IDLE_THRESHOLD_MS: 90_000,
+
   /** Time before hook session is considered stalled (ms) — 30 minutes */
   HOOK_STALL_WARNING_MS: 30 * 60 * 1000,
 
@@ -99,6 +102,53 @@ export const LIMITS = {
   /** Rate limit: max messages per user per minute */
   RATE_LIMIT_PER_MINUTE: 20,
 
+  /** Rate limit: max non-question callbacks per user per minute */
+  RATE_LIMIT_CALLBACKS_PER_MINUTE: 60,
+
   /** Rate limit: cooldown message */
   RATE_LIMIT_COOLDOWN_MS: 60_000,
+
+  // ── Summary Service ─────────────────────────────────────────
+  /** Timeout for CLI summary subprocess (ms) */
+  SUMMARY_TIMEOUT_MS: 60_000,
+
+  /** Maximum input characters before truncation for summary */
+  SUMMARY_MAX_INPUT_CHARS: 30_000,
+
+  // ── File Lock / Registry ────────────────────────────────────
+  /** Delay between read retries on corrupted registry file (ms) */
+  LOCK_READ_RETRY_DELAY_MS: 50,
+
+  /** Maximum read retries for corrupted registry file */
+  LOCK_READ_MAX_RETRIES: 3,
+
+  /** Time before a lock file is considered stale (ms) */
+  LOCK_STALE_MS: 10_000,
+
+  /** Maximum lock acquisition attempts */
+  LOCK_MAX_ATTEMPTS: 20,
+
+  // ── Thinking Token Budgets ──────────────────────────────────
+  /** Token budget for normal thinking (keyword-triggered) */
+  THINKING_NORMAL_TOKENS: 10_000,
+
+  /** Token budget for deep thinking (keyword-triggered) */
+  THINKING_DEEP_TOKENS: 50_000,
+
+  // ── Delivery / Preview ──────────────────────────────────────
+  /** Maximum characters for inline preview before file fallback */
+  PREVIEW_MAX_CHARS: 2000,
+
+  /** Safe total message length for completion notifications (under Telegram 4096 + HTML overhead) */
+  COMPLETION_SAFE_LENGTH: 3900,
+
+  // ── External API ────────────────────────────────────────────
+  /** Timeout for Whisper transcription API call (ms) */
+  WHISPER_TIMEOUT_MS: 60_000,
+
+  /** Timeout for health check / server readiness probe (ms) */
+  HEALTH_CHECK_TIMEOUT_MS: 5_000,
+
+  /** Timeout for Telegram Bot API verification calls (ms) */
+  TELEGRAM_API_TIMEOUT_MS: 10_000,
 } as const

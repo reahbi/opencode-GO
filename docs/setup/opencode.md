@@ -1,72 +1,80 @@
-[🇰🇷 한국어](opencode-kr.md)
+[Korean](opencode-kr.md)
 
-# OpenCode Server Setup Guide
+# Claude Code Setup Guide
 
-OpenCode-Go communicates with the OpenCode AI coding assistant server to perform tasks. This document guides you through installing and configuring the OpenCode server.
+Claude-Go uses the Claude Code CLI and Claude Agent SDK to interact with AI directly — no separate server required.
 
-## OpenCode Overview
+## Claude Code Overview
 
-OpenCode is a powerful AI coding assistant server. OpenCode-Go connects to this server to relay conversations with AI and code modification requests through Telegram.
+Claude Code is Anthropic's official CLI for Claude. Claude-Go embeds the Claude Agent SDK in-process, using `query()` to communicate with AI directly. This means **no separate server process** is needed.
 
-## Installation and Startup
+## Installation
 
-1. For installation instructions, refer to the official OpenCode documentation (https://opencode.ai) or the project's README.
-2. To start the server, run the following command:
+1. Install Claude Code CLI:
    ```bash
-   opencode serve
+   npm install -g @anthropic-ai/claude-code
    ```
-   By default, the server runs on port 4096.
 
-## Verifying Server Connection
+2. Authenticate (run once):
+   ```bash
+   claude
+   ```
+   Follow the prompts to log in with your Anthropic account.
 
-To verify the server is running properly, use the following command:
+3. Verify installation:
+   ```bash
+   claude --version
+   ```
+
+## Configuration
+
+Claude-Go accepts these optional environment variables for Claude configuration:
+
 ```bash
-curl http://127.0.0.1:4096/health
+# Claude model (optional, default: claude-sonnet-4-5)
+CLAUDE_MODEL=claude-sonnet-4-5
+
+# Path to Claude Code executable (optional, auto-detected if on PATH)
+CLAUDE_CODE_PATH=/usr/local/bin/claude
+
+# Extended Thinking token limit (optional, 0 = disabled)
+MAX_THINKING_TOKENS=0
+
+# Max budget per session in USD (optional, no limit if unset)
+MAX_BUDGET_USD=5.00
 ```
-If everything is working, you'll receive a status response from the server.
 
-## Port Configuration
+## How It Works
 
-To use a port other than the default (4096), run:
+Unlike the previous OpenCode-based architecture (which required a separate server), Claude-Go runs as a **single process**:
+
+```
+Previous:  Bot ──HTTP+SSE──> OpenCode Server (separate process)
+Now:       Bot ← Agent SDK query() embedded (same process)
+```
+
+- The Claude Agent SDK's `query()` function returns an `AsyncGenerator` for real-time streaming
+- Sessions are managed locally via JSON files (no server API needed)
+- Summaries are generated using the Claude CLI as a subprocess (`claude -p`)
+- Permission mode is set to `bypassPermissions` — the AI executes tools without prompts
+
+## Verifying It Works
+
+After configuring Claude-Go, run the diagnostic tool:
 ```bash
-opencode serve --port 8080
-```
-In this case, you must update `OPENCODE_SERVER_URL` in OpenCode-Go's `.env` file:
-`OPENCODE_SERVER_URL=http://127.0.0.1:8080`
-
-## Authentication Setup (Optional)
-
-For security, you can set a password for the OpenCode server using the `OPENCODE_SERVER_PASSWORD` environment variable.
-
-**WSL/Linux/macOS:**
-```bash
-OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
+bun run doctor
 ```
 
-**Windows** (requires .bat wrapper):
-```bash
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=your-password
-opencode serve --port 4096
-BATEOF
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-```
+This checks that Claude Code CLI is installed and accessible.
 
-Then update OpenCode-Go's `.env` file to match:
-```
-OPENCODE_SERVER_USERNAME=opencode
-OPENCODE_SERVER_PASSWORD=your-password
-```
+## Model Selection
 
-Verify the connection:
-```bash
-curl -s -u opencode:your-password http://127.0.0.1:4096/project
-```
+You can change the AI model at runtime using the `/agents` command in Telegram, or set the default model via `CLAUDE_MODEL` environment variable.
 
-## Using a Remote Server
+## Extended Thinking
 
-If the OpenCode server is running on a different machine:
-1. Set `OPENCODE_SERVER_URL` in the `.env` file to that server's IP address.
-   Example: `OPENCODE_SERVER_URL=http://192.168.1.100:4096`
-2. Ensure the firewall on that server allows port 4096 (or your configured port).
+Extended Thinking allows Claude to show its reasoning process. It's triggered automatically by keywords like "think", "analyze", or "deep" in your messages, or you can set `MAX_THINKING_TOKENS` to a non-zero value to enable it by default.
+
+## Budget Control
+
+Set `MAX_BUDGET_USD` to limit spending per session. This is passed directly to the SDK's `maxBudgetUsd` option. You can also configure this per-session via `/settings` in Telegram.

@@ -1,16 +1,16 @@
-[🇺🇸 English](telegram.md)
+[English](telegram.md)
 
 # 텔레그램 봇 설정 가이드
 
-이 문서는 OpenCode-Go를 제어하기 위한 텔레그램 봇(Telegram Bot)을 생성하고 필요한 정보를 획득하는 방법을 설명합니다.
+이 문서는 Claude-Go를 제어하기 위한 텔레그램 봇(Telegram Bot)을 생성하고 필요한 정보를 획득하는 방법을 설명합니다.
 
 ## 봇 생성 과정
 
 1. 텔레그램 앱에서 @BotFather를 검색하여 대화 세션을 시작합니다.
 2. `/start` 메시지를 전송합니다.
 3. `/newbot` 명령어를 전송하여 새로운 봇 생성을 시작합니다.
-4. 봇의 이름(Name)을 입력합니다. (예: My OpenCode-Go)
-5. 봇의 유저네임(Username)을 입력합니다. 이 이름은 반드시 `_bot`으로 끝나야 합니다. (예: my_opencode_go_bot)
+4. 봇의 이름(Name)을 입력합니다. (예: My Claude-Go)
+5. 봇의 유저네임(Username)을 입력합니다. 이 이름은 반드시 `_bot`으로 끝나야 합니다. (예: my_claude_go_bot)
 6. 생성이 완료되면 봇 토큰(Bot Token)을 수령합니다.
 
 ## 봇 토큰(Bot Token) 형식
@@ -22,7 +22,7 @@
 
 ## 본인의 텔레그램 유저 ID(Telegram User ID) 확인
 
-OpenCode-Go는 승인된 사용자만 접근할 수 있도록 보안 설정이 되어 있습니다. 본인의 유저 ID를 확인하려면 다음 단계를 따르십시오.
+Claude-Go는 승인된 사용자만 접근할 수 있도록 보안 설정이 되어 있습니다. 본인의 유저 ID를 확인하려면 다음 단계를 따르십시오.
 
 1. @userinfobot (https://t.me/userinfobot)에게 아무 메시지나 전송합니다.
 2. 봇이 응답으로 보내주는 숫자 값이 본인의 유저 ID(User ID)입니다.
@@ -42,7 +42,7 @@ OpenCode-Go는 승인된 사용자만 접근할 수 있도록 보안 설정이 �
 3. `Bot Settings` → `Allow Groups?` → `Turn groups on`
 4. (선택) `Group Privacy` → `Turn off` — 봇이 그룹의 모든 메시지를 볼 수 있게 함
 
-**참고**: OpenCode-Go는 기본적으로 @멘션된 메시지만 처리하므로 Group Privacy를 끄지 않아도 됩니다.
+**참고**: Claude-Go는 기본적으로 @멘션된 메시지만 처리하므로 Group Privacy를 끄지 않아도 됩니다.
 
 ## 문제 해결
 

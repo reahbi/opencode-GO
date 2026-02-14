@@ -5,7 +5,9 @@ import type { BotRegistryPort } from '../../../domain/ports/BotRegistryPort.js'
 import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
 import type { Button } from '../../../domain/models.js'
+import { escapeHtml } from '../../../shared/formatResponse.js'
 import { logger } from '../../../shared/logger.js'
+import { updateChatState } from '../../../app/usecases/stateUpdate.js'
 import { promises as fs } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -21,10 +23,6 @@ interface AddBotWizardState {
 
 const MAX_TOKEN_ATTEMPTS = 3
 const wizards = new Map<number, AddBotWizardState>()
-
-function escapeHtml(t: string): string {
-  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
 
 interface Project {
   worktree: string
@@ -80,9 +78,9 @@ export function addbotCommand(state: StateStore, registry?: BotRegistryPort) {
     // No existing bots — start wizard
     wizards.delete(chatId)
 
-    const chatState = await state.getChatState(chatId)
-    chatState.awaitingInput = 'addbot_token'
-    await state.saveChatState(chatId, chatState)
+    await updateChatState(state, chatId, (chatState) => {
+      chatState.awaitingInput = 'addbot_token'
+    })
 
     await ctx.reply(
       [
@@ -120,9 +118,9 @@ export async function handleAddbotToken(
       // Check if max attempts reached
       if (wizard.tokenAttempts >= MAX_TOKEN_ATTEMPTS) {
         wizards.delete(chatId)
-        const chatState = await state.getChatState(chatId)
-        chatState.awaitingInput = null
-        await state.saveChatState(chatId, chatState)
+        await updateChatState(state, chatId, (chatState) => {
+          chatState.awaitingInput = null
+        })
         await output.sendText(chatId, `❌ Invalid bot token. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addbot to start again.`)
         return true
       }
@@ -135,9 +133,9 @@ export async function handleAddbotToken(
     // Check if max attempts reached
     if (wizard.tokenAttempts >= MAX_TOKEN_ATTEMPTS) {
       wizards.delete(chatId)
-      const chatState = await state.getChatState(chatId)
-      chatState.awaitingInput = null
-      await state.saveChatState(chatId, chatState)
+      await updateChatState(state, chatId, (chatState) => {
+        chatState.awaitingInput = null
+      })
       await output.sendText(chatId, `❌ Cannot connect to Telegram API. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addbot to start again.`)
       return true
     }
@@ -150,9 +148,9 @@ export async function handleAddbotToken(
   wizard = { token, username, tokenAttempts: 0 }
   wizards.set(chatId, wizard)
 
-  const chatState = await state.getChatState(chatId)
-  chatState.awaitingInput = null
-  await state.saveChatState(chatId, chatState)
+  await updateChatState(state, chatId, (chatState) => {
+    chatState.awaitingInput = null
+  })
 
   const buttons: Button[] = [
     { label: '✏️ Writer', callbackData: 'addbot:writer' },

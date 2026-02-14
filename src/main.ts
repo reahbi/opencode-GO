@@ -26,6 +26,12 @@ import { promises as fs } from 'node:fs'
 async function main() {
   const config = loadEnvConfig()
 
+  try {
+    await fs.access(config.defaultProject)
+  } catch {
+    throw new Error(`DEFAULT_PROJECT path does not exist: ${config.defaultProject}`)
+  }
+
   if (process.env.INSTANCE_NAME) {
     setInstancePrefix(config.instanceName)
   }
@@ -39,7 +45,7 @@ async function main() {
     claudeCodePath: config.claudeCodePath,
   })
   const sessionStore = createSessionStore(config.stateDir)
-  const summary = createClaudeSummaryService(config.claudeCodePath)
+  const summary = createClaudeSummaryService(config.claudeCodePath, config.summaryModel)
   const state = createJsonStateStore(config.stateDir)
   const queue = createChatQueue()
   const tunnel = createTunnelManager()
@@ -48,7 +54,7 @@ async function main() {
   const voiceFlow = createVoiceFlow({ summary, tts, output, state })
 
   const transcription = config.openaiApiKey
-    ? createOpenAIWhisperAdapter(config.openaiApiKey)
+    ? createOpenAIWhisperAdapter(config.openaiApiKey, config.openaiApiBaseUrl)
     : undefined
 
   const botInfo = await bot.api.getMe()

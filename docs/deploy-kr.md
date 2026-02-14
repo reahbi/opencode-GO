@@ -2,7 +2,7 @@
 
 # PM2 배포 가이드 (Deployment)
 
-이 문서는 PM2 프로세스 매니저를 사용하여 OpenCode-Go를 안정적으로 배포하고 관리하는 방법을 설명합니다.
+이 문서는 PM2 프로세스 매니저를 사용하여 Claude-Go를 안정적으로 배포하고 관리하는 방법을 설명합니다.
 
 ## PM2 개요
 
@@ -77,12 +77,12 @@ npm install -g pm2
 ### ecosystem.config.cjs 예시
 
 ```javascript
-const COORDINATION_DIR = '/tmp/opencode-go-coordination'
+const COORDINATION_DIR = '/tmp/claude-go-coordination'
 
 module.exports = {
   apps: [
     {
-      name: 'opencode-go-writer',
+      name: 'claude-go-writer',
       script: 'src/main.ts',
       interpreter: 'bun',
       env: {
@@ -97,7 +97,7 @@ module.exports = {
       },
     },
     {
-      name: 'opencode-go-reader',
+      name: 'claude-go-reader',
       script: 'src/main.ts',
       interpreter: 'bun',
       env: {

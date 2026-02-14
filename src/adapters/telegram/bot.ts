@@ -5,8 +5,6 @@ import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { OutputHandle, Button } from '../../domain/models.js'
 
 export type BotInstance = Bot<Context>
-const _MARKER = 'v2-fix-applied'
-void _MARKER
 
 export function createBot(token: string): BotInstance {
   const bot = new Bot<Context>(token)

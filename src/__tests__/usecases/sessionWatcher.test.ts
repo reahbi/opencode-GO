@@ -514,7 +514,7 @@ describe('sessionWatcher', () => {
       await watcher.watch(chatId)
 
       // Change the project directory
-      state._store.set(chatId, buildChatState({
+      state._store.set(String(chatId), buildChatState({
         activeProjectDirectory: '/new/project',
         activeSessionId: 'ses-2',
       }))

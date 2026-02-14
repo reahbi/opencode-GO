@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import { createJsonSessionStore } from '../../adapters/claude/jsonSessionStore.js'
 import type { SessionStorePort, SessionMeta } from '../../domain/ports/SessionStorePort.js'
 import { tmpdir } from 'node:os'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 function buildSessionMeta(overrides: Partial<SessionMeta> = {}): SessionMeta {
@@ -253,6 +253,19 @@ describe('jsonSessionStore', () => {
       const result = await store2.getSession('persist')
       expect(result).not.toBeNull()
       expect(result!.title).toBe('Persistent')
+    })
+  })
+
+  describe('corruption recovery', () => {
+    it('backs up corrupt sessions file and reinitializes safely', async () => {
+      const sessionsPath = join(dir, 'sessions.json')
+      writeFileSync(sessionsPath, '{"invalid":', 'utf-8')
+
+      const result = await store.listSessions()
+
+      expect(result).toEqual([])
+      const entries = readdirSync(dir)
+      expect(entries.some((name) => name.startsWith('sessions.json.corrupt.'))).toBe(true)
     })
   })
 })

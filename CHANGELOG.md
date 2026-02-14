@@ -34,14 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial public release
-- Telegram bot for remote OpenCode agent control
+- Telegram bot for remote Claude Code agent control
 - Session management commands: `/new`, `/list`, `/resume`, `/abort`
 - Interactive permission and question handling with inline keyboards
 - Multi-project support via `data/projects.json`
 - Summary mode with customizable AI models (`/settings`)
 - Agent selection (`/agents`)
 - Message queue with `/queue`, `/undo`, `/redo` commands
-- Real-time SSE streaming with throttled message updates
+- Real-time streaming with throttled message updates
 - File delivery for oversized responses (>4KB)
 - Per-chat state persistence (JSON file store)
 - Session history export (`/history`)
@@ -59,5 +59,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-bot setup guide (EN/KR)
 - Troubleshooting guide (EN/KR)
 
-[Unreleased]: https://github.com/reahbi/opencode-go/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/reahbi/opencode-go/releases/tag/v0.1.0
+[Unreleased]: https://github.com/reahbi/claude-go/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/reahbi/claude-go/releases/tag/v0.1.0

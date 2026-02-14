@@ -4,6 +4,7 @@ import type { ChatOutputPort } from '../../domain/ports/ChatOutputPort.js'
 import type { CoordinationPort, CoordinationEvent } from '../../domain/ports/CoordinationPort.js'
 import type { BotRegistryPort } from '../../domain/ports/BotRegistryPort.js'
 import type { GroupSettingsPort } from '../../domain/ports/GroupSettingsPort.js'
+import { escapeHtml } from '../../shared/formatResponse.js'
 import { logger } from '../../shared/logger.js'
 import { LIMITS } from '../policies/limits.js'
 
@@ -58,12 +59,6 @@ interface ChatContext {
 }
 
 const DEBATE_MSG_MAX_LENGTH = 3500
-const RESPONSE_POLL_INTERVAL_MS = 2000
-const RESPONSE_POLL_TIMEOUT_MS = 10 * 60 * 1000
-
-function escapeHtml(t: string): string {
-  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
 
 function truncateForTelegram(text: string): string {
   if (text.length <= DEBATE_MSG_MAX_LENGTH) return text

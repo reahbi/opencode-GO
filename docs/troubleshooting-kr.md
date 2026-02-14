@@ -2,7 +2,7 @@
 
 # 문제 해결 가이드 (Troubleshooting)
 
-OpenCode-Go 사용 중 발생할 수 있는 주요 문제들과 해결 방법을 안내합니다.
+Claude-Go 사용 중 발생할 수 있는 주요 문제들과 해결 방법을 안내합니다.
 
 ## <a id="env-missing"></a>환경변수 누락
 
@@ -21,18 +21,19 @@ cp .env.example .env
 **해결**:
 @userinfobot을 통해 본인의 숫자형 ID를 다시 확인한 후, `.env` 파일에 숫자만 입력하십시오. 여러 개인 경우 쉼표로 구분합니다.
 
-## <a id="server-unreachable"></a>OpenCode 서버 연결 불가
+## <a id="claude-not-found"></a>Claude Code CLI 미설치
 
-**증상**: `Cannot connect to OpenCode at http://...` 에러 발생
-**원인**: OpenCode 서버가 실행 중이 아니거나, URL 설정이 잘못되었거나, 방화벽에 의해 차단됨
+**증상**: 실행 시 `Claude Code CLI not found` 에러 발생
+**원인**: Claude Code가 설치되어 있지 않거나, PATH에 포함되지 않음
 **해결**:
 ```bash
-# 서버 실행 확인
-opencode serve
-# 연결 테스트
-curl http://127.0.0.1:4096/health
+# Claude Code 설치
+npm install -g @anthropic-ai/claude-code
+
+# 설치 확인
+claude --version
 ```
-`.env`의 `OPENCODE_SERVER_URL`이 실제 서버 주소와 일치하는지 확인하십시오.
+설치되었지만 찾을 수 없는 경우, `.env`에 `CLAUDE_CODE_PATH`를 전체 경로로 설정하십시오.
 
 ## <a id="token-invalid"></a>봇 토큰 무효
 
@@ -85,16 +86,6 @@ chmod 755 data/
 **해결**:
 `docs/setup/bun.md` 문서를 참고하여 Bun을 설치하고 PATH 설정을 완료하십시오.
 
-## <a id="port-in-use"></a>포트 충돌
-
-**증상**: `address already in use` 에러 발생 (서버 실행 시)
-**원인**: 이미 다른 프로세스가 동일한 포트(기본 4096)를 사용 중임
-**해결**:
-```bash
-lsof -i :4096
-```
-해당 포트를 사용하는 프로세스를 종료하거나, 다른 포트를 사용하여 서버를 실행하십시오.
-
 ---
 
 ## 멀티봇 관련 문제
@@ -127,7 +118,7 @@ lsof -i :4096
 echo $COORDINATION_DIR
 
     # 디렉토리 권한 확인
-    ls -la /tmp/opencode-go-coordination/
+    ls -la /tmp/claude-go-coordination/
 ```
 
 ## <a id="duplicate-groupsettings"></a>/groupsettings 중복 응답

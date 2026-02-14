@@ -28,6 +28,7 @@ describe('promptFlow', () => {
     setPromptHandle: mock(() => undefined),
     setPromptContext: mock(() => undefined),
     watchQuery: mock(() => undefined),
+    getActiveQueryHandle: mock(() => null),
   })
 
   beforeEach(() => {
@@ -81,6 +82,7 @@ describe('promptFlow', () => {
     expect(state.saveChatState).toHaveBeenCalledWith(
       chatId,
       expect.objectContaining({ lastPrompt: 'hello' }),
+      undefined,
     )
   })
 
@@ -89,12 +91,12 @@ describe('promptFlow', () => {
 
     await flow.handleUserMessage(chatId, 'hello', { actorUserId: 7, isGroup: true })
 
-    expect(watcher.ensureWatching).toHaveBeenCalledWith(chatId)
+    expect(watcher.ensureWatching).toHaveBeenCalledWith(chatId, undefined)
     expect(watcher.setPromptContext).toHaveBeenCalledWith(chatId, {
       actorUserId: 7,
       liveUpdatesEnabled: false,
       userPrompt: 'hello',
-    })
+    }, undefined)
   })
 
   it('defaults live updates to enabled for direct chats', async () => {
@@ -106,7 +108,7 @@ describe('promptFlow', () => {
       actorUserId: undefined,
       liveUpdatesEnabled: true,
       userPrompt: 'hello',
-    })
+    }, undefined)
   })
 
   it('stores prompt handle from the processing message', async () => {
@@ -114,7 +116,7 @@ describe('promptFlow', () => {
 
     await flow.handleUserMessage(chatId, 'hello')
 
-    expect(watcher.setPromptHandle).toHaveBeenCalledWith(chatId, 'msg-1')
+    expect(watcher.setPromptHandle).toHaveBeenCalledWith(chatId, 'msg-1', undefined)
   })
 
   it('includes activeAgent when sending prompts', async () => {

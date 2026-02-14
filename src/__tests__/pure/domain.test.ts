@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { createDefaultChatState, createDefaultUserSettings } from '../../domain/models.js'
+import { DEFAULT_SUMMARY_MODEL } from '../../shared/constants.js'
 import {
   AppError,
   SessionNotFoundError,
@@ -13,7 +14,7 @@ describe('domain/models', () => {
       const settings = createDefaultUserSettings()
       
       expect(settings.summaryMode).toBe(true)
-      expect(settings.summaryModel).toEqual({ providerID: 'google', modelID: 'antigravity-gemini-3-flash' })
+      expect(settings.summaryModel).toEqual({ providerID: 'anthropic', modelID: DEFAULT_SUMMARY_MODEL })
       expect(settings.summaryThreshold).toBe(3000)
       expect(settings.outputMode).toBe('formatted')
       expect(settings.historyFormat).toBe('html')

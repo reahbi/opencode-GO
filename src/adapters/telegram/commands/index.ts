@@ -22,6 +22,7 @@ import {
   agentSubText, agentSubKeyboard,
   customAgentSubText, customAgentSubKeyboard,
   summarySubText, summarySubKeyboard,
+  modelSelectText, modelSelectKeyboard,
   outputSubText, outputSubKeyboard,
   historySubText, historySubKeyboard,
   voiceSubText, voiceSubKeyboard,
@@ -76,10 +77,29 @@ import { escapeHtml } from '../../../shared/formatResponse.js'
 import { logger } from '../../../shared/logger.js'
 import { LIMITS } from '../../../app/policies/limits.js'
 
+function sanitizeError(msg: string, token: string): string {
+  return msg.replaceAll(token, '[BOT_TOKEN]')
+}
+
 function stripBotMention(text: string, botUsername: string): string {
   if (!botUsername) return text
   const pattern = new RegExp(`@${botUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'gi')
   return text.replace(pattern, '').trim()
+}
+
+function getThreadIdFromContext(ctx: Context): number | undefined {
+  const chatType = ctx.chat?.type ?? ctx.callbackQuery?.message?.chat.type
+  const isGroup = chatType === 'group' || chatType === 'supergroup'
+  if (!isGroup) return undefined
+  const callbackMsg = ctx.callbackQuery?.message
+  if (callbackMsg && 'message_thread_id' in callbackMsg && typeof callbackMsg.message_thread_id === 'number') {
+    return callbackMsg.message_thread_id
+  }
+  return ctx.message?.message_thread_id
+}
+
+function getQueueScopeKey(chatId: number, threadId?: number): string {
+  return threadId ? `${chatId}:${threadId}` : String(chatId)
 }
 
 interface RegisterCommandsDeps {
@@ -153,18 +173,28 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     }
   }
 
-  const sessionCommands = createSessionCommands({ sessionStore, state, output })
+  let watcher: ReturnType<typeof createSessionWatcher> | null = null
+
+  const sessionCommands = createSessionCommands({
+    sessionStore,
+    state,
+    output,
+    getActiveQueryHandle: (chatId, threadId) => watcher?.getActiveQueryHandle(chatId, threadId) ?? null,
+  })
   const interactiveFlow = createInteractiveFlow({ state, output, botRole: deps.botRole })
 
   let promptFlow: ReturnType<typeof createPromptFlow>
 
-  const watcher = createSessionWatcher({
+  watcher = createSessionWatcher({
     state, output, summary,
-    onQuestionAsked: (cid, e, uid) => interactiveFlow.handleQuestionEvent(cid, e, uid),
+    onQuestionAsked: (cid, e, uid, threadId) => interactiveFlow.handleQuestionEvent(cid, e, uid, undefined, threadId),
     isDebateActive: deps.debateFlow ? (chatId) => deps.debateFlow!.isActive(chatId) : undefined,
-    onQueueDrain: async (chatId, messages) => {
+    onQueueDrain: async (chatId, messages, threadId) => {
+      const scopeKey = getQueueScopeKey(chatId, threadId)
       for (const msg of messages) {
-        await promptFlow.handleUserMessage(chatId, msg.text, { actorUserId: msg.actorUserId })
+        await queue.enqueue(scopeKey, () =>
+          promptFlow.handleUserMessage(chatId, msg.text, { actorUserId: msg.actorUserId, threadId })
+        )
       }
     },
     tunnel: deps.tunnel,
@@ -189,6 +219,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
   reg('new', async (ctx) => {
     const chatId = ctx.chat?.id
+    const threadId = getThreadIdFromContext(ctx)
     if (chatId) {
       cancelAddbotWizard(chatId)
       cancelAddhookbotWizard(chatId)
@@ -196,27 +227,28 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       await deps.tunnel?.stop(chatId)
     }
     await newCommand(sessionCommands)(ctx)
-    if (chatId) await watcher.watch(chatId)
+    if (chatId) await watcher?.watch(chatId, threadId)
   })
   reg('list', listCommand(sessionCommands))
   reg('resume', async (ctx) => {
     const chatId = ctx.chat?.id
+    const threadId = getThreadIdFromContext(ctx)
     if (chatId) {
       cancelAddbotWizard(chatId)
       cancelAddhookbotWizard(chatId)
       cancelMakeagentWizard(chatId)
     }
     await resumeCommand(sessionCommands)(ctx)
-    if (chatId) await watcher.watch(chatId)
+    if (chatId) await watcher?.watch(chatId, threadId)
   })
   reg('abort', async (ctx) => {
     const chatId = ctx.chat?.id
-    if (chatId) watcher.stop(chatId)
     await abortCommand(sessionCommands)(ctx)
+    if (chatId) watcher?.stop(chatId, getThreadIdFromContext(ctx))
   })
   reg('history', historyCommand(sessionCommands, output))
   reg('queue', queueCommand(state, {
-    sendPrompt: (chatId, text, userId) => promptFlow.handleUserMessage(chatId, text, { actorUserId: userId })
+    sendPrompt: (chatId, text, userId, threadId) => promptFlow.handleUserMessage(chatId, text, { actorUserId: userId, threadId })
   }))
   reg('clearqueue', clearQueueCommand(state))
   reg('showqueue', showQueueCommand(state))
@@ -268,14 +300,15 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('cancel', async (ctx) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
+    const threadId = getThreadIdFromContext(ctx)
     cancelAddbotWizard(chatId)
     cancelAddhookbotWizard(chatId)
     cancelMakeagentWizard(chatId)
-    const chatState = await state.getChatState(chatId)
+    const chatState = await state.getChatState(chatId, threadId)
     if (chatState.awaitingInput) {
       chatState.awaitingInput = null
       chatState.awaitingInteractionId = null
-      await state.saveChatState(chatId, chatState)
+      await state.saveChatState(chatId, chatState, threadId)
       await ctx.reply('❌ Cancelled.')
     } else {
       await ctx.reply('Nothing to cancel.')
@@ -296,12 +329,13 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     const cbChatType = ctx.chat?.type ?? ctx.callbackQuery.message?.chat.type
     const isGroupCb = cbChatType === 'group' || cbChatType === 'supergroup'
     const groupInstanceName = isGroupCb ? deps.instanceName : undefined
+    const threadId = getThreadIdFromContext(ctx)
 
     logger.info('bot', `Callback received: ${data}`)
     const parsed = parseCallback(data)
 
     if (isGroupCb && 'interactionId' in parsed) {
-      const chatState = await state.getChatState(chatId)
+      const chatState = await state.getChatState(chatId, threadId)
       const interaction = chatState.pendingInteractions.find(i => i.interactionId === parsed.interactionId)
       if (interaction?.creatorUserId && interaction.creatorUserId !== ctx.callbackQuery.from.id) {
         await ctx.answerCallbackQuery({ text: 'You are not the target of this request.', show_alert: true }).catch(() => {})
@@ -311,41 +345,41 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
     switch (parsed.type) {
       case 'question_answer':
-        await interactiveFlow.handleQuestionAnswer(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex)
+        await interactiveFlow.handleQuestionAnswer(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex, threadId)
         break
       case 'question_toggle':
-        await interactiveFlow.handleQuestionToggle(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex)
+        await interactiveFlow.handleQuestionToggle(chatId, parsed.interactionId, parsed.questionIndex, parsed.answerIndex, threadId)
         break
       case 'question_next':
-        await interactiveFlow.handleQuestionNext(chatId, parsed.interactionId, parsed.questionIndex)
+        await interactiveFlow.handleQuestionNext(chatId, parsed.interactionId, parsed.questionIndex, threadId)
         break
       case 'question_skip':
-        await interactiveFlow.handleQuestionSkip(chatId, parsed.interactionId, parsed.questionIndex)
+        await interactiveFlow.handleQuestionSkip(chatId, parsed.interactionId, parsed.questionIndex, threadId)
         break
       case 'question_type':
-        await interactiveFlow.handleQuestionType(chatId, parsed.interactionId, parsed.questionIndex)
+        await interactiveFlow.handleQuestionType(chatId, parsed.interactionId, parsed.questionIndex, threadId)
         break
       case 'question_back':
-        await interactiveFlow.handleQuestionBack(chatId, parsed.interactionId, parsed.questionIndex)
+        await interactiveFlow.handleQuestionBack(chatId, parsed.interactionId, parsed.questionIndex, threadId)
         break
       case 'question_confirm':
-        await interactiveFlow.handleQuestionConfirm(chatId, parsed.interactionId)
+        await interactiveFlow.handleQuestionConfirm(chatId, parsed.interactionId, threadId)
         break
       case 'question_reset':
-        await interactiveFlow.handleQuestionReset(chatId, parsed.interactionId)
+        await interactiveFlow.handleQuestionReset(chatId, parsed.interactionId, threadId)
         break
       case 'agent': {
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         chatState.activeAgent = parsed.agentName
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
         await updateRegistryAgent(parsed.agentName)
         await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b>`, { parse_mode: 'HTML' })
         break
       }
       case 'settings_agent': {
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         chatState.activeAgent = parsed.agentName
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
         await updateRegistryAgent(parsed.agentName)
         try {
           const models = await claude.getSupportedModels()
@@ -361,14 +395,14 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'settings_custom_agent': {
         if (!deps.customAgents) break
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         const selected = await deps.customAgents.get(parsed.agentId)
         if (!selected) {
           await output.sendText(chatId, '❌ Custom agent not found.')
           break
         }
         chatState.customAgentId = selected.id
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
 
         const agents = await deps.customAgents.list()
         await ctx.editMessageText(
@@ -379,9 +413,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'settings_remove_agent': {
         if (!deps.customAgents) break
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         chatState.customAgentId = null
-        await state.saveChatState(chatId, chatState)
+        await state.saveChatState(chatId, chatState, threadId)
 
         const agents = await deps.customAgents.list()
         await ctx.editMessageText(
@@ -391,7 +425,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'settings': {
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         switch (parsed.action) {
           case 'sub_agent': {
             try {
@@ -433,7 +467,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'review': {
             const current = resolveReviewMode(chatState.settings, deps.botRole)
             chatState.settings.reviewMode = !current
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             try {
               const models = await claude.getSupportedModels()
               const agents = models.map(m => ({ name: m.id, description: m.name }))
@@ -448,17 +482,17 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           }
           case 'format':
             chatState.settings.outputMode = chatState.settings.outputMode === 'formatted' ? 'raw' : 'formatted'
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(outputSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: outputSubKeyboard() })
             break
           case 'summary':
             chatState.settings.summaryMode = !chatState.settings.summaryMode
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             break
           case 'threshold':
             chatState.awaitingInput = 'threshold'
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(
               `📏 Enter summary trigger threshold in characters.\nResponses longer than this will be summarized.\n(Summary output is always compact ~${LIMITS.SUMMARY_OUTPUT_TARGET} chars)\n\nCurrent: ${chatState.settings.summaryThreshold.toLocaleString()} chars\nExamples: 3000, 6000, 10000`,
               { parse_mode: 'HTML' }
@@ -468,7 +502,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             const level = parsed.value as 'vibe' | 'developer' | 'beginner'
             if (level === 'vibe' || level === 'developer' || level === 'beginner') {
               chatState.settings.userExpertise = level
-              await state.saveChatState(chatId, chatState)
+              await state.saveChatState(chatId, chatState, threadId)
             }
             try {
               const msg = ctx.callbackQuery?.message
@@ -486,20 +520,20 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
           case 'model': {
             await ctx.editMessageText(
-              'Summary model selection is not available with Claude SDK. Using default model.',
-              { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) },
+              modelSelectText(chatState.settings),
+              { parse_mode: 'HTML', reply_markup: modelSelectKeyboard(chatState.settings) },
             )
             break
           }
 
           case 'histformat':
             chatState.settings.historyFormat = chatState.settings.historyFormat === 'html' ? 'md' : 'html'
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(historySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: historySubKeyboard() })
             break
           case 'histlimit':
             chatState.awaitingInput = 'histlimit'
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(
               [
                 '📜 <b>History Export — Message Limit</b>',
@@ -520,19 +554,19 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           case 'voice_toggle':
             chatState.settings.voiceMode = !chatState.settings.voiceMode
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
           case 'voice_auto':
             chatState.settings.voiceAutoMode = !chatState.settings.voiceAutoMode
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
           case 'voice_lang': {
             const lang = parsed.value as 'ko' | 'en'
             if (lang === 'ko' || lang === 'en') {
               chatState.settings.voiceLanguage = lang
-              await state.saveChatState(chatId, chatState)
+              await state.saveChatState(chatId, chatState, threadId)
             }
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
@@ -541,7 +575,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             const len = parseInt(parsed.value ?? '', 10)
             if ([500, 800, 1200, 2000].includes(len)) {
               chatState.settings.voiceSummaryLength = len
-              await state.saveChatState(chatId, chatState)
+              await state.saveChatState(chatId, chatState, threadId)
             }
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
@@ -550,7 +584,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             const spd = parseFloat(parsed.value ?? '')
             if ([1.0, 1.25, 1.5, 2.0].includes(spd)) {
               chatState.settings.voiceSpeed = spd
-              await state.saveChatState(chatId, chatState)
+              await state.saveChatState(chatId, chatState, threadId)
             }
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
@@ -559,13 +593,18 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             const gender = parsed.value as 'female' | 'male'
             if (gender === 'female' || gender === 'male') {
               chatState.settings.voiceGender = gender
-              await state.saveChatState(chatId, chatState)
+              await state.saveChatState(chatId, chatState, threadId)
             }
             await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
           }
           case 'back': {
-            const healthy = true
+            let healthy = false
+            try {
+              const { execFileSync } = await import('node:child_process')
+              execFileSync('claude', ['--version'], { timeout: 3000, stdio: 'ignore' })
+              healthy = true
+            } catch { /* Claude Code CLI not available */ }
             const rendered = await renderSettingsMain(chatState, healthy, groupInstanceName)
             await ctx.editMessageText(
               rendered.text,
@@ -578,7 +617,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'listpage': {
         try {
-          const pageData = await sessionCommands.getSessionPage(chatId, parsed.page)
+          const pageData = await sessionCommands.getSessionPage(chatId, parsed.page, threadId)
           if (!pageData || pageData.items.length === 0) {
             await ctx.editMessageText('No sessions found.', { parse_mode: 'HTML' })
           } else {
@@ -594,14 +633,14 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'listsel': {
         try {
-          const title = await sessionCommands.resumeSessionById(chatId, parsed.sessionId)
+          const title = await sessionCommands.resumeSessionById(chatId, parsed.sessionId, threadId)
           if (title) {
             const histKb = new InlineKeyboard().text('📜 Get History', `hist:${parsed.sessionId}`)
             await ctx.editMessageText(`✅ Resumed: <b>${escapeHtml(title)}</b>`, {
               parse_mode: 'HTML',
               reply_markup: histKb,
             })
-            await watcher.watch(chatId)
+            await watcher?.watch(chatId, threadId)
           } else {
             await ctx.editMessageText('Session not found.', { parse_mode: 'HTML' })
           }
@@ -613,7 +652,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       case 'history': {
         try {
           await ctx.editMessageText('📝 Generating history...')
-          const histResult = await sessionCommands.exportSessionHistory(chatId, parsed.sessionId)
+          const histResult = await sessionCommands.exportSessionHistory(chatId, parsed.sessionId, threadId)
           if (!histResult) {
             await output.sendText(chatId, 'No history or session not found.')
             break
@@ -628,6 +667,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'addbot_role': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         if (deps.registry) {
           await handleAddbotRoleCallback(
             chatId, parsed.role, state, output,
@@ -639,6 +682,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'addbot_project': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         if (deps.registry) {
           await handleAddbotProjectCallback(
             chatId, parsed.projectDir, state, output,
@@ -650,6 +697,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'addbot_agent': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         if (deps.registry) {
           await handleAddbotAgentCallback(
             chatId,
@@ -663,24 +714,44 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'addbot_start': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await handleAddbotStartCallback(chatId, parsed.instanceName, output)
         break
       }
       case 'addbot_remove': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         if (deps.registry) {
           await handleAddbotRemoveCallback(chatId, parsed.instanceName, output, deps.registry)
         }
         break
       }
       case 'addbot_new': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await startAddbotWizard(chatId, state, output)
         break
       }
       case 'addhookbot_all': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await handleAddhookbotAllCallback(chatId, state, output)
         break
       }
       case 'addhookbot_project': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await handleAddhookbotProjectCb(
           chatId, parsed.projectDir, parsed.action, state, output,
           '',
@@ -690,18 +761,34 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'addhookbot_done': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await handleAddhookbotDoneCallback(chatId, state, output)
         break
       }
       case 'addhookbot_start': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await handleAddhookbotStartCallback(chatId, parsed.action, output)
         break
       }
       case 'addhookbot_remove': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await handleAddhookbotRemoveCallback(chatId, output)
         break
       }
       case 'addhookbot_reconfigure': {
+        if (cbChatType !== 'private') {
+          await ctx.answerCallbackQuery({ text: 'This action is only available in DM.', show_alert: true }).catch(() => {})
+          break
+        }
         await startAddhookbotReconfigure(
           chatId,
           output,
@@ -727,10 +814,10 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       }
       case 'makeagent_cancel': {
         cancelMakeagentWizard(chatId)
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         if (chatState.awaitingInput === 'makeagent_describe' || chatState.awaitingInput === 'makeagent_name' || chatState.awaitingInput === 'makeagent_edit') {
           chatState.awaitingInput = null
-          await state.saveChatState(chatId, chatState)
+          await state.saveChatState(chatId, chatState, threadId)
         }
         await output.sendText(chatId, '❌ Custom agent wizard cancelled.')
         break
@@ -761,9 +848,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           }
           case 'debaterounds': {
-            const gsChatState = await state.getChatState(chatId)
+            const gsChatState = await state.getChatState(chatId, threadId)
             gsChatState.awaitingInput = 'debaterounds'
-            await state.saveChatState(chatId, gsChatState)
+            await state.saveChatState(chatId, gsChatState, threadId)
             await ctx.editMessageText(
               `🎭 Enter number of debate rounds.\n\n0 = Unlimited\n\nCurrent: ${gs.debateRounds === 0 ? '♾️ Unlimited' : `${gs.debateRounds} rounds`}`,
               { parse_mode: 'HTML' },
@@ -789,14 +876,14 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         break
       }
       case 'selectmodel': {
-        const chatState = await state.getChatState(chatId)
+        const chatState = await state.getChatState(chatId, threadId)
         const slashIdx = parsed.value.indexOf('/')
         if (slashIdx > 0) {
           chatState.settings.summaryModel = {
             providerID: parsed.value.slice(0, slashIdx),
             modelID: parsed.value.slice(slashIdx + 1),
           }
-          await state.saveChatState(chatId, chatState)
+          await state.saveChatState(chatId, chatState, threadId)
         }
         await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
         break
@@ -817,9 +904,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             break
           }
           case 'custom': {
-            const chatState = await state.getChatState(chatId)
+            const chatState = await state.getChatState(chatId, threadId)
             chatState.awaitingInput = 'tunnel_port'
-            await state.saveChatState(chatId, chatState)
+            await state.saveChatState(chatId, chatState, threadId)
             await ctx.editMessageText('Enter port number (1-65535):')
             break
           }
@@ -856,7 +943,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
     const chatState = await state.getChatState(chatId, threadId)
     if (chatState.awaitingInput === 'question') {
-      const handled = await interactiveFlow.handleFreeTextAnswer(chatId, text)
+      const handled = await interactiveFlow.handleFreeTextAnswer(chatId, text, threadId)
       if (handled) return
     }
     if (chatState.awaitingInput === 'threshold') {
@@ -971,7 +1058,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
     const actorUserId = ctx.from?.id
 
-    void queue.enqueue(chatId, () => promptFlow.handleUserMessage(chatId, cleanedText, { actorUserId, isGroup }))
+    const scopeKey = getQueueScopeKey(chatId, threadId)
+    void queue.enqueue(scopeKey, () => promptFlow.handleUserMessage(chatId, cleanedText, { actorUserId, isGroup, threadId }))
       .catch(err => logger.error('bot', `Prompt job failed: ${err instanceof Error ? err.message : err}`))
   })
 
@@ -1029,18 +1117,20 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
       const text = caption.trim() || 'Analyze this image.'
 
-      void queue.enqueue(chatId, () =>
+      const scopeKey = getQueueScopeKey(chatId, threadId)
+      void queue.enqueue(scopeKey, () =>
         promptFlow.handleUserMessage(chatId, text, {
           actorUserId,
           isGroup,
+          threadId,
           images: [{ mime, data: base64Data, filename: file.file_path }],
         })
       ).catch(err => logger.error('bot', `Photo prompt failed: ${err instanceof Error ? err.message : err}`))
 
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('bot', `Photo handling failed: ${msg}`)
-      await output.sendText(chatId, `❌ Failed to process image: ${escapeHtml(msg)}`)
+      logger.error('bot', `Photo handling failed: ${sanitizeError(msg, bot.token)}`)
+      await output.sendText(chatId, `❌ Failed to process image: ${escapeHtml(sanitizeError(msg, bot.token))}`)
     }
   })
 
@@ -1089,18 +1179,20 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
       const text = caption.trim() || `Analyze this file: ${filename}`
 
-      void queue.enqueue(chatId, () =>
+      const scopeKey = getQueueScopeKey(chatId, threadId)
+      void queue.enqueue(scopeKey, () =>
         promptFlow.handleUserMessage(chatId, text, {
           actorUserId,
           isGroup,
+          threadId,
           images: [{ mime, data: base64Data, filename }],
         })
       ).catch(err => logger.error('bot', `Document prompt failed: ${err instanceof Error ? err.message : err}`))
 
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('bot', `Document handling failed: ${msg}`)
-      await output.sendText(chatId, `❌ Failed to process file: ${escapeHtml(msg)}`)
+      logger.error('bot', `Document handling failed: ${sanitizeError(msg, bot.token)}`)
+      await output.sendText(chatId, `❌ Failed to process file: ${escapeHtml(sanitizeError(msg, bot.token))}`)
     }
   })
 
@@ -1111,7 +1203,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       return
     }
 
-    const chatState = await state.getChatState(chatId)
+    const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
+    const threadId = isGroup ? ctx.message.message_thread_id : undefined
+    const chatState = await state.getChatState(chatId, threadId)
     if (!chatState.activeSessionId) {
       await output.sendText(chatId, 'No active session. Use /new to start one.')
       return
@@ -1144,16 +1238,16 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
 
       await output.sendText(chatId, `🎙 <i>${escapeHtml(transcription)}</i>`, 'HTML')
 
-      const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup'
       const actorUserId = ctx.from?.id
+      const scopeKey = getQueueScopeKey(chatId, threadId)
 
-      void queue.enqueue(chatId, () =>
-        promptFlow.handleUserMessage(chatId, transcription, { actorUserId, isGroup })
+      void queue.enqueue(scopeKey, () =>
+        promptFlow.handleUserMessage(chatId, transcription, { actorUserId, isGroup, threadId })
       ).catch(err => logger.error('bot', `Voice prompt failed: ${err instanceof Error ? err.message : err}`))
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
-      logger.error('bot', `Voice handling failed: ${msg}`)
-      await output.sendText(chatId, `❌ Voice transcription failed: ${escapeHtml(msg)}`)
+      logger.error('bot', `Voice handling failed: ${sanitizeError(msg, bot.token)}`)
+      await output.sendText(chatId, `❌ Voice transcription failed: ${escapeHtml(sanitizeError(msg, bot.token))}`)
     }
   })
 }

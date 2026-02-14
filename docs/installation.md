@@ -1,59 +1,39 @@
-[🇰🇷 한국어](installation-kr.md)
+[Korean](installation-kr.md)
 
 # Installation
 
 ## For Humans
 
-Paste this into your AI agent (OpenCode, Claude Code, etc.):
+Paste this into your AI agent (Claude Code, Cursor, etc.):
 
 ```
-Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
+Install and configure Claude-Go:
+https://raw.githubusercontent.com/reahbi/claude-go/master/docs/installation.md
 ```
 
 Or install manually:
 ```bash
-git clone https://github.com/reahbi/opencode-go.git
-cd opencode-go
+git clone https://github.com/reahbi/claude-go.git
+cd claude-go
 bun install
 bun run setup
 ```
 
 ## For LLM Agents
 
-You are helping the user install **OpenCode-Go** — a Telegram bot that remotely controls OpenCode coding agent sessions from a phone.
+You are helping the user install **Claude-Go** — a Telegram bot that remotely controls Claude Code AI sessions from a phone. Claude-Go is a **single-process** application — no separate server required.
 
 **IMPORTANT RULES:**
-1. Before doing anything else, you MUST complete Step 0 and get user confirmation.
-2. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
-3. Ask questions **one at a time**, explain each briefly, and verify before moving on.
+1. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
+2. Ask questions **one at a time**, explain each briefly, and verify before moving on.
 
-The user needs to provide **4 values**.
-
-### Step 0: Confirm Environment (MANDATORY FIRST STEP)
-
-**STOP. Present clickable options to the user:**
-
-> **Which environment will you use?**
-
-Options (clickable):
-- **Windows** — Project path like `C:\Users\...`
-- **WSL/Linux** — Project path like `/home/...`
-- **macOS** — Project path like `/Users/...`
-
-After user chooses, confirm and continue:
-
-> ✓ Environment: **[Windows/WSL/macOS]**
-
-**Store this choice — you will need it in Step 5.**
+The user needs to provide **3 values**: `BOT_TOKEN`, `ALLOWED_USER_IDS`, `DEFAULT_PROJECT`.
 
 ### Step 1: Clone & Install
 
-After user confirms the environment, proceed with installation:
-
 ```bash
-git clone https://github.com/reahbi/opencode-go.git
-cd opencode-go
+git clone https://github.com/reahbi/claude-go.git
+cd claude-go
 ```
 
 Check if Bun is installed:
@@ -69,7 +49,16 @@ Then install dependencies:
 bun install
 ```
 
+Check if Claude Code CLI is installed:
+```bash
+claude --version
+```
+
+If Claude Code is not installed, tell the user:
+> Claude Code CLI is required. To install: Run `npm install -g @anthropic-ai/claude-code` and authenticate with `claude` once.
+
 **Optional dependencies** (for specific features):
+- **Voice Input (STT)** — requires OpenAI API key. Set `OPENAI_API_KEY` in `.env`.
 - **Voice TTS** — requires `edge-tts` Python package. Install: `python3 -m venv /tmp/edge-tts-env && /tmp/edge-tts-env/bin/pip install edge-tts`
 - **Tunnel** — requires `cloudflared` binary in PATH. Install: see [cloudflare/cloudflared releases](https://github.com/cloudflare/cloudflared/releases)
 
@@ -87,15 +76,15 @@ Options (clickable):
 **If user selects "No"**, guide them:
 > Search for @BotFather in Telegram and start a conversation.
 > 1. Send `/newbot`
-> 2. Enter a bot name (e.g., My OpenCode-Go)
-> 3. Enter a bot username (e.g., my_opencode_go_bot) — must end with `_bot`
+> 2. Enter a bot name (e.g., My Claude-Go)
+> 3. Enter a bot username (e.g., my_claude_go_bot) — must end with `_bot`
 > 4. Copy the token you receive and share it here
 
 **When user provides the token**, verify it:
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getMe"
 ```
-- If response contains `"ok":true`, tell the user: `✓ Bot verified: @<username>`
+- If response contains `"ok":true`, tell the user: `Verified: @<username>`
 - If verification fails, tell the user the token seems invalid and ask them to check again.
 
 Store the token value as `BOT_TOKEN`.
@@ -119,109 +108,20 @@ Options (clickable):
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Step 4: Ask about server password
+### Step 4: Ask for DEFAULT_PROJECT
 
-**Present clickable options:**
-
-> Would you like to set a password for the OpenCode server?
-> (A password prevents unauthorized access. Skip if only using locally.)
-
-Options (clickable):
-- **Yes, set a password** — User will provide password
-- **No, skip** — No password needed
-
-**If user selects "Yes"**, ask for the password and store it as `OPENCODE_SERVER_PASSWORD`.
-
-**If user selects "No"**, set `OPENCODE_SERVER_PASSWORD=` (empty).
-
-### Step 5: Start OpenCode Server
-
-**First, kill any existing server on port 4096, then start the new server based on the environment from Step 0:**
-
-**If user selected Windows:**
-```bash
-# Kill existing server on port 4096 (both Windows and WSL)
-powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# Start Windows server (with password) — MUST use .bat wrapper:
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=<password>
-opencode serve --port 4096
-BATEOF
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-
-# Start Windows server (no password):
-powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
-```
-
-> **Why .bat wrapper?** Windows PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable inside the same process that runs `opencode serve`.
-
-**If user selected WSL/Linux or macOS:**
-```bash
-# Kill existing server on port 4096
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# Start server (with password):
-OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
-
-# Start server (no password):
-opencode serve --port 4096 &
-```
-
-Wait a few seconds for the server to start, then verify the connection:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-- If the server responds with JSON → connection works, proceed to Step 6 with project selection.
-- If the server returns an error or is unreachable → ask the user to check if the server is running. Proceed to Step 6 with manual path input.
-
-### Step 6: Ask for DEFAULT_PROJECT
-
-**If server responded in Step 5** — fetch the project list:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first).
-
-**Verify the paths match the environment from Step 0:**
-- Windows → paths should look like `C:\...` or `/c/...`
-- WSL/Linux → paths should look like `/home/...`
-- macOS → paths should look like `/Users/...`
-
-**If paths don't match**, warn the user:
-> ⚠️ The project paths look like [WSL/Windows/macOS], but you selected [environment] in Step 0.
-> This means the wrong OpenCode server is running.
-> Please start the server in [correct environment] and try again.
-
-**If paths match**, present clickable options from the project list:
-
-> Here are your [environment] projects:
-
-Options (clickable):
-- **C:\Users\me\my-app** (most recent)
-- **C:\Users\me\another-project**
-- **Enter a different path** — User will type manually
-
-**If server was unreachable** — ask directly:
-> What's the path to the project OpenCode should work on?
+> What's the absolute path to the project Claude should work on?
 >
-> Please enter an absolute path (Windows: `C:\Users\...`, WSL: `/home/...`, macOS: `/Users/...`).
+> Please enter an absolute path (e.g., `/home/user/my-project` or `C:\Users\user\my-project`).
+
+Verify the path exists:
+```bash
+ls -d <path>
+```
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 7: Create .env and verify
+### Step 5: Create .env and verify
 
 Generate the `.env` file:
 ```bash
@@ -229,9 +129,6 @@ cat > .env << 'ENVEOF'
 BOT_TOKEN=<BOT_TOKEN value>
 ALLOWED_USER_IDS=<ALLOWED_USER_IDS value>
 DEFAULT_PROJECT=<DEFAULT_PROJECT value>
-OPENCODE_SERVER_URL=http://127.0.0.1:4096
-OPENCODE_SERVER_USERNAME=opencode
-OPENCODE_SERVER_PASSWORD=<OPENCODE_SERVER_PASSWORD value or empty>
 ENVEOF
 ```
 
@@ -241,20 +138,20 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 8.
-- Some checks failed → read the failure messages and help the user resolve them. Common issues:
-  - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
-  - Project directory not found → verify the path exists
+- All checks passed — proceed to Step 6.
+- Some checks failed — read the failure messages and help the user resolve them. Common issues:
+  - Claude Code not found — tell user to install with `npm install -g @anthropic-ai/claude-code`
+  - Project directory not found — verify the path exists
 
-### Step 8: Start the bot
+### Step 6: Start the bot
 
 ```bash
 bun run start
 ```
 
-If the bot starts successfully (you'll see `OpenCode-Go is running!` in the output), tell the user:
+If the bot starts successfully (you'll see `Claude-Go is running!` in the output), tell the user:
 
-> ✓ OpenCode-Go is running!
+> Claude-Go is running!
 >
 > Send `/start` to your bot on Telegram.
 > If the bot responds with status information, installation is complete.
@@ -270,6 +167,6 @@ If something goes wrong at any step:
 ```bash
 bun run doctor
 ```
-This checks all 6 configuration items and shows what needs to be fixed.
+This auto-diagnoses configuration issues and shows what needs to be fixed.
 
 For detailed troubleshooting, read: `docs/troubleshooting.md`

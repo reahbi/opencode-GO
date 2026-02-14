@@ -10,6 +10,7 @@ import { escapeHtml, sanitizeTelegramHtml, stripHtml } from '../../shared/format
 import { routeDelivery } from '../../app/policies/deliveryRouter.js'
 import { structuralExtract } from '../../shared/structuralExtract.js'
 import { LIMITS } from '../../app/policies/limits.js'
+import { pm2Save } from '../../shared/pm2.js'
 import { parseCallback } from './ui/callbacks.js'
 
 type BotInstance = Bot<Context>
@@ -48,10 +49,10 @@ async function writeHookConfig(config: HookBotConfig): Promise<void> {
   await fs.rename(tmpPath, filePath)
 }
 
-async function verifyTelegramToken(token: string): Promise<{ username: string } | null> {
+export async function verifyTelegramToken(token: string): Promise<{ username: string } | null> {
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(LIMITS.TELEGRAM_API_TIMEOUT_MS),
     })
     const data = await res.json() as { ok: boolean; result?: { username?: string } }
     if (!data.ok || !data.result?.username) return null
@@ -61,14 +62,14 @@ async function verifyTelegramToken(token: string): Promise<{ username: string } 
   }
 }
 
-async function fetchServerProjects(cfg: HookBotConfig): Promise<Array<{ directory: string; name: string }>> {
+export async function fetchServerProjects(cfg: HookBotConfig): Promise<Array<{ directory: string; name: string }>> {
   const headers: Record<string, string> = {}
   if (cfg.serverPassword) {
     headers['Authorization'] = `Basic ${Buffer.from(`${cfg.serverUsername}:${cfg.serverPassword}`).toString('base64')}`
   }
   const res = await fetch(`${cfg.serverUrl}/project`, {
     headers,
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(LIMITS.TELEGRAM_API_TIMEOUT_MS),
   })
   if (!res.ok) return []
   const projects = await res.json() as Array<{ worktree?: string; name?: string }>
@@ -157,15 +158,6 @@ async function restartHookBotPm2(): Promise<{ ok: boolean; message: string }> {
   }
 }
 
-async function pm2Save(): Promise<void> {
-  try {
-    const proc = Bun.spawn(['pm2', 'save'], { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' })
-    await proc.exited
-  } catch {
-    logger.warn('hookbot', 'pm2 save failed')
-  }
-}
-
 // ── Bot Factory ──────────────────────────────────────────────
 
 export function createHookBot(token: string): BotInstance {
@@ -240,7 +232,7 @@ export function createHookBotNotificationAdapter(
         break
       }
       case 'file': {
-        const preview = structuralExtract(content).slice(0, 2000)
+        const preview = structuralExtract(content).slice(0, LIMITS.PREVIEW_MAX_CHARS)
         await sendText(preview + '\n\n<i>... (full response attached)</i>', 'HTML')
         await sendFile(Buffer.from(plan.fileContent!, 'utf-8'), 'response.md', 'Full response attached.')
         break
@@ -260,7 +252,7 @@ export function createHookBotNotificationAdapter(
       logger.warn('hookbot', `Delivery failed (${errMsg.slice(0, 80)}), forcing file delivery`)
     }
 
-    const preview = structuralExtract(content).slice(0, 2000)
+    const preview = structuralExtract(content).slice(0, LIMITS.PREVIEW_MAX_CHARS)
     await sendText(preview + '\n\n<i>... (full response attached)</i>', 'HTML')
     await sendFile(Buffer.from(content, 'utf-8'), 'response.md', 'Full response attached.')
   }
@@ -282,7 +274,7 @@ export function createHookBotNotificationAdapter(
     // For poll-based notifications, sending header + content separately is confusing.
     if (n.lastMessage && n.lastMessage.trim()) {
       const raw = stripHtml(n.lastMessage).trim()
-      const maxTotal = 3900 // safety margin under Telegram 4096 + HTML overhead
+      const maxTotal = LIMITS.COMPLETION_SAFE_LENGTH
       const header = lines.join('\n')
 
       const label = '<b>Last message</b>'

@@ -25,7 +25,7 @@ function resolveEdgeTtsPath(): string {
   const home = homedir()
   const candidates = [
     join(home, '.local', 'edge-tts-env', 'bin', 'edge-tts'),
-    '/tmp/edge-tts-env/bin/edge-tts',
+    join(tmpdir(), 'edge-tts-env', 'bin', 'edge-tts'),
     join(home, '.local', 'bin', 'edge-tts'),
     '/usr/local/bin/edge-tts',
     '/usr/bin/edge-tts',

@@ -29,7 +29,7 @@ This document provides detailed information on all available commands and how to
 - **Usage**: `/abort`
 
 ### /status
-- **Description**: Shows the bot's current status. Check OpenCode server connection status, active session info, and current project path.
+- **Description**: Shows the bot's current status. Check active session info, current project path, and cost tracking.
 - **Usage**: `/status`
 
 ### /agents
@@ -158,7 +158,7 @@ The following options can be managed through the `/settings` menu:
 
 ### Summary (`📊 Summary`)
 - **Summary Mode**: When enabled, automatically summarizes long AI responses using a lightweight model.
-- **Summary Model**: Select the AI model used for summarization (fetched from your OpenCode server).
+- **Summary Model**: Select the AI model used for summarization (generated via Claude CLI).
 - **Summary Threshold**: Responses exceeding this length trigger summary mode. (Default: 3,000 characters)
 - **Expertise Level**: Adjusts both text summary and voice prompt style:
   - 🎮 **Vibe Coder** — No jargon. Explains changes from the user's perspective.

@@ -1,4 +1,5 @@
 import { logger } from './logger.js'
+import { LIMITS } from '../app/policies/limits.js'
 
 export interface WaitForServerOptions {
   serverUrl: string
@@ -34,7 +35,7 @@ export async function waitForServer(options: WaitForServerOptions): Promise<bool
     try {
       const resp = await fetch(`${serverUrl}/project`, {
         headers,
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(LIMITS.HEALTH_CHECK_TIMEOUT_MS),
       })
       if (resp.ok) {
         if (attempt > 1) {

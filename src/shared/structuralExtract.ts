@@ -1,15 +1,8 @@
+import { escapeHtml } from './formatResponse.js'
+
 const MAX_EXTRACT_LENGTH = 3500
 const FILE_PATH_PATTERN = /`([^\s`]*\/[^\s`]+\.[a-zA-Z]+)`/g
 const HEADING_PATTERN = /^#{1,3}\s+(.+)$/
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
 
 export function structuralExtract(markdown: string): string {
   const lines = markdown.split('\n')

@@ -23,6 +23,10 @@ export interface EnvConfig {
   maxBudgetUsd: number | null
   /** OpenAI API key for Whisper STT (optional, Phase 4) */
   openaiApiKey: string | null
+  /** OpenAI API base URL (optional, for proxies/Azure) */
+  openaiApiBaseUrl: string
+  /** Claude model ID used for summary generation */
+  summaryModel: string
 }
 
 export function loadEnvConfig(): EnvConfig {
@@ -72,6 +76,8 @@ export function loadEnvConfig(): EnvConfig {
   const rawBudget = process.env.MAX_BUDGET_USD
   const maxBudgetUsd = rawBudget ? parseFloat(rawBudget) : null
   const openaiApiKey = process.env.OPENAI_API_KEY || null
+  const openaiApiBaseUrl = process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1'
+  const summaryModel = process.env.SUMMARY_MODEL || 'claude-haiku-4-5'
 
   return {
     botToken,
@@ -89,5 +95,7 @@ export function loadEnvConfig(): EnvConfig {
     maxThinkingTokens,
     maxBudgetUsd,
     openaiApiKey,
+    openaiApiBaseUrl,
+    summaryModel,
   }
 }

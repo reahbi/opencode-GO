@@ -1,3 +1,5 @@
+import { DEFAULT_SUMMARY_MODEL } from '../shared/constants.js'
+
 /** Opaque handle for platform-specific message IDs */
 export type OutputHandle = string
 
@@ -123,7 +125,7 @@ export interface ChatState {
 export function createDefaultUserSettings(): UserSettings {
   return {
     summaryMode: true,
-    summaryModel: { providerID: 'google', modelID: 'antigravity-gemini-3-flash' },
+    summaryModel: { providerID: 'anthropic', modelID: DEFAULT_SUMMARY_MODEL },
     summaryThreshold: 3000,
     outputMode: 'formatted',
     historyFormat: 'html',

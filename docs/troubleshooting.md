@@ -2,7 +2,7 @@
 
 # Troubleshooting Guide
 
-This guide covers common issues you may encounter while using OpenCode-Go and their solutions.
+This guide covers common issues you may encounter while using Claude-Go and their solutions.
 
 ## <a id="env-missing"></a>Missing Environment Variables
 
@@ -21,18 +21,19 @@ Then open the `.env` file and set the required variables: `BOT_TOKEN`, `ALLOWED_
 **Solution**:
 Verify your numeric ID through @userinfobot, then enter only numbers in the `.env` file. Separate multiple IDs with commas.
 
-## <a id="server-unreachable"></a>Cannot Connect to OpenCode Server
+## <a id="claude-not-found"></a>Claude Code CLI Not Found
 
-**Symptom**: `Cannot connect to OpenCode at http://...` error
-**Cause**: OpenCode server is not running, URL is misconfigured, or blocked by firewall
+**Symptom**: `Claude Code CLI not found` error on startup
+**Cause**: Claude Code is not installed, or not on your PATH
 **Solution**:
 ```bash
-# Verify server is running
-opencode serve
-# Test connection
-curl http://127.0.0.1:4096/health
+# Install Claude Code
+npm install -g @anthropic-ai/claude-code
+
+# Verify installation
+claude --version
 ```
-Verify that `OPENCODE_SERVER_URL` in `.env` matches the actual server address.
+If installed but not found, set `CLAUDE_CODE_PATH` in `.env` to the full path.
 
 ## <a id="token-invalid"></a>Invalid Bot Token
 
@@ -85,16 +86,6 @@ Check directory ownership and permissions to ensure the running user can write f
 **Solution**:
 Refer to `docs/setup/bun.md` to install Bun and configure PATH.
 
-## <a id="port-in-use"></a>Port Conflict
-
-**Symptom**: `address already in use` error (when starting server)
-**Cause**: Another process is already using the same port (default 4096)
-**Solution**:
-```bash
-lsof -i :4096
-```
-Either terminate the process using that port or start the server on a different port.
-
 ---
 
 ## Multi-Bot Related Issues
@@ -127,7 +118,7 @@ Either terminate the process using that port or start the server on a different 
 echo $COORDINATION_DIR
 
     # Check directory permissions
-    ls -la /tmp/opencode-go-coordination/
+    ls -la /tmp/claude-go-coordination/
 ```
 
 ## <a id="duplicate-groupsettings"></a>Duplicate /groupsettings Responses

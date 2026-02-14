@@ -8,7 +8,9 @@ export function statusCommand(state: StateStore, instanceName?: string, tunnel?:
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
-    const chatState = await state.getChatState(chatId)
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+    const threadId = isGroup ? ctx.message?.message_thread_id : undefined
+    const chatState = await state.getChatState(chatId, threadId)
 
     const tunnelState = tunnel?.get(chatId)
     const tunnelActive = tunnelState?.isActive && tunnelState?.url

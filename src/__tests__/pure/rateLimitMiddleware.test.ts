@@ -3,11 +3,19 @@ import { createRateLimitMiddleware } from '../../adapters/telegram/rateLimitMidd
 import { LIMITS } from '../../app/policies/limits.js'
 
 // Minimal grammy Context/NextFunction stubs
-function makeCtx(userId: number | undefined, hasMessage = true) {
+function makeCtx(
+  userId: number | undefined,
+  opts: { hasMessage?: boolean; callbackData?: string } = {},
+) {
+  const hasMessage = opts.hasMessage ?? true
   return {
     from: userId != null ? { id: userId } : undefined,
     message: hasMessage ? { text: 'hello' } : undefined,
+    callbackQuery: opts.callbackData
+      ? { data: opts.callbackData, from: userId != null ? { id: userId } : undefined }
+      : undefined,
     reply: mock(async (_text: string, _opts?: unknown) => {}),
+    answerCallbackQuery: mock(async (_opts?: unknown) => {}),
   } as any
 }
 
@@ -80,11 +88,25 @@ describe('rateLimitMiddleware', () => {
   })
 
   it('passes through for non-message events (callbacks)', async () => {
-    const ctx = makeCtx(500, false) // hasMessage = false
+    const ctx = makeCtx(500, { hasMessage: false, callbackData: 'q:int-1:0:0' })
     const next = mock(async () => {})
 
     await middleware(ctx, next)
     expect(next).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks non-question callbacks exceeding callback limit', async () => {
+    const next = mock(async () => {})
+
+    for (let i = 0; i < LIMITS.RATE_LIMIT_CALLBACKS_PER_MINUTE; i++) {
+      await middleware(makeCtx(750, { hasMessage: false, callbackData: 'git:refresh' }), next)
+    }
+
+    const blocked = makeCtx(750, { hasMessage: false, callbackData: 'git:refresh' })
+    await middleware(blocked, next)
+
+    expect(next).toHaveBeenCalledTimes(LIMITS.RATE_LIMIT_CALLBACKS_PER_MINUTE)
+    expect(blocked.answerCallbackQuery).toHaveBeenCalledTimes(1)
   })
 
   it('tracks users independently', async () => {

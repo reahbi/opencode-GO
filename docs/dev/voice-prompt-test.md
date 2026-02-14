@@ -65,7 +65,7 @@ Additional changes:
 - Updated ChatOutputPort interface: sendAudio -> sendVoice
 - All test mocks updated accordingly
 
-Files changed: domain/models.ts, domain/ports/SummaryPort.ts, domain/ports/ChatOutputPort.ts, app/policies/limits.ts, app/usecases/voiceFlow.ts, app/usecases/sessionWatcher.ts, adapters/opencode/summaryService.ts, adapters/telegram/bot.ts, adapters/telegram/commands/settings.ts, adapters/telegram/commands/index.ts, __tests__/helpers/mockChatOutputPort.ts, __tests__/usecases/sessionWatcher.test.ts
+Files changed: domain/models.ts, domain/ports/SummaryPort.ts, domain/ports/ChatOutputPort.ts, app/policies/limits.ts, app/usecases/voiceFlow.ts, app/usecases/sessionWatcher.ts, adapters/claude/claudeSummaryService.ts, adapters/telegram/bot.ts, adapters/telegram/commands/settings.ts, adapters/telegram/commands/index.ts, __tests__/helpers/mockChatOutputPort.ts, __tests__/usecases/sessionWatcher.test.ts
 
 TypeScript typecheck passes. 300 tests pass, 0 failures. Build succeeds.
 ```
@@ -123,7 +123,7 @@ Additional changes:
 - Updated ChatOutputPort interface: sendAudio -> sendVoice
 - All test mocks updated accordingly
 
-Files changed: domain/models.ts, domain/ports/SummaryPort.ts, domain/ports/ChatOutputPort.ts, app/policies/limits.ts, app/usecases/voiceFlow.ts, app/usecases/sessionWatcher.ts, adapters/opencode/summaryService.ts, adapters/telegram/bot.ts, adapters/telegram/commands/settings.ts, adapters/telegram/commands/index.ts, __tests__/helpers/mockChatOutputPort.ts, __tests__/usecases/sessionWatcher.test.ts
+Files changed: domain/models.ts, domain/ports/SummaryPort.ts, domain/ports/ChatOutputPort.ts, app/policies/limits.ts, app/usecases/voiceFlow.ts, app/usecases/sessionWatcher.ts, adapters/claude/claudeSummaryService.ts, adapters/telegram/bot.ts, adapters/telegram/commands/settings.ts, adapters/telegram/commands/index.ts, __tests__/helpers/mockChatOutputPort.ts, __tests__/usecases/sessionWatcher.test.ts
 
 TypeScript typecheck passes. 300 tests pass, 0 failures. Build succeeds.
 ```
@@ -182,7 +182,7 @@ Additional changes:
 - Updated ChatOutputPort interface: sendAudio -> sendVoice
 - All test mocks updated accordingly
 
-Files changed: domain/models.ts, domain/ports/SummaryPort.ts, domain/ports/ChatOutputPort.ts, app/policies/limits.ts, app/usecases/voiceFlow.ts, app/usecases/sessionWatcher.ts, adapters/opencode/summaryService.ts, adapters/telegram/bot.ts, adapters/telegram/commands/settings.ts, adapters/telegram/commands/index.ts, __tests__/helpers/mockChatOutputPort.ts, __tests__/usecases/sessionWatcher.test.ts
+Files changed: domain/models.ts, domain/ports/SummaryPort.ts, domain/ports/ChatOutputPort.ts, app/policies/limits.ts, app/usecases/voiceFlow.ts, app/usecases/sessionWatcher.ts, adapters/claude/claudeSummaryService.ts, adapters/telegram/bot.ts, adapters/telegram/commands/settings.ts, adapters/telegram/commands/index.ts, __tests__/helpers/mockChatOutputPort.ts, __tests__/usecases/sessionWatcher.test.ts
 
 TypeScript typecheck passes. 300 tests pass, 0 failures. Build succeeds.
 ```

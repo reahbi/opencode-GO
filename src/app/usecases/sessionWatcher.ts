@@ -20,9 +20,9 @@ interface SessionWatcherDeps {
   state: StateStore
   output: ChatOutputPort
   summary: SummaryPort
-  onQuestionAsked: (chatId: number, event: QuestionAsked, actorUserId?: number) => Promise<void>
+  onQuestionAsked: (chatId: number, event: QuestionAsked, actorUserId?: number, threadId?: number) => Promise<void>
   isDebateActive?: (chatId: number) => boolean
-  onQueueDrain?: (chatId: number, messages: QueuedMessage[]) => Promise<void>
+  onQueueDrain?: (chatId: number, messages: QueuedMessage[], threadId?: number) => Promise<void>
   tunnel?: TunnelManager
   voiceFlow?: { sendVoiceResponseDirect(chatId: number, content: string, directory: string): Promise<void> }
   sessionStore?: import('../../domain/ports/SessionStorePort.js').SessionStorePort
@@ -37,7 +37,9 @@ interface ToolPartState {
 type DeliveryState = 'idle' | 'pending' | 'delivering' | 'delivered' | 'done'
 
 interface WatcherEntry {
+  scopeKey: string
   directory: string
+  threadId?: number
   sessionId: string
   generation: number
   liveMsgHandle: OutputHandle | null
@@ -77,18 +79,19 @@ interface WatcherEntry {
 
 export interface SessionWatcher {
   /** Start watching the active session for a chat. Stops any existing watcher. */
-  watch(chatId: number): Promise<void>
+  watch(chatId: number, threadId?: number): Promise<void>
   /** Stop watching for a chat. */
-  stop(chatId: number): void
+  stop(chatId: number, threadId?: number): void
   /** Start watching if not already watching the correct session. */
-  ensureWatching(chatId: number): Promise<void>
+  ensureWatching(chatId: number, threadId?: number): Promise<void>
   /** Check if a watcher is running for a chat. */
-  isWatching(chatId: number): boolean
+  isWatching(chatId: number, threadId?: number): boolean
   /** Register a pre-created Telegram message handle for the next assistant response. */
-  setPromptHandle(chatId: number, handle: OutputHandle): void
-  setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean; userPrompt?: string }): void
+  setPromptHandle(chatId: number, handle: OutputHandle, threadId?: number): void
+  setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean; userPrompt?: string }, threadId?: number): void
   /** Start watching events from a query handle */
-  watchQuery(chatId: number, queryHandle: QueryHandle): void
+  watchQuery(chatId: number, queryHandle: QueryHandle, threadId?: number): void
+  getActiveQueryHandle(chatId: number, threadId?: number): QueryHandle | null
 }
 
 function hasErrorCode(err: unknown, code: string): boolean {
@@ -97,7 +100,11 @@ function hasErrorCode(err: unknown, code: string): boolean {
 }
 
 export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
-  const watchers = new Map<number, WatcherEntry>()
+  const watchers = new Map<string, WatcherEntry>()
+
+  function getScopeKey(chatId: number, threadId?: number): string {
+    return threadId ? `${chatId}:${threadId}` : String(chatId)
+  }
 
   // ── Voice response helpers ────────────────────────────────
 
@@ -488,7 +495,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     entry: WatcherEntry,
     event: ClaudeEvent,
   ): Promise<void> {
-    const current = watchers.get(chatId)
+    const current = watchers.get(entry.scopeKey)
     if (!current || current !== entry) return
 
     const debateActive = deps.isDebateActive?.(chatId) ?? false
@@ -500,9 +507,11 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           entry.sessionId = event.sessionId
           // Persist to state store
           try {
-            const state = await deps.state.getChatState(chatId)
-            state.activeSessionId = event.sessionId
-            await deps.state.saveChatState(chatId, state)
+            await deps.state.withChatLock(chatId, async () => {
+              const state = await deps.state.getChatState(chatId, entry.threadId)
+              state.activeSessionId = event.sessionId
+              await deps.state.saveChatState(chatId, state, entry.threadId)
+            })
           } catch (err) {
             logger.warn('watcher', `Failed to persist sessionId: ${err instanceof Error ? err.message : 'unknown'}`)
           }
@@ -519,9 +528,11 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           throttledEdit(chatId, entry, '💭 Thinking...')
         }
         try {
-          const st = await deps.state.getChatState(chatId)
-          st.lastThinkingEnabled = true
-          await deps.state.saveChatState(chatId, st)
+            await deps.state.withChatLock(chatId, async () => {
+              const st = await deps.state.getChatState(chatId, entry.threadId)
+              st.lastThinkingEnabled = true
+              await deps.state.saveChatState(chatId, st, entry.threadId)
+            })
         } catch { /* ignore */ }
         break
       }
@@ -590,7 +601,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           const question = parseAskUserQuestion(event)
           if (question) {
             try {
-              await deps.onQuestionAsked(chatId, question, entry.actorUserId ?? undefined)
+                await deps.onQuestionAsked(chatId, question, entry.actorUserId ?? undefined, entry.threadId)
             } catch (e) {
               logger.error('watcher', `Question handler error: ${e}`)
             }
@@ -664,84 +675,94 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           logger.debug('watcher', `Result success for chat ${chatId}`)
 
           try {
-            const state = await deps.state.getChatState(chatId)
+            await deps.state.withChatLock(chatId, async () => {
+              const state = await deps.state.getChatState(chatId, entry.threadId)
 
-            if (event.costUsd && event.costUsd > 0) {
-              state.sessionCostUsd = (state.sessionCostUsd ?? 0) + event.costUsd
-            }
-
-            if (!suppressDisplay && entry.lastContent) {
-              let deliveryHandle = entry.liveMsgHandle
-              if (!deliveryHandle) {
-                try {
-                  deliveryHandle = await deps.output.sendText(chatId, '📋 Loading response...')
-                  logger.debug('watcher', `Created fallback handle for delivery in chat ${chatId}`)
-                } catch (handleErr) {
-                  logger.error('watcher', `Failed to create fallback handle: ${handleErr}`)
-                }
+              if (event.costUsd && event.costUsd > 0) {
+                state.sessionCostUsd = (state.sessionCostUsd ?? 0) + event.costUsd
               }
 
-              if (deliveryHandle) {
-                entry.deliveryState = 'delivering'
-                await sendFinalResponse(chatId, deliveryHandle, entry.lastContent, state.settings, entry.directory)
-
-                const MAX_STORED_RESPONSE_LENGTH = 30_000
-                state.lastAssistantResponse = {
-                  content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
-                  sessionId: entry.sessionId,
-                  timestamp: Date.now(),
-                }
-
-                // Guard: only send voice/tunnel if still in same turn
-                if (entry.turnGeneration === turnGen) {
-                  await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
-
-                  const tunnelState = deps.tunnel?.get(chatId)
-                  if (tunnelState?.isActive && tunnelState.url) {
-                    try {
-                      await deps.output.sendInteraction(chatId, '🔗 Preview available', [
-                        { label: '🌐 Open Preview', url: tunnelState.url },
-                        { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
-                      ])
-                    } catch (tunnelErr) {
-                      logger.warn('watcher', `Failed to send tunnel button: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
-                    }
+              if (!suppressDisplay && entry.lastContent) {
+                let deliveryHandle = entry.liveMsgHandle
+                if (!deliveryHandle) {
+                  try {
+                    deliveryHandle = await deps.output.sendText(chatId, '📋 Loading response...')
+                    logger.debug('watcher', `Created fallback handle for delivery in chat ${chatId}`)
+                  } catch (handleErr) {
+                    logger.error('watcher', `Failed to create fallback handle: ${handleErr}`)
                   }
                 }
-                entry.deliveryState = 'delivered'
-                entry.lastDeliveredTurnGen = turnGen
+
+                if (deliveryHandle) {
+                  entry.deliveryState = 'delivering'
+                  await sendFinalResponse(chatId, deliveryHandle, entry.lastContent, state.settings, entry.directory)
+
+                  const MAX_STORED_RESPONSE_LENGTH = 30_000
+                  state.lastAssistantResponse = {
+                    content: entry.lastContent.slice(0, MAX_STORED_RESPONSE_LENGTH),
+                    sessionId: entry.sessionId,
+                    timestamp: Date.now(),
+                  }
+
+                  // Guard: only send voice/tunnel if still in same turn
+                  if (entry.turnGeneration === turnGen) {
+                    await handleVoiceResponse(chatId, state, entry.lastContent, entry.directory)
+
+                    const tunnelState = deps.tunnel?.get(chatId)
+                    if (tunnelState?.isActive && tunnelState.url) {
+                      try {
+                        await deps.output.sendInteraction(chatId, '🔗 Preview available', [
+                          { label: '🌐 Open Preview', url: tunnelState.url },
+                          { label: '⏹ Stop Tunnel', callbackData: 'tunnel:stop' },
+                        ])
+                      } catch (tunnelErr) {
+                        logger.warn('watcher', `Failed to send tunnel button: ${tunnelErr instanceof Error ? tunnelErr.message : 'unknown'}`)
+                      }
+                    }
+                  }
+                  entry.deliveryState = 'delivered'
+                  entry.lastDeliveredTurnGen = turnGen
+                }
               }
-            }
 
-            // Save message history
-            if (entry.lastContent) {
-              const assistantMessage = buildHistoryMessage(entry)
-              const userMessage = entry.currentUserPrompt ? {
-                role: 'user' as const,
-                createdAt: Date.now(),
-                parts: [{ type: 'text' as const, text: entry.currentUserPrompt }],
-              } : null
-              await saveMessagesToSession(entry.sessionId, userMessage, assistantMessage)
-            }
+              // Save message history
+              if (entry.lastContent) {
+                const assistantMessage = buildHistoryMessage(entry)
+                const userMessage = entry.currentUserPrompt ? {
+                  role: 'user' as const,
+                  createdAt: Date.now(),
+                  parts: [{ type: 'text' as const, text: entry.currentUserPrompt }],
+                } : null
+                await saveMessagesToSession(entry.sessionId, userMessage, assistantMessage)
+              }
 
-            resetTurnState(entry)
+              resetTurnState(entry)
 
-            const queued = [...state.queuedMessages]
-            if (queued.length > 0) {
-              state.queuedMessages = []
-            }
-            await deps.state.saveChatState(chatId, state)
+              const queued = [...state.queuedMessages]
+              if (queued.length > 0) {
+                state.queuedMessages = []
+              }
+              await deps.state.saveChatState(chatId, state, entry.threadId)
 
-            if (event.costUsd && event.costUsd > 0 && deps.sessionStore && entry.sessionId) {
-              deps.sessionStore.updateSession(entry.sessionId, {
-                totalCostUsd: state.sessionCostUsd,
-                lastActiveAt: Date.now(),
-              }).catch(err => logger.warn('watcher', `Failed to update session cost: ${err instanceof Error ? err.message : 'unknown'}`))
-            }
+              if (deps.sessionStore && entry.sessionId) {
+                const sessionUpdates: {
+                  status: 'idle'
+                  lastActiveAt: number
+                  totalCostUsd?: number
+                } = {
+                  status: 'idle',
+                  lastActiveAt: Date.now(),
+                }
+                if (event.costUsd && event.costUsd > 0) {
+                  sessionUpdates.totalCostUsd = state.sessionCostUsd
+                }
+                deps.sessionStore.updateSession(entry.sessionId, sessionUpdates).catch(err => logger.warn('watcher', `Failed to update session status: ${err instanceof Error ? err.message : 'unknown'}`))
+              }
 
-            if (deps.onQueueDrain && queued.length > 0) {
-              void deps.onQueueDrain(chatId, queued)
-            }
+              if (deps.onQueueDrain && queued.length > 0) {
+                void deps.onQueueDrain(chatId, queued, entry.threadId)
+              }
+            })
           } catch (err) {
             logger.error('watcher', `Result handling failed: ${err instanceof Error ? err.message : 'unknown'}`)
             entry.deliveryState = 'pending'
@@ -749,6 +770,12 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
               try {
                 await deps.output.editText(chatId, entry.liveMsgHandle, `❌ Delivery error: ${escapeHtml(err instanceof Error ? err.message : 'Unknown')}`)
               } catch { /* give up */ }
+            }
+            if (deps.sessionStore && entry.sessionId) {
+              deps.sessionStore.updateSession(entry.sessionId, {
+                status: 'idle',
+                lastActiveAt: Date.now(),
+              }).catch(updateErr => logger.warn('watcher', `Failed to clear busy status after delivery error: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
             }
             resetTurnState(entry)
           }
@@ -759,7 +786,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
           if (entry.lastContent && entry.liveMsgHandle) {
             try {
-              const state = await deps.state.getChatState(chatId)
+              const state = await deps.state.getChatState(chatId, entry.threadId)
               await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
             } catch {
               if (entry.liveMsgHandle) {
@@ -771,6 +798,13 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
           const errorMsg = `❌ Error: ${escapeHtml(errorText)}`
           try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
 
+          if (deps.sessionStore && entry.sessionId) {
+            deps.sessionStore.updateSession(entry.sessionId, {
+              status: 'idle',
+              lastActiveAt: Date.now(),
+            }).catch(updateErr => logger.warn('watcher', `Failed to clear busy status after result error: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
+          }
+
           resetTurnState(entry)
         }
         break
@@ -780,6 +814,12 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
         logger.warn('watcher', `Stream error for chat ${chatId}: ${event.message}`)
         const errorMsg = `❌ Error: ${escapeHtml(event.message)}`
         try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
+        if (deps.sessionStore && entry.sessionId) {
+          deps.sessionStore.updateSession(entry.sessionId, {
+            status: 'idle',
+            lastActiveAt: Date.now(),
+          }).catch(updateErr => logger.warn('watcher', `Failed to clear busy status after stream error: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
+        }
         break
       }
 
@@ -797,12 +837,12 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
   ): Promise<void> {
     try {
       for await (const event of handle.messages) {
-        const current = watchers.get(chatId)
+        const current = watchers.get(entry.scopeKey)
         if (!current || current !== entry) break
         await handleEvent(chatId, entry, event)
       }
     } catch (err) {
-      const current = watchers.get(chatId)
+      const current = watchers.get(entry.scopeKey)
       if (!current || current !== entry) return
 
       logger.error('watcher', `Query iteration error for chat ${chatId}: ${err instanceof Error ? err.message : 'unknown'}`)
@@ -810,7 +850,7 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       // Deliver any accumulated content
       if (entry.lastContent && entry.liveMsgHandle) {
         try {
-          const state = await deps.state.getChatState(chatId)
+          const state = await deps.state.getChatState(chatId, entry.threadId)
           await sendFinalResponse(chatId, entry.liveMsgHandle, entry.lastContent, state.settings, entry.directory)
         } catch {
           if (entry.liveMsgHandle) {
@@ -822,16 +862,25 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       const errorMsg = `❌ Stream error: ${escapeHtml(err instanceof Error ? err.message : 'Unknown')}`
       try { await deps.output.sendText(chatId, errorMsg) } catch { /* give up */ }
 
+      if (deps.sessionStore && entry.sessionId) {
+        deps.sessionStore.updateSession(entry.sessionId, {
+          status: 'idle',
+          lastActiveAt: Date.now(),
+        }).catch(updateErr => logger.warn('watcher', `Failed to update session status after stream error: ${updateErr instanceof Error ? updateErr.message : 'unknown'}`))
+      }
+
       resetTurnState(entry)
     }
   }
 
   // ── Public API ────────────────────────────────────────────
 
-  async function watch(chatId: number): Promise<void> {
-    stop(chatId)
+  async function watch(chatId: number, threadId?: number): Promise<void> {
+    stop(chatId, threadId)
 
-    const state = await deps.state.getChatState(chatId)
+    const scopeKey = getScopeKey(chatId, threadId)
+
+    const state = await deps.state.getChatState(chatId, threadId)
     if (!state.activeProjectDirectory) {
       logger.debug('watcher', `Cannot watch chat ${chatId}: no project directory`)
       return
@@ -839,7 +888,9 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
 
     const gen = Date.now()
     const entry: WatcherEntry = {
+      scopeKey,
       directory: state.activeProjectDirectory,
+      threadId,
       sessionId: state.activeSessionId ?? '',
       generation: gen,
       liveMsgHandle: null,
@@ -871,12 +922,13 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       currentUserPrompt: null,
     }
 
-    watchers.set(chatId, entry)
-    logger.info('watcher', `Started watching for chat ${chatId} (dir=${state.activeProjectDirectory})`)
+    watchers.set(scopeKey, entry)
+    logger.info('watcher', `Started watching for scope ${scopeKey} (dir=${state.activeProjectDirectory})`)
   }
 
-  function stop(chatId: number): void {
-    const existing = watchers.get(chatId)
+  function stop(chatId: number, threadId?: number): void {
+    const scopeKey = getScopeKey(chatId, threadId)
+    const existing = watchers.get(scopeKey)
     if (existing) {
       if (existing.pendingEditTimer) clearTimeout(existing.pendingEditTimer)
       if (existing.typingInterval) clearInterval(existing.typingInterval)
@@ -884,30 +936,37 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
       if (existing.queryHandle) {
         existing.queryHandle.abort()
       }
-      watchers.delete(chatId)
-      logger.info('watcher', `Stopped watching for chat ${chatId}`)
+      if (deps.sessionStore && existing.sessionId) {
+        deps.sessionStore.updateSession(existing.sessionId, {
+          status: 'idle',
+          lastActiveAt: Date.now(),
+        }).catch(err => logger.warn('watcher', `Failed to update session status on stop: ${err instanceof Error ? err.message : 'unknown'}`))
+      }
+      watchers.delete(scopeKey)
+      logger.info('watcher', `Stopped watching for scope ${scopeKey}`)
     }
   }
 
-  async function ensureWatching(chatId: number): Promise<void> {
-    const existing = watchers.get(chatId)
+  async function ensureWatching(chatId: number, threadId?: number): Promise<void> {
+    const scopeKey = getScopeKey(chatId, threadId)
+    const existing = watchers.get(scopeKey)
     if (existing) {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
       if (
         existing.directory === state.activeProjectDirectory
       ) {
         return
       }
     }
-    await watch(chatId)
+    await watch(chatId, threadId)
   }
 
-  function isWatching(chatId: number): boolean {
-    return watchers.has(chatId)
+  function isWatching(chatId: number, threadId?: number): boolean {
+    return watchers.has(getScopeKey(chatId, threadId))
   }
 
-  function setPromptHandle(chatId: number, handle: OutputHandle): void {
-    const entry = watchers.get(chatId)
+  function setPromptHandle(chatId: number, handle: OutputHandle, threadId?: number): void {
+    const entry = watchers.get(getScopeKey(chatId, threadId))
     if (entry) {
       entry.promptHandle = handle
       // Prevent "AI is working" message for user-initiated prompts
@@ -915,8 +974,8 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     }
   }
 
-  function setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean; userPrompt?: string }): void {
-    const entry = watchers.get(chatId)
+  function setPromptContext(chatId: number, ctx: { actorUserId?: number; liveUpdatesEnabled?: boolean; userPrompt?: string }, threadId?: number): void {
+    const entry = watchers.get(getScopeKey(chatId, threadId))
     if (!entry) return
 
     entry.turnGeneration++
@@ -937,8 +996,8 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     if (ctx.userPrompt !== undefined) entry.currentUserPrompt = ctx.userPrompt
   }
 
-  function watchQuery(chatId: number, queryHandle: QueryHandle): void {
-    const entry = watchers.get(chatId)
+  function watchQuery(chatId: number, queryHandle: QueryHandle, threadId?: number): void {
+    const entry = watchers.get(getScopeKey(chatId, threadId))
     if (!entry) return
 
     entry.queryHandle = queryHandle
@@ -964,5 +1023,9 @@ export function createSessionWatcher(deps: SessionWatcherDeps): SessionWatcher {
     void iterateQueryEvents(chatId, entry, queryHandle)
   }
 
-  return { watch, stop, ensureWatching, isWatching, setPromptHandle, setPromptContext, watchQuery }
+  function getActiveQueryHandle(chatId: number, threadId?: number): QueryHandle | null {
+    return watchers.get(getScopeKey(chatId, threadId))?.queryHandle ?? null
+  }
+
+  return { watch, stop, ensureWatching, isWatching, setPromptHandle, setPromptContext, watchQuery, getActiveQueryHandle }
 }

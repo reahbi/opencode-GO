@@ -1,13 +1,12 @@
-[🇰🇷 한국어](README-kr.md)
+[한국어](README-kr.md)
 
-# OpenCode-Go
+# Claude-Go
 
-**Control your AI coding agent remotely — right from your phone.**
+**Control Claude Code remotely — right from your phone.**
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue?labelColor=black&style=flat-square)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-black?logo=bun&logoColor=white&style=flat-square)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?labelColor=black&style=flat-square)](https://www.typescriptlang.org/)
-[![GitHub](https://img.shields.io/github/stars/reahbi/opencode-go?color=ffcb47&labelColor=black&style=flat-square)](https://github.com/reahbi/opencode-go)
 
 <div align="center">
 <br>
@@ -33,48 +32,41 @@
 
 ---
 
-### 🎮 Like Pokémon Go, but for coding
+### Like Pokemon Go, but for coding
 
 **Code from anywhere.** On a bus, at a park, waiting in line — wherever you are, your AI agent is ready.
 
-For beginners, coding on a smartphone is painful: tiny terminal fonts, SSH clients, typos everywhere. **OpenCode-Go removes all that friction.** Just tap buttons, send messages, and let the AI handle the hard parts.
+For beginners, coding on a smartphone is painful: tiny terminal fonts, SSH clients, typos everywhere. **Claude-Go removes all that friction.** Just tap buttons, send messages, and let the AI handle the hard parts.
 
 ---
 
-Remotely control the [OpenCode](https://github.com/sst/opencode) coding agent running on your server via **Telegram**.
+Control [Claude Code](https://docs.anthropic.com/en/docs/claude-code) running on your server via **Telegram**.
 On your commute, at a cafe, in bed — command your AI to write code and get real-time results from anywhere.
 
 ```
 📱 Telegram (from anywhere)
  ↕  Telegram Bot API
-🤖 OpenCode-Go (Bun + TypeScript)   ← Process 2: bun run dev
- ↕  SSE Streaming + REST
-💻 OpenCode Server                 ← Process 1: opencode serve
- ↕
+🤖 Claude-Go (Bun + TypeScript)
+ ↕  Claude Agent SDK (in-process)
 🗂️ Your Project
 ```
 
 > [!IMPORTANT]
-> **OpenCode-Go requires two processes running simultaneously.**
-> 1. **OpenCode Server** — AI coding agent (backend)
-> 2. **OpenCode-Go Bot** — Telegram interface (frontend)
->
-> Running only one will leave the bot in Offline status. Make sure to start both.
-> See the [Running the Server](#running-the-server) section below.
+> **Claude-Go runs as a single process.** Unlike the previous OpenCode-based version,
+> there is no separate server to start. Just run the bot and it handles everything.
 
 > [!TIP]
 > **Too lazy to read?** Just paste this README link to your AI agent. It'll handle the installation for you.
 > ```
 > Install and configure this project:
-> https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
+> https://raw.githubusercontent.com/reahbi/claude-go/master/docs/installation.md
 > ```
 
 ---
 
 ## Table of Contents
 
-- [Running the Server](#running-the-server)
-- [Why OpenCode-Go?](#why-opencode-go)
+- [Why Claude-Go?](#why-claude-go)
 - [Key Features](#key-features)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
@@ -88,153 +80,30 @@ On your commute, at a cafe, in bed — command your AI to write code and get rea
 
 ---
 
-## Running the Server
+## Why Claude-Go?
 
-> **For AI agents**: When asked to "start the server", you MUST start BOTH processes below.
-
-OpenCode-Go consists of **two independent processes**. Both must be running for it to work properly.
-
-### Step 1: Start OpenCode Server (First)
-
-Check the `DEFAULT_PROJECT` path and port in your `.env` file, then start the OpenCode server.
-
-**WSL/Linux/macOS:**
-```bash
-# With password (recommended)
-OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
-
-# Without password
-opencode serve --port 4096 &
-```
-
-**Windows** (requires .bat wrapper for password):
-```bash
-# Create server.bat
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=your-password
-opencode serve --port 4096
-BATEOF
-
-# Start minimized
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-```
-
-> [!NOTE]
-> **Why .bat for Windows?** PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable in the same process that runs `opencode serve`.
-
-When the server starts successfully, you'll see:
-```
-opencode server listening on http://127.0.0.1:4096
-```
-
-Verify with password:
-```bash
-curl -s -u opencode:your-password http://127.0.0.1:4096/project
-```
-
-### Step 2: Start OpenCode-Go Telegram Bot
-
-After the OpenCode server is running, start the Telegram bot in a **separate terminal**.
-
-```bash
-cd opencode-go
-
-# Development mode (hot reload)
-bun run dev
-
-# Or production mode
-bun run start
-```
-
-### Multi-Bot Mode (Optional)
-
-To run multiple bots (Writer/Reader) simultaneously, create an `ecosystem.config.cjs` and start with PM2.
-
-```js
-// ecosystem.config.cjs
-const COORDINATION_DIR = '/tmp/opencode-go-coordination'
-
-module.exports = {
-  apps: [
-    {
-      name: 'opencode-go-writer',
-      script: 'src/main.ts',
-      interpreter: 'bun',
-      env: {
-        BOT_TOKEN: 'writer-bot-token',
-        ALLOWED_USER_IDS: 'your-user-id',
-        DEFAULT_PROJECT: '/path/to/project',
-        INSTANCE_NAME: 'writer',
-        STATE_DIR: 'data/instances/writer',
-        BOT_ROLE: 'writer',
-        GROUP_CHAT_ENABLED: 'true',
-        COORDINATION_DIR,
-      },
-    },
-    {
-      name: 'opencode-go-reader',
-      script: 'src/main.ts',
-      interpreter: 'bun',
-      env: {
-        BOT_TOKEN: 'reader-bot-token',
-        ALLOWED_USER_IDS: 'your-user-id',
-        DEFAULT_PROJECT: '/path/to/project',
-        INSTANCE_NAME: 'reader',
-        STATE_DIR: 'data/instances/reader',
-        BOT_ROLE: 'reader',
-        GROUP_CHAT_ENABLED: 'true',
-        COORDINATION_DIR,
-      },
-    },
-  ],
-}
-```
-
-```bash
-pm2 start ecosystem.config.cjs
-pm2 logs
-```
-
-> [!TIP]
-> You can also add bots via the `/addbot` command in Telegram. The wizard guides you through token verification to PM2 setup.
-
-### Verifying the Setup
-
-When both processes are running:
-- Bot logs show `OpenCode-Go is running!`
-- Sending `/start` in Telegram shows server status as 🟢 **Online**
-- In multi-bot mode, use `/bots` to check all registered bots' online status
-
-If server status shows 🔴 **Offline**, Step 1 (OpenCode server) is not running.
-
----
-
-## Why OpenCode-Go?
-
-**The Problem**: AI coding agents (like OpenCode) are powerful, but you need to be sitting in front of the server.
+**The Problem**: AI coding agents (like Claude Code) are powerful, but you need to be sitting in front of the server.
 Got an idea while commuting? You'll have to wait until you get home.
 
-**The Solution**: OpenCode-Go bridges Telegram and OpenCode.
+**The Solution**: Claude-Go bridges Telegram and Claude Code.
 
-| Other Tools | OpenCode-Go |
+| Other Tools | Claude-Go |
 |---|---|
 | SSH into server, navigate CLI | One Telegram message does it all |
-| AI requests permission? Rush to terminal | Tap an inline button to approve |
-| AI asks multiple questions? Answer one by one in terminal | Answer each question sequentially with inline buttons — just like on desktop |
+| AI asks questions? Answer in terminal | Tap an inline button to respond |
 | Scroll through long responses in terminal | Auto-summary + file delivery optimized for mobile |
 | Single project only | Manage multiple projects with PM2 |
 | "What was the AI doing?" — SSH back in, scroll logs | `/resume` → Instantly see ongoing work + real-time progress |
 | Copy-paste terminal output to share | `/history` → Beautiful HTML export with syntax highlighting |
 
-> At a cafe: "Refactor this file" → AI works on it → Tap permission button → Done notification — That's OpenCode-Go.
+> At a cafe: "Refactor this file" → AI works on it → Done notification — That's Claude-Go.
 
 ### Start a task. Walk away. Come back anytime.
 
 ```
 🚶 You: "Refactor auth module" → Close phone → Go to lunch
 🍜 30 minutes later...
-📱 You: /resume → See AI still working, approve permission, done
+📱 You: /resume → See AI still working, done
 💻 Back at your desk: /resume → Continue where you left off
 ```
 
@@ -253,48 +122,52 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 ## Key Features
 
-**Real-time Streaming** — SSE-based instant AI responses. No polling.
+**Real-time Streaming** — Live text streaming as Claude thinks and writes. See responses appear character by character.
 
-**Interactive Permissions/Questions** — When AI requests file permissions or asks questions, respond instantly via Telegram inline keyboards.
+**Extended Thinking** — Trigger deep analysis with keywords like "think", "analyze", or "deep". Claude shows its reasoning process.
 
 **Smart Delivery** — Short responses inline, long responses auto-chunked, very long responses sent as `.md` files.
 
 **Response Summary** — Long AI responses are automatically summarized by a lightweight model. Quickly grasp the key points on mobile. Summary style adapts to your expertise level.
 
+**Cost Tracking** — See token usage and cost after each response. Track spending per session.
+
 **Agent Switching** — Use `/agents` to select the right AI model for the situation.
 
 **Multi-Instance** — Manage multiple projects as separate bots simultaneously using PM2.
 
-**Group Chat** — Add multiple bots to a Telegram group and control each via @mentions. Permission buttons can only be pressed by the requester.
+**Group Chat** — Add multiple bots to a Telegram group and control each via @mentions.
 
-**Multi-Bot Collaboration (🧪 Testing)** — Separate Writer (code writing) and Reader (code review) roles. Use `/debate` for discussions and `/review` for code reviews.
+**Multi-Bot Collaboration** — Separate Writer (code writing) and Reader (code review) roles. Use `/debate` for discussions and `/review` for code reviews.
 
 **Group Shared Settings** — Use `/groupsettings` to view shared settings (debate rounds) and bot status at a glance.
 
 **Bot Registry** — Check registered bot status with `/bots`, add new bots with `/addbot` in Telegram.
 
-**Review Mode** — Toggle read-only mode with a single tap in `/settings`. Applies instantly without server restart.
+**Review Mode** — Toggle read-only mode with a single tap in `/settings`. Applies instantly without restart.
 
-**Session Resume** — Use `/resume` to jump back into a previous session. Automatically detects ongoing work and shows real-time progress — perfect for checking on tasks you started earlier.
+**Session Resume** — Use `/resume` to jump back into a previous session. Automatically detects ongoing work and shows real-time progress.
 
-**Beautiful History Export** — Export your conversation history as a beautifully formatted HTML file with `/history`. Review past sessions on any device with syntax highlighting and clean typography.
+**Beautiful History Export** — Export your conversation history as a beautifully formatted HTML file with `/history`.
 
-**Image Support** — Send photos directly from your phone. Screenshots of error messages, UI mockups, diagrams — the AI analyzes them and responds accordingly. (Requires vision-capable model)
+**Image Support** — Send photos directly from your phone. Screenshots of error messages, UI mockups, diagrams — the AI analyzes them natively via Claude's vision API.
 
-**Voice Response (🔊)** — Listen to AI summaries instead of reading. Auto-voice mode sends MP3 automatically when AI finishes — no button tap needed. Uses Edge TTS with Korean/English voices.
+**Voice Input** — Send voice messages and they're automatically transcribed via Whisper and sent to Claude. (Requires OpenAI API key)
 
-**Expertise Level (🎮/👨‍💻/🌱)** — Tailor both text summaries and voice responses to your skill level. Choose from three modes in `/settings`:
-- **Vibe Coder** — No jargon. Explains what changed from your perspective: "login stays longer", "the settings page has a new option".
-- **Developer** — Full technical detail: file names, function signatures, architecture reasoning, test results.
-- **Beginner** — Technical terms with brief explanations: "middleware, which processes requests in between". Helps you learn while you build.
+**Voice Response** — Listen to AI summaries instead of reading. Auto-voice mode sends MP3 automatically. Uses Edge TTS with Korean/English voices.
 
-**Git Status (`/git`)** — Quick git overview with branch, status, and recent commits. Inline buttons for diff and log without leaving Telegram.
+**Expertise Level** — Tailor both text summaries and voice responses to your skill level. Choose from three modes in `/settings`:
+- **Vibe Coder** — No jargon. Explains what changed from your perspective.
+- **Developer** — Full technical detail: file names, function signatures, architecture reasoning.
+- **Beginner** — Technical terms with brief explanations. Helps you learn while you build.
 
-**Multi-Select Questions** — When AI asks questions with multiple options, select multiple answers with checkbox-style UI before proceeding.
+**Git Status (`/git`)** — Quick git overview with branch, status, and recent commits.
 
-**Inactivity Warning** — Get notified if your AI session sits idle for 30+ minutes. Never forget about a waiting task again.
+**Inactivity Warning** — Get notified if your AI session sits idle for 30+ minutes.
 
-**Hook Bot (📡)** — A separate lightweight process that monitors all OpenCode sessions via SSE and sends Telegram notifications. Get notified when sessions complete, stall, or encounter errors — even without the main bot running. Approve permissions and answer questions directly from the notification chat. Set up instantly with the `/addhookbot` wizard.
+**Hook Bot** — A separate lightweight process that monitors Claude sessions and sends Telegram notifications. Get notified when sessions complete, stall, or encounter errors. Set up with `/addhookbot`.
+
+**Budget Control** — Set maximum spend per session via `MAX_BUDGET_USD` environment variable.
 
 **Diagnostics** — Run `bun run doctor` to auto-diagnose configuration issues.
 
@@ -304,40 +177,40 @@ Got an idea while commuting? You'll have to wait until you get home.
 
 ### Option 1: Let AI Handle It (Recommended)
 
-Paste this into your AI agent (OpenCode, Claude Code, Cursor, etc.):
+Paste this into your AI agent (Claude Code, Cursor, etc.):
 
 ```
-Install and configure OpenCode-Go:
-https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
+Install and configure Claude-Go:
+https://raw.githubusercontent.com/reahbi/claude-go/master/docs/installation.md
 ```
 
-The AI will ask 4 questions and handle the rest automatically.
+The AI will ask a few questions and handle the rest automatically.
 
 ### Option 2: Manual Installation
 
 ```bash
-git clone https://github.com/reahbi/opencode-go.git
-cd opencode-go
+git clone https://github.com/reahbi/claude-go.git
+cd claude-go
 bun install
 bun run setup    # Interactive setup wizard
 bun run start    # Start the bot
 ```
 
+### Prerequisites
+
+- [Bun](https://bun.sh) v1.0 or higher
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed and authenticated
+- Telegram bot token from [@BotFather](https://t.me/BotFather)
+
 ### First Use
 
 1. Send `/start` to your bot on Telegram
 2. Create a new AI session with `/new`
-3. Send a message — it goes straight to the AI
+3. Send a message — it goes straight to Claude
 
 ---
 
 ## Installation
-
-### Prerequisites
-
-- [Bun](https://bun.sh) v1.0 or higher — [Installation Guide](docs/setup/bun.md)
-- Telegram bot token — [Bot Creation Guide](docs/setup/telegram.md)
-- OpenCode server running — [Server Setup Guide](docs/setup/opencode.md)
 
 ### Manual Setup
 
@@ -350,7 +223,7 @@ Open the `.env` file and set the required values:
 ```bash
 BOT_TOKEN=your-bot-token-here          # From @BotFather
 ALLOWED_USER_IDS=123456789             # Your Telegram User ID
-DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute path)
+DEFAULT_PROJECT=/path/to/your/project  # Project path (absolute path)
 ```
 
 > [!TIP]
@@ -381,8 +254,8 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute pat
 | `/agents` | Select AI agent/model |
 | `/settings` | Summary mode, Review Mode, Voice, output format, etc. |
 | `/groupsettings` | Group shared settings (debate rounds, bot status) |
-| `/debate [topic]` | Start Writer↔Reader bot debate (🧪 Testing) |
-| `/review [target]` | Request code review from peer bot (🧪 Testing) |
+| `/debate [topic]` | Start Writer↔Reader bot debate |
+| `/review [target]` | Request code review from peer bot |
 | `/bots` | Registered bot status (online/offline) |
 | `/addbot` | New bot setup wizard (DM only) |
 | `/addhookbot` | Hook bot setup wizard (DM only) |
@@ -391,29 +264,29 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path for OpenCode (absolute pat
 
 Regular text messages are sent as prompts to the current session's AI.
 
-Detailed usage: [Commands Guide](docs/commands.md)
-
 ---
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|:---:|---|---|
-| `BOT_TOKEN` | ✅ | — | @BotFather bot token |
-| `ALLOWED_USER_IDS` | ✅ | — | Allowed Telegram User IDs (comma-separated) |
-| `DEFAULT_PROJECT` | ✅ | — | Default project directory (absolute path) |
-| `OPENCODE_SERVER_URL` | | `http://127.0.0.1:4096` | OpenCode server URL |
-| `OPENCODE_SERVER_USERNAME` | | `opencode` | Server auth username |
-| `OPENCODE_SERVER_PASSWORD` | | — | Server auth password |
-| `INSTANCE_NAME` | | Project directory name | Instance identifier (logs/status display) |
+| `BOT_TOKEN` | Yes | — | @BotFather bot token |
+| `ALLOWED_USER_IDS` | Yes | — | Allowed Telegram User IDs (comma-separated) |
+| `DEFAULT_PROJECT` | Yes | — | Default project directory (absolute path) |
+| `CLAUDE_MODEL` | | `claude-sonnet-4-5` | Claude model ID |
+| `CLAUDE_CODE_PATH` | | (auto-detect) | Path to Claude Code executable |
+| `MAX_THINKING_TOKENS` | | `0` | Extended Thinking token limit (0 = disabled) |
+| `MAX_BUDGET_USD` | | — | Max budget per session in USD |
+| `OPENAI_API_KEY` | | — | OpenAI API key for Whisper voice-to-text |
+| `INSTANCE_NAME` | | Project dir name | Instance identifier |
 | `STATE_DIR` | | `data/` | State file storage path |
 | `BOT_ROLE` | | `standalone` | Bot role: `standalone`, `writer`, `reader` |
-| `GROUP_CHAT_ENABLED` | | `false` | Group chat support (`true`/`false`) |
+| `GROUP_CHAT_ENABLED` | | `false` | Group chat support |
 | `COORDINATION_DIR` | | — | Shared directory for bot coordination (required for multi-bot) |
-| `DEFAULT_AGENT` | | — | Default AI agent name (must match an agent from OpenCode server) |
+| `DEFAULT_AGENT` | | — | Default AI agent name |
 | `DEFAULT_CUSTOM_AGENT` | | — | Default custom agent ID (from `/makeagent`) |
 | `HOOK_CONFIG_PATH` | | `data/hook-config.json` | Hook bot configuration file path |
-| `DEBUG` | | — | Enable debug logs when set to truthy value |
+| `DEBUG` | | — | Enable debug logs |
 
 ---
 
@@ -425,29 +298,41 @@ Built on **Clean Architecture (Hexagonal / Ports & Adapters)**.
 src/
 ├── domain/        # Pure types + ports — ZERO external dependencies
 ├── app/           # Use cases — imports domain/ only
-├── adapters/      # External world — Telegram, OpenCode SDK, JSON storage
+├── adapters/      # External world — Telegram, Claude Agent SDK, JSON storage
 ├── config/        # Environment parsing + project settings
 ├── shared/        # Logger, formatters, constants
 ├── main.ts        # Composition Root (dependency assembly)
 └── hookBot.ts     # Hook Bot Composition Root (session notification process)
 ```
 
-**Multi-Bot Mode Architecture:**
+**Single-Process Architecture:**
+
+```
+📱 Telegram
+ ↕  Telegram Bot API
+🤖 Claude-Go Bot (Bun + TypeScript)
+ ├── grammy (Telegram framework)
+ ├── Claude Agent SDK (in-process, query() AsyncGenerator)
+ ├── Session Store (JSON-based, local)
+ └── Summary Service (Claude CLI subprocess)
+ ↕
+🗂️ Your Project
+```
+
+**Multi-Bot Mode:**
 
 ```
 📱 Telegram Group
  ↕  @mention routing
 🤖 Writer Bot ←──coordination──→ 🤖 Reader Bot
- ↕  SSE + REST                    ↕  SSE + REST
-💻 OpenCode Server                💻 OpenCode Server
- ↕                                ↕
+ ↕  Agent SDK                     ↕  Agent SDK
 🗂️ Project                       🗂️ Project
      └── registry.json (shared) ──┘
 ```
 
 **Core Dependency Rule**: `domain/` → imports nothing | `app/` → `domain/` only | `adapters/` → `app/` + `domain/`
 
-**Tech Stack**: Bun + TypeScript (strict) + [grammy](https://grammy.dev) + [@opencode-ai/sdk](https://www.npmjs.com/package/@opencode-ai/sdk)
+**Tech Stack**: Bun + TypeScript (strict) + [grammy](https://grammy.dev) + [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
 
 > When AI agents modify this project, refer to [AGENTS.md](AGENTS.md).
 > Contains code map, conventions, and anti-patterns.
@@ -456,47 +341,74 @@ src/
 
 ## Deployment
 
-We recommend production deployment using PM2.
+### Single Bot
 
 ```bash
-# Start all instances with PM2
-bun run start:all
-
-# Check logs
-bun run logs
-
-# Stop
-bun run stop:all
+bun run start    # Production mode
 ```
 
-For multi-instance setup, auto-restart, and boot-time auto-start, see the [Deployment Guide](docs/deploy.md).
+### Multi-Bot with PM2
+
+```js
+// ecosystem.config.cjs
+const COORDINATION_DIR = '/tmp/claude-go-coordination'
+
+module.exports = {
+  apps: [
+    {
+      name: 'claude-go-writer',
+      script: 'src/main.ts',
+      interpreter: 'bun',
+      env: {
+        BOT_TOKEN: 'writer-bot-token',
+        ALLOWED_USER_IDS: 'your-user-id',
+        DEFAULT_PROJECT: '/path/to/project',
+        INSTANCE_NAME: 'writer',
+        STATE_DIR: 'data/instances/writer',
+        BOT_ROLE: 'writer',
+        GROUP_CHAT_ENABLED: 'true',
+        COORDINATION_DIR,
+      },
+    },
+    {
+      name: 'claude-go-reader',
+      script: 'src/main.ts',
+      interpreter: 'bun',
+      env: {
+        BOT_TOKEN: 'reader-bot-token',
+        ALLOWED_USER_IDS: 'your-user-id',
+        DEFAULT_PROJECT: '/path/to/project',
+        INSTANCE_NAME: 'reader',
+        STATE_DIR: 'data/instances/reader',
+        BOT_ROLE: 'reader',
+        GROUP_CHAT_ENABLED: 'true',
+        COORDINATION_DIR,
+      },
+    },
+  ],
+}
+```
+
+```bash
+pm2 start ecosystem.config.cjs
+pm2 logs
+```
+
+> [!TIP]
+> You can also add bots via the `/addbot` command in Telegram.
 
 ---
 
 ## Troubleshooting
 
 ```bash
-bun run doctor    # Auto-diagnoses 6 configuration items
+bun run doctor    # Auto-diagnoses configuration items
 ```
 
-For common issues and solutions, see the [Troubleshooting Guide](docs/troubleshooting.md).
-
----
-
-## Documentation
-
-| Document | Description |
-|---|---|
-| [Installation Guide](docs/installation.md) | AI agent-assisted installation guide |
-| [Telegram Bot Creation](docs/setup/telegram.md) | BotFather bot creation + User ID lookup |
-| [OpenCode Server Setup](docs/setup/opencode.md) | Server installation, ports, auth settings |
-| [Bun Installation](docs/setup/bun.md) | Bun runtime installation + PATH troubleshooting |
-| [Commands Usage](docs/commands.md) | Full command reference |
-| [PM2 Deployment](docs/deploy.md) | Production deployment + multi-instance |
-| [Multi-Bot Guide](docs/multibot.md) | Multi-bot setup, roles, debate, and review features |
-| [Hook Bot Guide](docs/hookbot.md) | Session notification bot setup and features |
-| [Troubleshooting](docs/troubleshooting.md) | Common issues + `bun run doctor` |
-| [AGENTS.md](AGENTS.md) | AI agent project knowledge base |
+Common issues:
+- **Claude Code not found**: Make sure `claude` CLI is installed and on your PATH, or set `CLAUDE_CODE_PATH`
+- **Bot not responding**: Check `BOT_TOKEN` and `ALLOWED_USER_IDS` in `.env`
+- **Session errors**: Try `/new` to create a fresh session
 
 ---
 
@@ -507,6 +419,7 @@ bun run dev        # Development mode (hot reload)
 bun run hook       # Start hook bot (session notifications)
 bun run typecheck  # Type check
 bun run build      # Build to dist/
+bun test           # Run tests
 ```
 
 ---
@@ -517,13 +430,7 @@ This project was inspired by and built upon ideas from:
 
 - [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — Agent configuration and tooling inspiration
 - [Kimaki](https://github.com/remorses/kimaki) — Implementation references and ideas
-
----
-
-## Disclaimer
-
-This project is not built by or affiliated with the OpenCode team.
-[OpenCode](https://github.com/sst/opencode) is an open source project by [Anomaly](https://github.com/anomalyco/opencode).
+- [linuz90/claude-telegram-bot](https://github.com/linuz90/claude-telegram-bot) — Claude Agent SDK + grammy patterns
 
 ---
 

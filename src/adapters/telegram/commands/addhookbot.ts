@@ -4,6 +4,9 @@ import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { ChatOutputPort } from '../../../domain/ports/ChatOutputPort.js'
 import type { Button } from '../../../domain/models.js'
 import { logger } from '../../../shared/logger.js'
+import { escapeHtml } from '../../../shared/formatResponse.js'
+import { pm2Save } from '../../../shared/pm2.js'
+import { verifyTelegramToken, fetchServerProjects } from '../hookBotAdapter.js'
 import { promises as fs } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -14,6 +17,9 @@ interface AddhookbotWizardState {
   mode: 'all' | 'selected'
   chatId?: number
   tokenAttempts?: number
+  serverUrl?: string
+  serverUsername?: string
+  serverPassword?: string
 }
 
 interface Project {
@@ -23,15 +29,6 @@ interface Project {
 
 const MAX_TOKEN_ATTEMPTS = 3
 const wizards = new Map<number, AddhookbotWizardState>()
-
-async function pm2Save(): Promise<void> {
-  try {
-    const proc = Bun.spawn(['pm2', 'save'], { cwd: process.cwd(), stdout: 'pipe', stderr: 'pipe' })
-    await proc.exited
-  } catch {
-    logger.warn('registry', 'pm2 save failed')
-  }
-}
 
 export async function startAddhookbotWizard(chatId: number, state: StateStore, output: ChatOutputPort): Promise<void> {
   wizards.delete(chatId)
@@ -55,22 +52,10 @@ export async function startAddhookbotWizard(chatId: number, state: StateStore, o
   )
 }
 
-function escapeHtml(t: string): string {
-  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
 async function fetchProjects(serverUrl: string, username: string, password: string): Promise<Project[]> {
-  const headers: Record<string, string> = {}
-  if (password) {
-    headers['Authorization'] = `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
-  }
-  const res = await fetch(`${serverUrl}/project`, {
-    headers,
-    signal: AbortSignal.timeout(5000),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const projects = await res.json() as Project[]
-  return projects.filter(p => p.worktree !== '/')
+  const cfg = { serverUrl, serverUsername: username, serverPassword: password } as Parameters<typeof fetchServerProjects>[0]
+  const results = await fetchServerProjects(cfg)
+  return results.map(r => ({ worktree: r.directory, name: r.name }))
 }
 
 export function addhookbotCommand(state: StateStore) {
@@ -147,41 +132,23 @@ export async function handleAddhookbotToken(
   wizard.tokenAttempts = (wizard.tokenAttempts || 0) + 1
   wizards.set(chatId, wizard)
 
-  let username = ''
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
-      signal: AbortSignal.timeout(10000),
-    })
-    const data = await res.json() as { ok: boolean; result?: { username?: string } }
-    if (!data.ok || !data.result?.username) {
-      if (wizard.tokenAttempts >= MAX_TOKEN_ATTEMPTS) {
-        wizards.delete(chatId)
-        const chatState = await state.getChatState(chatId)
-        chatState.awaitingInput = null
-        await state.saveChatState(chatId, chatState)
-        await output.sendText(chatId, `❌ Invalid bot token. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addhookbot to start again.`)
-        return true
-      }
-      const remaining = MAX_TOKEN_ATTEMPTS - wizard.tokenAttempts
-      await output.sendText(chatId, `❌ Invalid bot token. Please try again. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining)\n\nType /cancel to cancel.`)
-      return true
-    }
-    username = data.result.username
-  } catch {
+  const verified = await verifyTelegramToken(token)
+  if (!verified) {
     if (wizard.tokenAttempts >= MAX_TOKEN_ATTEMPTS) {
       wizards.delete(chatId)
       const chatState = await state.getChatState(chatId)
       chatState.awaitingInput = null
       await state.saveChatState(chatId, chatState)
-      await output.sendText(chatId, `❌ Cannot connect to Telegram API. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addhookbot to start again.`)
+      await output.sendText(chatId, `❌ Invalid bot token. Maximum attempts (${MAX_TOKEN_ATTEMPTS}) reached.\n\nWizard cancelled. Use /addhookbot to start again.`)
       return true
     }
     const remaining = MAX_TOKEN_ATTEMPTS - wizard.tokenAttempts
-    await output.sendText(chatId, `❌ Cannot connect to Telegram API. Please try again. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining)\n\nType /cancel to cancel.`)
+    await output.sendText(chatId, `❌ Invalid bot token. Please try again. (${remaining} attempt${remaining > 1 ? 's' : ''} remaining)\n\nType /cancel to cancel.`)
     return true
   }
 
-  wizard = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0 }
+  const username = verified.username
+  wizard = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0, serverUrl, serverUsername, serverPassword }
   wizards.set(chatId, wizard)
 
   const chatState = await state.getChatState(chatId)
@@ -435,6 +402,9 @@ async function finishAddhookbot(
     chatId: targetChatId,
     projects: wizard.selectedProjects,
     mode: wizard.mode,
+    serverUrl: wizard.serverUrl ?? '',
+    serverUsername: wizard.serverUsername ?? '',
+    serverPassword: wizard.serverPassword ?? '',
   }
 
   const configDir = resolve(process.cwd(), 'data')
@@ -589,23 +559,14 @@ export async function startAddhookbotReconfigure(
   }
 
   const token = config.botToken
-  let username = ''
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
-      signal: AbortSignal.timeout(10000),
-    })
-    const data = await res.json() as { ok: boolean; result?: { username?: string } }
-    if (!data.ok || !data.result?.username) {
-      await output.sendText(chatId, '❌ Saved bot token is no longer valid. Use /addhookbot to set up with a new token.')
-      return
-    }
-    username = data.result.username
-  } catch {
-    await output.sendText(chatId, '❌ Cannot verify saved bot token. Check network and try again.')
+  const verified = await verifyTelegramToken(token)
+  if (!verified) {
+    await output.sendText(chatId, '❌ Saved bot token is no longer valid. Use /addhookbot to set up with a new token.')
     return
   }
+  const username = verified.username
 
-  const wizard: AddhookbotWizardState = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0 }
+  const wizard: AddhookbotWizardState = { token, username, selectedProjects: [], mode: 'all', tokenAttempts: 0, serverUrl, serverUsername, serverPassword }
   wizards.set(chatId, wizard)
 
   let projects: Project[] = []

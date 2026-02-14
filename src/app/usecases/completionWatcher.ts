@@ -13,12 +13,12 @@ interface ProjectWatcher {
   name: string
   pollInterval: ReturnType<typeof setInterval> | null
   lastActivityTime: number
-  busySessions: Map<string, { busySince: number; lastActivity: number }>
+  busySessions: Map<string, { busySince: number; lastActivity: number; stallWarnedAt?: number }>
   connected: boolean
 }
 
 const POLL_INTERVAL_MS = 5_000
-const IDLE_THRESHOLD_MS = 30_000
+const MAX_SCAN_DEPTH = 3
 
 async function findClaudeSessionDir(projectDir: string): Promise<string | null> {
   // Claude CLI stores projects under ~/.claude/projects/
@@ -32,14 +32,20 @@ async function findClaudeSessionDir(projectDir: string): Promise<string | null> 
   }
 }
 
-async function getLatestModTime(dir: string): Promise<number> {
+async function getLatestModTime(dir: string, depth = 0): Promise<number> {
+  if (depth > MAX_SCAN_DEPTH) return 0
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true })
     let latest = 0
     for (const entry of entries) {
       try {
-        const stat = await fs.stat(join(dir, entry.name))
+        const fullPath = join(dir, entry.name)
+        const stat = await fs.stat(fullPath)
         if (stat.mtimeMs > latest) latest = stat.mtimeMs
+        if (entry.isDirectory()) {
+          const sub = await getLatestModTime(fullPath, depth + 1)
+          if (sub > latest) latest = sub
+        }
       } catch {
         // skip inaccessible files
       }
@@ -47,6 +53,31 @@ async function getLatestModTime(dir: string): Promise<number> {
     return latest
   } catch {
     return 0
+  }
+}
+
+async function readLastSessionContent(claudeDir: string): Promise<string | undefined> {
+  try {
+    const entries = await fs.readdir(claudeDir, { withFileTypes: true })
+    let latestFile = ''
+    let latestMtime = 0
+    for (const entry of entries) {
+      if (!entry.isFile()) continue
+      try {
+        const fullPath = join(claudeDir, entry.name)
+        const stat = await fs.stat(fullPath)
+        if (stat.mtimeMs > latestMtime) {
+          latestMtime = stat.mtimeMs
+          latestFile = fullPath
+        }
+      } catch { /* skip */ }
+    }
+    if (!latestFile) return undefined
+    const content = await fs.readFile(latestFile, 'utf-8')
+    const lines = content.trimEnd().split('\n')
+    return lines[lines.length - 1] || undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -86,16 +117,37 @@ export function createCompletionWatcher(deps: CompletionWatcherDeps) {
       } else {
         const session = pw.busySessions.get(sessionKey)!
         session.lastActivity = latestMod
+        session.stallWarnedAt = undefined
       }
 
       pw.lastActivityTime = latestMod
     } else {
-      // Check for sessions that have gone idle
+      // Check for stall then completion
       const now = Date.now()
       for (const [sessionKey, session] of pw.busySessions.entries()) {
-        if (now - session.lastActivity > IDLE_THRESHOLD_MS) {
+        const inactiveFor = now - session.lastActivity
+
+        // Stall detection (once per stall period)
+        if (inactiveFor > (LIMITS.HOOK_STALL_WARNING_MS ?? 300_000) && !session.stallWarnedAt) {
+          session.stallWarnedAt = now
+          logger.info('hookbot', `Stall detected in ${pw.name}: ${Math.round(inactiveFor / 1000)}s inactive`)
+
+          await deps.notificationPort.notify({
+            type: 'stall',
+            sessionId: sessionKey,
+            directory: pw.directory,
+            projectName: pw.name,
+            inactiveDuration: inactiveFor,
+          })
+          continue
+        }
+
+        // Completion detection
+        if (inactiveFor > LIMITS.HOOK_IDLE_THRESHOLD_MS) {
           const duration = now - session.busySince
           pw.busySessions.delete(sessionKey)
+
+          const lastMessage = await readLastSessionContent(claudeDir)
 
           logger.info('hookbot', `Session completed in ${pw.name} (duration: ${Math.round(duration / 1000)}s)`)
 
@@ -105,25 +157,9 @@ export function createCompletionWatcher(deps: CompletionWatcherDeps) {
             directory: pw.directory,
             projectName: pw.name,
             duration,
+            lastMessage,
           })
         }
-      }
-    }
-
-    // Stall detection
-    const now = Date.now()
-    for (const [sessionKey, session] of pw.busySessions.entries()) {
-      const stalledFor = now - session.lastActivity
-      if (stalledFor > (LIMITS.HOOK_STALL_WARNING_MS ?? 300_000)) {
-        logger.info('hookbot', `Stall detected in ${pw.name}: ${Math.round(stalledFor / 1000)}s inactive`)
-
-        await deps.notificationPort.notify({
-          type: 'stall',
-          sessionId: sessionKey,
-          directory: pw.directory,
-          projectName: pw.name,
-          inactiveDuration: stalledFor,
-        })
       }
     }
   }
@@ -179,5 +215,11 @@ export function createCompletionWatcher(deps: CompletionWatcherDeps) {
     return { projects }
   }
 
-  return { startWatching, stopAll, getStatus }
+  async function _testPollAll(): Promise<void> {
+    for (const pw of watchers.values()) {
+      await pollProject(pw)
+    }
+  }
+
+  return { startWatching, stopAll, getStatus, _testPollAll }
 }

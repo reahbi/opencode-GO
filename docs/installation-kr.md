@@ -1,59 +1,39 @@
-[🇺🇸 English](installation.md)
+[English](installation.md)
 
 # Installation
 
 ## For Humans
 
-AI 에이전트(OpenCode, Claude Code 등)에 다음을 붙여넣으세요:
+AI 에이전트(Claude Code, Cursor 등)에 다음을 붙여넣으세요:
 
 ```
-OpenCode-Go를 설치하고 설정해줘:
-https://raw.githubusercontent.com/reahbi/opencode-go/master/docs/installation.md
+Claude-Go를 설치하고 설정해줘:
+https://raw.githubusercontent.com/reahbi/claude-go/master/docs/installation.md
 ```
 
 또는 직접 설치:
 ```bash
-git clone https://github.com/reahbi/opencode-go.git
-cd opencode-go
+git clone https://github.com/reahbi/claude-go.git
+cd claude-go
 bun install
 bun run setup
 ```
 
 ## For LLM Agents
 
-You are helping the user install **OpenCode-Go** — a Telegram bot that remotely controls OpenCode coding agent sessions from a phone.
+You are helping the user install **Claude-Go** — a Telegram bot that remotely controls Claude Code AI sessions from a phone. Claude-Go is a **single-process** application — no separate server required.
 
 **IMPORTANT RULES:**
-1. Before doing anything else, you MUST complete Step 0 and get user confirmation.
-2. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
-3. Ask questions **one at a time**, explain each briefly, and verify before moving on.
+1. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
+2. Ask questions **one at a time**, explain each briefly, and verify before moving on.
 
-The user needs to provide **4 values**.
-
-### Step 0: Confirm Environment (환경 확인 - 필수 첫 단계)
-
-**멈추세요. 클릭 가능한 선택지를 제공하세요:**
-
-> **어떤 환경을 사용하시나요?**
-
-Options (clickable):
-- **Windows** — 프로젝트 경로: `C:\Users\...`
-- **WSL/Linux** — 프로젝트 경로: `/home/...`
-- **macOS** — 프로젝트 경로: `/Users/...`
-
-사용자가 선택하면 확인:
-
-> ✓ 환경: **[Windows/WSL/macOS]**
-
-**이 선택을 저장하세요 — Step 5에서 필요합니다.**
+The user needs to provide **3 values**: `BOT_TOKEN`, `ALLOWED_USER_IDS`, `DEFAULT_PROJECT`.
 
 ### Step 1: Clone & Install (클론 & 설치)
 
-사용자가 환경을 확인한 후 설치 진행:
-
 ```bash
-git clone https://github.com/reahbi/opencode-go.git
-cd opencode-go
+git clone https://github.com/reahbi/claude-go.git
+cd claude-go
 ```
 
 Check if Bun is installed:
@@ -69,7 +49,16 @@ Then install dependencies:
 bun install
 ```
 
+Check if Claude Code CLI is installed:
+```bash
+claude --version
+```
+
+If Claude Code is not installed, tell the user:
+> Claude Code CLI가 필요합니다. 설치: `npm install -g @anthropic-ai/claude-code` 실행 후 `claude` 명령으로 인증하세요.
+
 **선택적 의존성** (특정 기능에 필요):
+- **음성 입력 (STT)** — OpenAI API 키가 필요합니다. `.env`에 `OPENAI_API_KEY`를 설정하세요.
 - **음성 TTS** — `edge-tts` Python 패키지가 필요합니다. 설치: `python3 -m venv /tmp/edge-tts-env && /tmp/edge-tts-env/bin/pip install edge-tts`
 - **터널** — `cloudflared` 바이너리가 PATH에 있어야 합니다. 설치: [cloudflare/cloudflared releases](https://github.com/cloudflare/cloudflared/releases) 참고
 
@@ -87,15 +76,15 @@ Options (clickable):
 **"없어요"를 선택하면** 안내:
 > 텔레그램에서 @BotFather 를 검색해서 대화를 시작하세요.
 > 1. `/newbot` 전송
-> 2. 봇 이름 입력 (예: My OpenCode-Go)
-> 3. 봇 유저네임 입력 (예: my_opencode_go_bot) — 반드시 `_bot`으로 끝나야 합니다
+> 2. 봇 이름 입력 (예: My Claude-Go)
+> 3. 봇 유저네임 입력 (예: my_claude_go_bot) — 반드시 `_bot`으로 끝나야 합니다
 > 4. 생성 완료 후 토큰을 복사해서 알려주세요
 
 **When user provides the token**, verify it:
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getMe"
 ```
-- If response contains `"ok":true`, tell the user: `✓ 봇 확인됨: @<username>`
+- If response contains `"ok":true`, tell the user: `봇 확인됨: @<username>`
 - If verification fails, tell the user the token seems invalid and ask them to check again.
 
 Store the token value as `BOT_TOKEN`.
@@ -119,109 +108,20 @@ Options (clickable):
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Step 4: Ask about server password
+### Step 4: Ask for DEFAULT_PROJECT
 
-**클릭 가능한 선택지를 제공하세요:**
-
-> OpenCode 서버에 비밀번호를 설정하시겠어요?
-> (로컬에서만 쓴다면 없어도 괜찮습니다)
-
-Options (clickable):
-- **설정할래요** — 비밀번호를 입력받음
-- **스킵** — 비밀번호 없이 진행
-
-**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD`.
-
-**If user skips**, set `OPENCODE_SERVER_PASSWORD=` (empty).
-
-### Step 5: Start OpenCode Server (서버 시작)
-
-**먼저 기존 4096 포트 서버를 종료하고, Step 0에서 선택한 환경에 따라 서버를 시작하세요:**
-
-**Windows를 선택한 경우:**
-```bash
-# 기존 4096 포트 서버 종료 (Windows + WSL 모두)
-powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# Windows 서버 시작 (비밀번호 있음) — 반드시 .bat 래퍼 사용:
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=<password>
-opencode serve --port 4096
-BATEOF
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-
-# Windows 서버 시작 (비밀번호 없음):
-powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
-```
-
-> **왜 .bat 래퍼가 필요한가?** Windows PowerShell의 `Start-Process`는 환경 변수를 자식 프로세스에 전달하지 않습니다. .bat 파일은 `opencode serve`를 실행하는 동일 프로세스 내에서 변수를 설정합니다.
-
-**WSL/Linux 또는 macOS를 선택한 경우:**
-```bash
-# 기존 4096 포트 서버 종료
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# 서버 시작 (비밀번호 있음):
-OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
-
-# 서버 시작 (비밀번호 없음):
-opencode serve --port 4096 &
-```
-
-몇 초 기다린 후 서버 연결 확인:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-- If the server responds with JSON → connection works, proceed to Step 6 with project selection.
-- If the server returns an error or is unreachable → ask the user to check if the server is running. Proceed to Step 6 with manual path input.
-
-### Step 6: Ask for DEFAULT_PROJECT
-
-**If server responded in Step 5** — fetch the project list:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-The response is a JSON array of projects. Filter out any entry where `worktree` is `"/"`. Sort by `time.updated` descending (most recent first).
-
-**경로가 Step 0에서 선택한 환경과 일치하는지 확인:**
-- Windows → 경로가 `C:\...` 또는 `/c/...` 형태
-- WSL/Linux → 경로가 `/home/...` 형태
-- macOS → 경로가 `/Users/...` 형태
-
-**경로가 일치하지 않으면** 경고:
-> ⚠️ 프로젝트 경로가 [WSL/Windows/macOS]처럼 보이는데, Step 0에서 [환경]을 선택하셨습니다.
-> 잘못된 OpenCode 서버가 실행 중입니다.
-> [올바른 환경]에서 서버를 시작하고 다시 시도하세요.
-
-**경로가 일치하면** 클릭 가능한 선택지로 프로젝트 목록 표시:
-
-> [환경] 프로젝트 목록입니다:
-
-Options (clickable):
-- **C:\Users\me\my-app** (가장 최근)
-- **C:\Users\me\another-project**
-- **다른 경로 입력** — 직접 입력
-
-**If server was unreachable** — ask directly:
-> OpenCode가 작업할 프로젝트의 경로를 알려주세요.
+> AI가 작업할 프로젝트의 절대 경로를 알려주세요.
 >
-> 절대 경로로 입력해주세요 (Windows: `C:\Users\...`, WSL: `/home/...`, macOS: `/Users/...`).
+> 절대 경로로 입력해주세요 (예: `/home/user/my-project` 또는 `C:\Users\user\my-project`).
+
+Verify the path exists:
+```bash
+ls -d <path>
+```
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 7: Create .env and verify
+### Step 5: Create .env and verify (.env 생성 및 검증)
 
 Generate the `.env` file:
 ```bash
@@ -229,9 +129,6 @@ cat > .env << 'ENVEOF'
 BOT_TOKEN=<BOT_TOKEN value>
 ALLOWED_USER_IDS=<ALLOWED_USER_IDS value>
 DEFAULT_PROJECT=<DEFAULT_PROJECT value>
-OPENCODE_SERVER_URL=http://127.0.0.1:4096
-OPENCODE_SERVER_USERNAME=opencode
-OPENCODE_SERVER_PASSWORD=<OPENCODE_SERVER_PASSWORD value or empty>
 ENVEOF
 ```
 
@@ -241,20 +138,20 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 8.
-- Some checks failed → read the failure messages and help the user resolve them. Common issues:
-  - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
-  - Project directory not found → verify the path exists
+- All checks passed — proceed to Step 6.
+- Some checks failed — read the failure messages and help the user resolve them. Common issues:
+  - Claude Code를 찾을 수 없음 — `npm install -g @anthropic-ai/claude-code`로 설치 안내
+  - 프로젝트 디렉토리를 찾을 수 없음 — 경로 확인
 
-### Step 8: Start the bot
+### Step 6: Start the bot (봇 시작)
 
 ```bash
 bun run start
 ```
 
-If the bot starts successfully (you'll see `OpenCode-Go is running!` in the output), tell the user:
+If the bot starts successfully (you'll see `Claude-Go is running!` in the output), tell the user:
 
-> ✓ OpenCode-Go가 실행 중입니다!
+> Claude-Go가 실행 중입니다!
 >
 > 텔레그램에서 봇에게 `/start` 를 보내보세요.
 > 봇이 상태 정보와 함께 응답하면 설치가 완료된 것입니다.
@@ -270,6 +167,6 @@ If something goes wrong at any step:
 ```bash
 bun run doctor
 ```
-This checks all 6 configuration items and shows what needs to be fixed.
+설정 항목을 자동 진단하고 수정이 필요한 부분을 알려줍니다.
 
-For detailed troubleshooting, read: `docs/troubleshooting.md`
+자세한 문제 해결: `docs/troubleshooting.md` 참고

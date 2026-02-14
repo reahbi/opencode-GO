@@ -1,6 +1,7 @@
 import type { Context, NextFunction } from 'grammy'
 import type { StateStore } from '../../domain/ports/StateStore.js'
 import type { ChatState } from '../../domain/models.js'
+import { updateChatState } from '../../app/usecases/stateUpdate.js'
 
 export const AWAITING_INPUT_LABELS: Record<NonNullable<ChatState['awaitingInput']>, string> = {
   tunnel_port: 'Tunnel port input',
@@ -36,6 +37,8 @@ export function createAwaitingInputMiddleware(state: StateStore) {
     const chatId = ctx.chat?.id
     const entities = ctx.message?.entities
     const text = ctx.message?.text
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+    const threadId = isGroup ? ctx.message?.message_thread_id : undefined
 
     if (!chatId || !entities || !text) {
       return next()
@@ -52,14 +55,15 @@ export function createAwaitingInputMiddleware(state: StateStore) {
       return next()
     }
 
-    const chatState = await state.getChatState(chatId)
+    const chatState = await state.getChatState(chatId, threadId)
     if (chatState.awaitingInput) {
       const label = AWAITING_INPUT_LABELS[chatState.awaitingInput]
       await ctx.reply(`⚠️ ${label} cancelled.`)
 
-      chatState.awaitingInput = null
-      chatState.awaitingInteractionId = null
-      await state.saveChatState(chatId, chatState)
+      await updateChatState(state, chatId, (lockedState) => {
+        lockedState.awaitingInput = null
+        lockedState.awaitingInteractionId = null
+      }, threadId)
     }
 
     return next()

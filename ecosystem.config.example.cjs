@@ -3,17 +3,17 @@
 //
 // Usage:
 //   pm2 start ecosystem.config.cjs          # Start all instances
-//   pm2 start ecosystem.config.cjs --only opencode-go-my-project  # Start one instance
+//   pm2 start ecosystem.config.cjs --only claude-go-my-project  # Start one instance
 //   pm2 logs                                # View logs
 //   pm2 stop ecosystem.config.cjs           # Stop all
 
 module.exports = {
   apps: [
     {
-      name: 'opencode-go-my-project',
+      name: 'claude-go-my-project',
       script: 'src/main.ts',
       interpreter: 'bun',
-      cwd: '/path/to/opencode-go',
+      cwd: '/path/to/claude-go',
       env: {
         PATH: `${process.env.HOME}/.bun/bin:${process.env.PATH}`,
         BOT_TOKEN: 'your-bot-token-from-botfather',
@@ -21,9 +21,6 @@ module.exports = {
         DEFAULT_PROJECT: '/path/to/your/project',
         INSTANCE_NAME: 'my-project',
         STATE_DIR: 'data/instances/my-project',
-        OPENCODE_SERVER_URL: 'http://127.0.0.1:4096',
-        OPENCODE_SERVER_USERNAME: 'opencode',
-        OPENCODE_SERVER_PASSWORD: '',
       },
       autorestart: true,
       max_memory_restart: '512M',

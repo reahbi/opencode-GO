@@ -56,6 +56,12 @@ export function parseCallback(data: string): ParsedCallback {
     return { type: 'selectmodel', value }
   }
 
+  if (data.startsWith('selectmodel:')) {
+    const value = data.slice('selectmodel:'.length)
+    if (!value) return { type: 'unknown', raw: data }
+    return { type: 'selectmodel', value }
+  }
+
   if (data.startsWith('settings:')) {
     const parts = data.split(':')
     const action = parts[1]

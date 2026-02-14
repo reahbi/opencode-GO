@@ -1,14 +1,16 @@
 import type { Context } from 'grammy'
 import type { ChatState, QueuedMessage } from '../../../domain/models.js'
 import { enqueueMessage, clearQueue, getQueueLength } from '../../../app/queue/messageQueue.js'
+import { updateChatState } from '../../../app/usecases/stateUpdate.js'
 
 type StateStore = {
-  getChatState(chatId: number): Promise<ChatState>
-  saveChatState(chatId: number, state: ChatState): Promise<void>
+  getChatState(chatId: number, threadId?: number): Promise<ChatState>
+  saveChatState(chatId: number, state: ChatState, threadId?: number): Promise<void>
+  withChatLock<T>(chatId: number, fn: () => Promise<T>): Promise<T>
 }
 
 type PromptFlow = {
-  sendPrompt(chatId: number, text: string, userId?: number): Promise<void>
+  sendPrompt(chatId: number, text: string, userId?: number, threadId?: number): Promise<void>
 }
 
 export function queueCommand(
@@ -18,6 +20,8 @@ export function queueCommand(
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+    const threadId = isGroup ? ctx.message?.message_thread_id : undefined
 
     const text = ctx.match as string | undefined
     if (!text?.trim()) {
@@ -25,8 +29,7 @@ export function queueCommand(
       return
     }
 
-    const chatState = await state.getChatState(chatId)
-
+    const chatState = await state.getChatState(chatId, threadId)
     if (!chatState.activeSessionId || !chatState.activeProjectDirectory) {
       await ctx.reply('No active session. Use /new to create one.')
       return
@@ -38,8 +41,9 @@ export function queueCommand(
       actorUserId: ctx.from?.id
     }
 
-    const result = enqueueMessage(chatState, msg)
-    await state.saveChatState(chatId, chatState)
+    const result = await updateChatState(state, chatId, (lockedState) => {
+      return enqueueMessage(lockedState, msg)
+    }, threadId)
 
     let response = `📥 Queued at position ${result.position}`
     if (result.dropped && result.dropped > 0) {
@@ -53,10 +57,12 @@ export function clearQueueCommand(state: StateStore) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+    const threadId = isGroup ? ctx.message?.message_thread_id : undefined
 
-    const chatState = await state.getChatState(chatId)
-    const count = clearQueue(chatState)
-    await state.saveChatState(chatId, chatState)
+    const count = await updateChatState(state, chatId, (lockedState) => {
+      return clearQueue(lockedState)
+    }, threadId)
 
     if (count === 0) {
       await ctx.reply('Queue is already empty.')
@@ -70,8 +76,10 @@ export function showQueueCommand(state: StateStore) {
   return async (ctx: Context) => {
     const chatId = ctx.chat?.id
     if (!chatId) return
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
+    const threadId = isGroup ? ctx.message?.message_thread_id : undefined
 
-    const chatState = await state.getChatState(chatId)
+    const chatState = await state.getChatState(chatId, threadId)
     const length = getQueueLength(chatState)
 
     if (length === 0) {

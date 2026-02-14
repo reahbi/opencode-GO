@@ -5,11 +5,14 @@ import { mock } from 'bun:test'
 
 export function createMockStateStore(
   initialState: Partial<ChatState> = {},
-): StateStore & { _store: Map<number, ChatState> } {
-  const store = new Map<number, ChatState>()
+): StateStore & { _store: Map<string, ChatState> } {
+  const store = new Map<string, ChatState>()
 
-  const getChatState: StateStore['getChatState'] = mock(async (chatId) => {
-    const existing = store.get(chatId)
+  const getStateKey = (chatId: number, threadId?: number): string =>
+    threadId ? `${chatId}:${threadId}` : String(chatId)
+
+  const getChatState: StateStore['getChatState'] = mock(async (chatId, threadId) => {
+    const existing = store.get(getStateKey(chatId, threadId))
     if (existing) {
       return existing
     }
@@ -25,8 +28,8 @@ export function createMockStateStore(
     }
   })
 
-  const saveChatState: StateStore['saveChatState'] = mock(async (chatId, state) => {
-    store.set(chatId, state)
+  const saveChatState: StateStore['saveChatState'] = mock(async (chatId, state, threadId) => {
+    store.set(getStateKey(chatId, threadId), state)
   })
 
   const withChatLock: StateStore['withChatLock'] = mock(async (_chatId, fn) => fn())

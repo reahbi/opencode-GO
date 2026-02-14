@@ -1,4 +1,5 @@
 import type { ClaudeEvent, QuestionAsked, QuestionInfo } from '../../domain/events.js'
+import { LIMITS } from '../../app/policies/limits.js'
 
 /**
  * Check if a tool.use event is an AskUserQuestion tool call.
@@ -75,7 +76,7 @@ const DEEP_THINKING_KEYWORDS = ['deep think', 'deeply', '깊이', '심층', 'tho
 
 export function getThinkingLevel(message: string): number {
   const msgLower = message.toLowerCase()
-  if (DEEP_THINKING_KEYWORDS.some(k => msgLower.includes(k))) return 50000
-  if (THINKING_KEYWORDS.some(k => msgLower.includes(k))) return 10000
+  if (DEEP_THINKING_KEYWORDS.some(k => msgLower.includes(k))) return LIMITS.THINKING_DEEP_TOKENS
+  if (THINKING_KEYWORDS.some(k => msgLower.includes(k))) return LIMITS.THINKING_NORMAL_TOKENS
   return 0
 }

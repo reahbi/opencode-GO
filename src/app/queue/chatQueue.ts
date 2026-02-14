@@ -1,24 +1,25 @@
 import { logger } from '../../shared/logger.js';
 
 export interface ChatQueue {
-  enqueue<T>(chatId: number, fn: () => Promise<T>): Promise<T>;
+  enqueue<T>(scopeId: number | string, fn: () => Promise<T>): Promise<T>;
 }
 
 export function createChatQueue(): ChatQueue {
-  const queue = new Map<number, Promise<unknown>>();
+  const queue = new Map<string, Promise<unknown>>();
 
   return {
-    enqueue<T>(chatId: number, fn: () => Promise<T>): Promise<T> {
-      const prev = queue.get(chatId) ?? Promise.resolve();
+    enqueue<T>(scopeId: number | string, fn: () => Promise<T>): Promise<T> {
+      const key = String(scopeId);
+      const prev = queue.get(key) ?? Promise.resolve();
       const next = prev.then(() => fn(), () => fn());
       
       const chainPromise = next.catch(() => {});
-      queue.set(chatId, chainPromise);
+      queue.set(key, chainPromise);
       
       next.finally(() => {
-        if (queue.get(chatId) === chainPromise) {
-          queue.delete(chatId);
-          logger.debug('queue', `Cleaned up queue for chat ${chatId}`);
+        if (queue.get(key) === chainPromise) {
+          queue.delete(key);
+          logger.debug('queue', `Cleaned up queue for scope ${key}`);
         }
       });
       

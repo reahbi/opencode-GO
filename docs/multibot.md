@@ -288,22 +288,22 @@ Developers can manually edit files to add bots instead of using the `/addbot` wi
 
 ```javascript
 // ecosystem.config.cjs
-const COORDINATION_DIR = '/tmp/opencode-go-coordination'
+const COORDINATION_DIR = '/tmp/claude-go-coordination'
 
 module.exports = {
   apps: [
     {
-      name: 'opencode-go-writer',
+      name: 'claude-go-writer',
       script: 'src/main.ts',
       interpreter: 'bun',
-      cwd: '/path/to/opencode-go',
+      cwd: '/path/to/claude-go',
       env: {
         BOT_TOKEN: 'your-writer-bot-token-here',
         ALLOWED_USER_IDS: 'your-telegram-user-id',
         DEFAULT_PROJECT: '/path/to/my-project',
         INSTANCE_NAME: 'writer',
         STATE_DIR: 'data/instances/writer',
-        OPENCODE_SERVER_URL: 'http://127.0.0.1:4096',
+
         BOT_ROLE: 'writer',
         GROUP_CHAT_ENABLED: 'true',
         COORDINATION_DIR,
@@ -312,17 +312,17 @@ module.exports = {
       max_memory_restart: '512M',
     },
     {
-      name: 'opencode-go-reader',
+      name: 'claude-go-reader',
       script: 'src/main.ts',
       interpreter: 'bun',
-      cwd: '/path/to/opencode-go',
+      cwd: '/path/to/claude-go',
       env: {
         BOT_TOKEN: 'your-reader-bot-token-here',
         ALLOWED_USER_IDS: 'your-telegram-user-id',
         DEFAULT_PROJECT: '/path/to/my-project',
         INSTANCE_NAME: 'reader',
         STATE_DIR: 'data/instances/reader',
-        OPENCODE_SERVER_URL: 'http://127.0.0.1:4096',
+
         BOT_ROLE: 'reader',
         GROUP_CHAT_ENABLED: 'true',
         COORDINATION_DIR,

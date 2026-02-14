@@ -6,19 +6,7 @@ import type { HistoryMessage } from '../../domain/models.js'
 import { AppError } from '../../domain/errors.js'
 import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
-
-// Use globalThis.crypto.randomUUID() instead of node:crypto to maintain Clean Architecture
-function generateUUID(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID()
-  }
-  // Fallback for environments without WebCrypto
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.random() * 16 | 0
-    const v = c === 'x' ? r : (r & 0x3 | 0x8)
-    return v.toString(16)
-  })
-}
+import { generateUUID } from '../../shared/uuid.js'
 
 const SESSIONS_PER_PAGE = 10
 
@@ -28,6 +16,9 @@ export interface SessionPageItem {
   id: string
   isActive: boolean
   isBusy: boolean
+  source: 'bot' | 'local'
+  messageCount: number
+  lastActiveAt: number
 }
 
 export interface SessionPageData {
@@ -41,7 +32,7 @@ interface SessionCommandsDeps {
   sessionStore: SessionStorePort
   state: StateStore
   output: ChatOutputPort
-  getActiveQueryHandle?: (chatId: number) => QueryHandle | null
+  getActiveQueryHandle?: (chatId: number, threadId?: number) => QueryHandle | null
 }
 
 export function formatTimestamp(ms: number): string {
@@ -145,9 +136,9 @@ export function messagesToHtml(title: string, sessionId: string, messages: Histo
 }
 
 export function createSessionCommands(deps: SessionCommandsDeps) {
-  async function createSession(chatId: number, title: string): Promise<void> {
+  async function createSession(chatId: number, title: string, threadId?: number): Promise<void> {
     try {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
 
       if (!state.activeProjectDirectory) {
         await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
@@ -167,7 +158,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
 
       await deps.sessionStore.createSession(meta)
       state.activeSessionId = sessionId
-      await deps.state.saveChatState(chatId, state)
+      await deps.state.saveChatState(chatId, state, threadId)
 
       await deps.output.sendText(chatId, `Session created: <b>${escapeHtml(meta.title)}</b>\nID: <code>${sessionId}</code>`)
     } catch (error) {
@@ -180,9 +171,9 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function listSessions(chatId: number): Promise<void> {
+  async function listSessions(chatId: number, threadId?: number): Promise<void> {
     try {
-      const page = await getSessionPage(chatId, 1)
+      const page = await getSessionPage(chatId, 1, threadId)
       if (!page) {
         await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return
@@ -206,8 +197,8 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function getSessionPage(chatId: number, page: number): Promise<SessionPageData | null> {
-    const state = await deps.state.getChatState(chatId)
+  async function getSessionPage(chatId: number, page: number, threadId?: number): Promise<SessionPageData | null> {
+    const state = await deps.state.getChatState(chatId, threadId)
     if (!state.activeProjectDirectory) return null
 
     const sessions = await deps.sessionStore.listSessions(state.activeProjectDirectory)
@@ -231,6 +222,9 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
         id: s.sessionId,
         isActive: s.sessionId === state.activeSessionId,
         isBusy: s.status === 'busy',
+        source: s.source ?? 'bot',
+        messageCount: s.messageCount,
+        lastActiveAt: s.lastActiveAt,
       })),
       page: safePage,
       totalPages,
@@ -238,16 +232,16 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function resumeSessionById(chatId: number, sessionId: string): Promise<string | null> {
+  async function resumeSessionById(chatId: number, sessionId: string, threadId?: number): Promise<string | null> {
     try {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
       if (!state.activeProjectDirectory) return null
 
       const session = await deps.sessionStore.getSession(sessionId)
       if (!session) return null
 
       state.activeSessionId = session.sessionId
-      await deps.state.saveChatState(chatId, state)
+      await deps.state.saveChatState(chatId, state, threadId)
       return session.title || 'Untitled'
     } catch (error) {
       logger.error('session', 'resumeSessionById failed:', error)
@@ -255,9 +249,9 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function resumeSession(chatId: number, sessionIndex: number): Promise<void> {
+  async function resumeSession(chatId: number, sessionIndex: number, threadId?: number): Promise<void> {
     try {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
 
       if (!state.activeProjectDirectory) {
         await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
@@ -274,7 +268,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
 
       const session = sessions[sessionIndex - 1]
       state.activeSessionId = session.sessionId
-      await deps.state.saveChatState(chatId, state)
+      await deps.state.saveChatState(chatId, state, threadId)
 
       await deps.output.sendText(chatId, `Session resumed: <b>${escapeHtml(session.title || 'Untitled')}</b>`)
     } catch (error) {
@@ -287,9 +281,9 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function resumeSessionForHistory(chatId: number, sessionIndex: number): Promise<{ sessionId: string; title: string } | null> {
+  async function resumeSessionForHistory(chatId: number, sessionIndex: number, threadId?: number): Promise<{ sessionId: string; title: string } | null> {
     try {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
       if (!state.activeProjectDirectory) {
         await deps.output.sendText(chatId, 'No active project. Set DEFAULT_PROJECT in .env.')
         return null
@@ -305,7 +299,7 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
 
       const session = sessions[sessionIndex - 1]
       state.activeSessionId = session.sessionId
-      await deps.state.saveChatState(chatId, state)
+      await deps.state.saveChatState(chatId, state, threadId)
 
       return { sessionId: session.sessionId, title: session.title || 'Untitled' }
     } catch (error) {
@@ -319,9 +313,9 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function abortSession(chatId: number): Promise<void> {
+  async function abortSession(chatId: number, threadId?: number): Promise<void> {
     try {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
 
       if (!state.activeSessionId) {
         await deps.output.sendText(chatId, 'No active session to abort.')
@@ -329,13 +323,20 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       }
 
       // Abort via query handle if available
-      const handle = deps.getActiveQueryHandle?.(chatId)
+      const handle = deps.getActiveQueryHandle?.(chatId, threadId)
       if (handle) {
         handle.abort()
       }
 
       state.pendingInteractions = []
-      await deps.state.saveChatState(chatId, state)
+      await deps.state.saveChatState(chatId, state, threadId)
+
+      if (state.activeSessionId) {
+        await deps.sessionStore.updateSession(state.activeSessionId, {
+          status: 'idle',
+          lastActiveAt: Date.now(),
+        })
+      }
 
       await deps.output.sendText(chatId, 'Session aborted.')
     } catch (error) {
@@ -351,9 +352,10 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
   async function exportSessionHistory(
     chatId: number,
     sessionId?: string,
+    threadId?: number,
   ): Promise<{ content: string; title: string; format: 'md' | 'html' } | null> {
     try {
-      const state = await deps.state.getChatState(chatId)
+      const state = await deps.state.getChatState(chatId, threadId)
       const targetSessionId = sessionId || state.activeSessionId
 
       if (!targetSessionId) {
@@ -388,8 +390,8 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     }
   }
 
-  async function revertSession(chatId: number): Promise<void> {
-    const chatState = await deps.state.getChatState(chatId)
+  async function revertSession(chatId: number, threadId?: number): Promise<void> {
+    const chatState = await deps.state.getChatState(chatId, threadId)
     if (!chatState.activeSessionId) {
       await deps.output.sendText(chatId, '⚠️ No active session.')
       return
@@ -399,13 +401,13 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
       return
     }
     // Try to get the query handle for rewindFiles
-    const handle = deps.getActiveQueryHandle?.(chatId)
+    const handle = deps.getActiveQueryHandle?.(chatId, threadId)
     if (handle?.rewindFiles) {
       // Use the message UUID from lastAssistantResponse if available
       const success = await handle.rewindFiles(chatState.lastAssistantResponse.sessionId)
       if (success) {
         chatState.redoAvailable = true
-        await deps.state.saveChatState(chatId, chatState)
+        await deps.state.saveChatState(chatId, chatState, threadId)
         await deps.output.sendText(chatId, '↩️ Last response undone. File changes reverted.')
         return
       }
@@ -413,8 +415,8 @@ export function createSessionCommands(deps: SessionCommandsDeps) {
     await deps.output.sendText(chatId, '⚠️ Undo is not available for this session. File checkpointing may not be active.')
   }
 
-  async function unrevertSession(chatId: number): Promise<void> {
-    const chatState = await deps.state.getChatState(chatId)
+  async function unrevertSession(chatId: number, threadId?: number): Promise<void> {
+    const chatState = await deps.state.getChatState(chatId, threadId)
     if (!chatState.redoAvailable) {
       await deps.output.sendText(chatId, '⚠️ No undo to redo.')
       return

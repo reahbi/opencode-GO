@@ -1,72 +1,80 @@
-[🇺🇸 English](opencode.md)
+[English](opencode.md)
 
-# OpenCode 서버 설정 가이드
+# Claude Code 설정 가이드
 
-OpenCode-Go는 OpenCode AI 코딩 어시스턴트 서버와 통신하여 작업을 수행합니다. 이 문서는 OpenCode 서버를 설치하고 설정하는 방법을 안내합니다.
+Claude-Go는 Claude Code CLI와 Claude Agent SDK를 사용하여 AI와 직접 통신합니다 — 별도 서버가 필요 없습니다.
 
-## OpenCode 개요
+## Claude Code 개요
 
-OpenCode는 강력한 AI 코딩 어시스턴트 서버입니다. OpenCode-Go는 이 서버에 연결하여 텔레그램을 통해 AI와 대화하고 코드 수정 요청을 전달하는 클라이언트 역할을 합니다.
+Claude Code는 Anthropic의 공식 CLI입니다. Claude-Go는 Claude Agent SDK를 프로세스 내에 임베드하여 `query()`로 AI와 직접 통신합니다. **별도의 서버 프로세스가 필요 없습니다.**
 
-## 설치 및 시작
+## 설치
 
-1. 설치 방법은 OpenCode 공식 문서(https://opencode.ai) 또는 프로젝트의 README를 참고하십시오.
-2. 서버를 시작하려면 다음 명령어를 실행합니다:
+1. Claude Code CLI 설치:
    ```bash
-   opencode serve
+   npm install -g @anthropic-ai/claude-code
    ```
-   기본적으로 서버는 4096 포트에서 동작합니다.
 
-## 서버 연결 확인
+2. 인증 (한 번만 실행):
+   ```bash
+   claude
+   ```
+   프롬프트에 따라 Anthropic 계정으로 로그인하세요.
 
-서버가 정상적으로 실행 중인지 확인하려면 다음 명령어를 사용하십시오:
+3. 설치 확인:
+   ```bash
+   claude --version
+   ```
+
+## 환경 설정
+
+Claude-Go에서 사용 가능한 Claude 관련 환경 변수:
+
 ```bash
-curl http://127.0.0.1:4096/health
+# Claude 모델 (선택, 기본값: claude-sonnet-4-5)
+CLAUDE_MODEL=claude-sonnet-4-5
+
+# Claude Code 실행 파일 경로 (선택, PATH에 있으면 자동 감지)
+CLAUDE_CODE_PATH=/usr/local/bin/claude
+
+# Extended Thinking 토큰 한도 (선택, 0 = 비활성화)
+MAX_THINKING_TOKENS=0
+
+# 세션당 최대 비용 USD (선택, 미설정시 제한 없음)
+MAX_BUDGET_USD=5.00
 ```
-정상이라면 서버로부터 상태 응답을 받게 됩니다.
 
-## 포트 변경 및 설정
+## 동작 방식
 
-기본 포트(4096)가 아닌 다른 포트를 사용하려면 다음과 같이 실행합니다:
+이전 OpenCode 기반 아키텍처(별도 서버 필요)와 달리, Claude-Go는 **단일 프로세스**로 실행됩니다:
+
+```
+이전:  Bot ──HTTP+SSE──> OpenCode Server (별도 프로세스)
+현재:  Bot ← Agent SDK query() 임베드 (같은 프로세스)
+```
+
+- Claude Agent SDK의 `query()` 함수는 실시간 스트리밍을 위한 `AsyncGenerator`를 반환합니다
+- 세션은 JSON 파일로 로컬 관리됩니다 (서버 API 불필요)
+- 요약은 Claude CLI 서브프로세스로 생성됩니다 (`claude -p`)
+- Permission 모드는 `bypassPermissions`로 설정됩니다 — AI가 도구를 프롬프트 없이 실행합니다
+
+## 동작 확인
+
+Claude-Go 설정 후 진단 도구를 실행하세요:
 ```bash
-opencode serve --port 8080
-```
-이 경우, OpenCode-Go의 `.env` 파일에서 `OPENCODE_SERVER_URL` 값을 수정해야 합니다:
-`OPENCODE_SERVER_URL=http://127.0.0.1:8080`
-
-## 인증 설정 (선택 사항)
-
-보안을 위해 `OPENCODE_SERVER_PASSWORD` 환경 변수를 사용하여 OpenCode 서버에 비밀번호를 설정할 수 있습니다.
-
-**WSL/Linux/macOS:**
-```bash
-OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
+bun run doctor
 ```
 
-**Windows** (.bat 래퍼 필요):
-```bash
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=your-password
-opencode serve --port 4096
-BATEOF
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-```
+Claude Code CLI가 설치되어 있고 접근 가능한지 확인합니다.
 
-OpenCode-Go의 `.env` 파일도 일치시키십시오:
-```
-OPENCODE_SERVER_USERNAME=opencode
-OPENCODE_SERVER_PASSWORD=your-password
-```
+## 모델 선택
 
-연결 확인:
-```bash
-curl -s -u opencode:your-password http://127.0.0.1:4096/project
-```
+텔레그램에서 `/agents` 명령으로 런타임에 AI 모델을 변경하거나, `CLAUDE_MODEL` 환경 변수로 기본 모델을 설정할 수 있습니다.
 
-## 원격 서버 사용
+## Extended Thinking
 
-OpenCode 서버가 다른 장비에서 실행 중인 경우:
-1. `.env` 파일의 `OPENCODE_SERVER_URL`을 해당 서버의 IP 주소로 설정합니다.
-   예: `OPENCODE_SERVER_URL=http://192.168.1.100:4096`
-2. 해당 서버의 방화벽 설정에서 4096(또는 설정한 포트) 포트가 허용되어 있는지 확인하십시오.
+Extended Thinking은 Claude의 사고 과정을 표시합니다. 메시지에 "think", "분석", "deep" 같은 키워드가 포함되면 자동으로 활성화되거나, `MAX_THINKING_TOKENS`를 0이 아닌 값으로 설정하여 기본 활성화할 수 있습니다.
+
+## 비용 제어
+
+`MAX_BUDGET_USD`를 설정하여 세션당 지출을 제한할 수 있습니다. SDK의 `maxBudgetUsd` 옵션에 직접 전달됩니다. 텔레그램 `/settings`에서 세션별로도 설정할 수 있습니다.

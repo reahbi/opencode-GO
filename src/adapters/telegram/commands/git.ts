@@ -1,11 +1,11 @@
 import type { Context } from 'grammy'
 import { InlineKeyboard, InputFile } from 'grammy'
-import { exec } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { StateStore } from '../../../domain/ports/StateStore.js'
 import { escapeHtml } from '../../../shared/formatResponse.js'
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 const GIT_TIMEOUT_MS = 10_000
 const MAX_BUFFER_BYTES = 1024 * 1024
@@ -15,9 +15,9 @@ interface GitExecResult {
   stderr: string
 }
 
-async function execGit(cwd: string, args: string): Promise<GitExecResult> {
+async function execGit(cwd: string, args: string[]): Promise<GitExecResult> {
   try {
-    const { stdout, stderr } = await execAsync(`git ${args}`, {
+    const { stdout, stderr } = await execFileAsync('git', args, {
       cwd,
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: MAX_BUFFER_BYTES,
@@ -33,23 +33,23 @@ async function execGit(cwd: string, args: string): Promise<GitExecResult> {
 }
 
 async function isGitRepo(cwd: string): Promise<boolean> {
-  const result = await execGit(cwd, 'rev-parse --is-inside-work-tree')
+  const result = await execGit(cwd, ['rev-parse', '--is-inside-work-tree'])
   return result.stdout === 'true'
 }
 
 async function getGitBranch(cwd: string): Promise<string> {
-  const result = await execGit(cwd, 'branch --show-current')
+  const result = await execGit(cwd, ['branch', '--show-current'])
   return result.stdout || 'detached HEAD'
 }
 
 async function getGitStatus(cwd: string): Promise<string> {
-  const result = await execGit(cwd, 'status --short')
+  const result = await execGit(cwd, ['status', '--short'])
   return result.stdout
 }
 
 async function getGitDiffStats(cwd: string): Promise<string> {
-  const staged = await execGit(cwd, 'diff --cached --stat')
-  const unstaged = await execGit(cwd, 'diff --stat')
+  const staged = await execGit(cwd, ['diff', '--cached', '--stat'])
+  const unstaged = await execGit(cwd, ['diff', '--stat'])
   
   const parts: string[] = []
   if (staged.stdout) {
@@ -63,17 +63,17 @@ async function getGitDiffStats(cwd: string): Promise<string> {
 }
 
 async function getGitDiffFull(cwd: string): Promise<string> {
-  const result = await execGit(cwd, 'diff HEAD')
+  const result = await execGit(cwd, ['diff', 'HEAD'])
   return result.stdout
 }
 
 async function getGitLog(cwd: string, count = 5): Promise<string> {
-  const result = await execGit(cwd, `log --oneline -n ${count}`)
+  const result = await execGit(cwd, ['log', '--oneline', '-n', String(count)])
   return result.stdout
 }
 
 async function getGitRemote(cwd: string): Promise<string> {
-  const result = await execGit(cwd, 'remote get-url origin 2>/dev/null')
+  const result = await execGit(cwd, ['remote', 'get-url', 'origin'])
   return result.stdout
 }
 

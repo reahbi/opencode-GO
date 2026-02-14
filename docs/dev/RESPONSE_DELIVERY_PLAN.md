@@ -1,4 +1,4 @@
-> **📦 Archive**: This document was the original implementation plan. All phases described below have been implemented and are now live in the codebase. Kept for historical reference and design context.
+> **📦 Archive**: This document was the original implementation plan for the OpenCode-Go era. All phases described below have been implemented. Architecture has since migrated from OpenCode SDK to Claude Agent SDK — see current codebase for actual implementation. Kept for historical reference and design context.
 
 ---
 

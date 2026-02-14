@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import { isAskUserQuestion, parseAskUserQuestion, getThinkingLevel } from '../../adapters/claude/claudeEventMapper.js'
+import { LIMITS } from '../../app/policies/limits.js'
 import type { ClaudeEvent } from '../../domain/events.js'
 
 describe('claudeEventMapper', () => {
@@ -175,32 +176,32 @@ describe('claudeEventMapper', () => {
     })
 
     it('returns 10000 for basic thinking keywords', () => {
-      expect(getThinkingLevel('think about this')).toBe(10000)
-      expect(getThinkingLevel('analyze this code')).toBe(10000)
-      expect(getThinkingLevel('이 코드를 분석해줘')).toBe(10000)
-      expect(getThinkingLevel('좀 생각해봐')).toBe(10000)
-      expect(getThinkingLevel('고민해봐')).toBe(10000)
-      expect(getThinkingLevel('consider the alternatives')).toBe(10000)
-      expect(getThinkingLevel('reason through this')).toBe(10000)
+      expect(getThinkingLevel('think about this')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('analyze this code')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('이 코드를 분석해줘')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('좀 생각해봐')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('고민해봐')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('consider the alternatives')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('reason through this')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
     })
 
     it('returns 50000 for deep thinking keywords', () => {
-      expect(getThinkingLevel('deep think about this')).toBe(50000)
-      expect(getThinkingLevel('think deeply about this')).toBe(50000)
-      expect(getThinkingLevel('깊이 분석해줘')).toBe(50000)
-      expect(getThinkingLevel('심층 분석 해봐')).toBe(50000)
-      expect(getThinkingLevel('do a thorough review')).toBe(50000)
-      expect(getThinkingLevel('comprehensive analysis please')).toBe(50000)
+      expect(getThinkingLevel('deep think about this')).toBe(LIMITS.THINKING_DEEP_TOKENS)
+      expect(getThinkingLevel('think deeply about this')).toBe(LIMITS.THINKING_DEEP_TOKENS)
+      expect(getThinkingLevel('깊이 분석해줘')).toBe(LIMITS.THINKING_DEEP_TOKENS)
+      expect(getThinkingLevel('심층 분석 해봐')).toBe(LIMITS.THINKING_DEEP_TOKENS)
+      expect(getThinkingLevel('do a thorough review')).toBe(LIMITS.THINKING_DEEP_TOKENS)
+      expect(getThinkingLevel('comprehensive analysis please')).toBe(LIMITS.THINKING_DEEP_TOKENS)
     })
 
     it('is case-insensitive', () => {
-      expect(getThinkingLevel('THINK about this')).toBe(10000)
-      expect(getThinkingLevel('DEEPLY analyze')).toBe(50000)
+      expect(getThinkingLevel('THINK about this')).toBe(LIMITS.THINKING_NORMAL_TOKENS)
+      expect(getThinkingLevel('DEEPLY analyze')).toBe(LIMITS.THINKING_DEEP_TOKENS)
     })
 
     it('deep keywords take precedence over basic', () => {
       // "deeply" matches deep, even though "think" also matches basic
-      expect(getThinkingLevel('think deeply about this problem')).toBe(50000)
+      expect(getThinkingLevel('think deeply about this problem')).toBe(LIMITS.THINKING_DEEP_TOKENS)
     })
   })
 })
