@@ -69,6 +69,7 @@ export interface UserSettings {
   outputMode: 'formatted' | 'raw'
   historyFormat: 'md' | 'html'
   historyLimit: number | null
+  permissionMode: 'plan' | 'ask' | 'bypass'
   reviewMode?: boolean
   voiceMode: boolean
   voiceAutoMode: boolean
@@ -131,6 +132,7 @@ export function createDefaultUserSettings(): UserSettings {
     outputMode: 'formatted',
     historyFormat: 'html',
     historyLimit: null,
+    permissionMode: 'bypass',
     voiceMode: false,
     voiceAutoMode: false,
     voiceSummaryLength: 800,

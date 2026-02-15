@@ -253,6 +253,9 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path (absolute path)
 | `/status` | Check current status |
 | `/git` | Git status, diff, log |
 | `/agents` | Select AI agent/model |
+| `/plan` | Switch permission mode to `plan` (planning-first approval flow) |
+| `/ask` | Switch permission mode to `ask` (SDK default prompt behavior) |
+| `/bypass` | Switch permission mode to `bypass` (full tool access) |
 | `/settings` | Summary mode, Review Mode, Voice, output format, etc. |
 | `/groupsettings` | Group shared settings (debate rounds, bot status) |
 | `/debate [topic]` | Start Writer↔Reader bot debate |
@@ -264,6 +267,9 @@ DEFAULT_PROJECT=/path/to/your/project  # Project path (absolute path)
 | `/help` | Help |
 
 Regular text messages are sent as prompts to the current session's AI.
+
+Permission mode can be switched from Telegram using `/plan`, `/ask`, `/bypass`, or from `/settings`.
+In `ask` mode, approval prompts follow Claude Code SDK defaults. Release gating should be treated as runtime policy from Claude Code/SDK, not as a custom Telegram approval flow.
 
 ---
 

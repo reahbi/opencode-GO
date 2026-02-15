@@ -250,7 +250,11 @@ DEFAULT_PROJECT=/path/to/your/project  # 프로젝트 경로 (절대 경로)
 | `/undo` | 마지막 AI 응답 되돌리기 |
 | `/redo` | 되돌린 응답 다시 적용 |
 | `/status` | 현재 상태 확인 |
+| `/git` | Git 상태, diff, log |
 | `/agents` | AI 에이전트/모델 선택 |
+| `/plan` | 권한 모드를 `plan`으로 전환 (계획 우선 승인 흐름) |
+| `/ask` | 권한 모드를 `ask`로 전환 (SDK 기본 프롬프트 동작) |
+| `/bypass` | 권한 모드를 `bypass`로 전환 (도구 전체 접근) |
 | `/settings` | 요약 모드, Review Mode, 음성, 출력 형식 등 설정 |
 | `/groupsettings` | 그룹 공유 설정 (토론 라운드, 봇 현황) |
 | `/debate [주제]` | Writer↔Reader 봇 간 토론 시작 |
@@ -262,6 +266,9 @@ DEFAULT_PROJECT=/path/to/your/project  # 프로젝트 경로 (절대 경로)
 | `/help` | 도움말 |
 
 일반 텍스트를 보내면 현재 세션의 AI에게 프롬프트로 전달됩니다.
+
+권한 모드는 텔레그램에서 `/plan`, `/ask`, `/bypass` 또는 `/settings`로 전환할 수 있습니다.
+`ask` 모드의 승인 프롬프트는 Claude Code SDK 기본 동작을 따릅니다. 릴리즈 게이트는 Claude Code/SDK 런타임 정책으로 봐야 하며, 텔레그램 커스텀 승인 플로우를 의미하지 않습니다.
 
 ---
 

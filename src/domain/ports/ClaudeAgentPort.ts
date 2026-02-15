@@ -18,6 +18,8 @@ export interface McpServerConfig {
   env?: Record<string, string>
 }
 
+export type PermissionMode = 'plan' | 'ask' | 'bypass'
+
 export interface QueryOptions {
   prompt: string
   sessionId?: string
@@ -30,6 +32,7 @@ export interface QueryOptions {
   mcpServers?: Record<string, McpServerConfig>
   maxBudgetUsd?: number
   maxThinkingTokens?: number
+  permissionMode?: PermissionMode
   systemPrompt?: string
 }
 

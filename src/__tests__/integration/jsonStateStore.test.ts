@@ -147,6 +147,7 @@ describe('jsonStateStore integration', () => {
     expect(state.settings.summaryMode).toBe(true)
     expect(state.settings.summaryThreshold).toBeGreaterThanOrEqual(LIMITS.SUMMARY_MIN_TRIGGER)
     expect(state.settings.outputMode).toBe('formatted')
+    expect(state.settings.permissionMode).toBe('bypass')
     expect(state.awaitingInput).toBeNull()
     expect(state.awaitingInteractionId).toBeNull()
   })

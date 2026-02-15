@@ -80,6 +80,13 @@ export function createJsonStateStore(dataDir?: string): StateStore {
     }
   }
 
+  function migratePermissionMode(mode: unknown): 'plan' | 'ask' | 'bypass' {
+    if (mode === 'plan' || mode === 'ask' || mode === 'bypass') {
+      return mode
+    }
+    return 'bypass'
+  }
+
   function migrateState(raw: Partial<ChatState>): ChatState {
     const defaults = createDefaultChatState()
     const state: ChatState = {
@@ -92,6 +99,7 @@ export function createJsonStateStore(dataDir?: string): StateStore {
     if (state.settings.summaryThreshold < LIMITS.SUMMARY_MIN_TRIGGER) {
       state.settings.summaryThreshold = LIMITS.SUMMARY_MIN_TRIGGER
     }
+    state.settings.permissionMode = migratePermissionMode(state.settings.permissionMode)
     if (state.pendingInteractions) {
       state.pendingInteractions = state.pendingInteractions.map(
         pi => migratePendingInteraction(pi as unknown as Record<string, unknown>)

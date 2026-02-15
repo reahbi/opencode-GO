@@ -82,6 +82,7 @@ export function agentSubText(
     '',
     `Agent: <code>${currentAgent || 'Not set'}</code>`,
     `Review Mode: ${review}`,
+    `Permission Mode: <code>${settings.permissionMode}</code>`,
     '',
   ]
   for (const a of agents) {
@@ -95,6 +96,7 @@ export function agentSubText(
 export function agentSubKeyboard(
   agents: Array<{ name: string }>,
   currentAgent: string | null,
+  settings: UserSettings,
 ): InlineKeyboard {
   const kb = new InlineKeyboard()
   for (const a of agents) {
@@ -104,8 +106,20 @@ export function agentSubKeyboard(
   }
   kb.text('🔒 Toggle Review Mode', 'settings:review')
   kb.row()
+  kb
+    .text(settings.permissionMode === 'plan' ? '✅ plan' : 'plan', 'settings:permmode:plan')
+    .text(settings.permissionMode === 'ask' ? '✅ ask' : 'ask', 'settings:permmode:ask')
+    .text(settings.permissionMode === 'bypass' ? '✅ bypass' : 'bypass', 'settings:permmode:bypass')
+  kb.row()
   kb.text('◀️ Back', 'settings:back')
   return kb
+}
+
+export function parseSettingsPermissionMode(value?: string): UserSettings['permissionMode'] | null {
+  if (value === 'plan' || value === 'ask' || value === 'bypass') {
+    return value
+  }
+  return null
 }
 
 export function customAgentSubText(
@@ -333,7 +347,8 @@ export function settingsCommand(
     const chatId = ctx.chat?.id
     if (!chatId) return
     const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup'
-    const chatState = await state.getChatState(chatId)
+    const threadId = isGroup ? ctx.message?.message_thread_id : undefined
+    const chatState = await state.getChatState(chatId, threadId)
     let healthy = false
     try {
       execFileSync('claude', ['--version'], { timeout: 3000, stdio: 'ignore' })

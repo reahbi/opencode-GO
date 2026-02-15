@@ -14,12 +14,13 @@ import { abortCommand } from './abort.js'
 import { historyCommand } from './history.js'
 import { helpCommand } from './help.js'
 import { startCommand } from './start.js'
+import { planCommand, askCommand, bypassCommand } from './permissionMode.js'
 import { statusCommand } from './status.js'
 import { agentsCommand } from './agents.js'
 import {
   settingsCommand, resolveReviewMode,
   settingsMainText, settingsMainKeyboard,
-  agentSubText, agentSubKeyboard,
+  agentSubText, agentSubKeyboard, parseSettingsPermissionMode,
   customAgentSubText, customAgentSubKeyboard,
   summarySubText, summarySubKeyboard,
   modelSelectText, modelSelectKeyboard,
@@ -270,6 +271,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   reg('redo', redoCommand(sessionCommands))
   reg('help', helpCommand(deps.instanceName))
   reg('start', startCommand(state, deps.instanceName))
+  reg('plan', planCommand(state))
+  reg('ask', askCommand(state))
+  reg('bypass', bypassCommand(state))
   reg('status', statusCommand(state, deps.instanceName, deps.tunnel))
   reg('git', gitCommand(state))
   reg('agents', agentsCommand(state, claude))
@@ -423,12 +427,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await updateRegistryAgent(parsed.agentName)
         try {
           const agents = models.map(m => ({ name: m.id, description: m.name }))
-          await ctx.editMessageText(
-            agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole),
-            { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, parsed.agentName) },
-          )
-        } catch {
-          await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b>`, { parse_mode: 'HTML' })
+              await ctx.editMessageText(
+                agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole),
+                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, parsed.agentName, chatState.settings) },
+              )
+            } catch {
+              await ctx.editMessageText(`Agent switched to <b>${escapeHtml(parsed.agentName)}</b>`, { parse_mode: 'HTML' })
         }
         break
       }
@@ -472,7 +476,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
               const agents = models.map(m => ({ name: m.id, description: m.name }))
               await ctx.editMessageText(
                 agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
-                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
+                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent, chatState.settings) },
               )
             } catch {
               await ctx.editMessageText('Failed to load agents.', { parse_mode: 'HTML' })
@@ -512,10 +516,30 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
               const agents = models.map(m => ({ name: m.id, description: m.name }))
               await ctx.editMessageText(
                 agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
-                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
+                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent, chatState.settings) },
               )
             } catch {
               await ctx.editMessageText(`Review Mode: ${!current ? 'ON 🔒' : 'OFF'}`, { parse_mode: 'HTML' })
+            }
+            break
+          }
+          case 'permmode': {
+            const mode = parseSettingsPermissionMode(parsed.value)
+            if (!mode) {
+              await ctx.answerCallbackQuery({ text: 'Invalid permission mode.', show_alert: true }).catch(() => {})
+              break
+            }
+            chatState.settings.permissionMode = mode
+            await state.saveChatState(chatId, chatState, threadId)
+            try {
+              const models = await claude.getSupportedModels()
+              const agents = models.map(m => ({ name: m.id, description: m.name }))
+              await ctx.editMessageText(
+                agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
+                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent, chatState.settings) },
+              )
+            } catch {
+              await ctx.editMessageText(`Permission mode set to <code>${mode}</code>.`, { parse_mode: 'HTML' })
             }
             break
           }

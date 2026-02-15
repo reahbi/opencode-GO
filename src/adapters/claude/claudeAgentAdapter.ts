@@ -66,6 +66,21 @@ function buildUserMessage(text: string, images?: ImageAttachment[]): string | As
   })()
 }
 
+function mapPermissionMode(permissionMode: QueryOptions['permissionMode']): Pick<Options, 'permissionMode' | 'allowDangerouslySkipPermissions'> {
+  if (permissionMode === 'plan') {
+    return { permissionMode: 'plan' }
+  }
+
+  if (permissionMode === 'ask') {
+    return { permissionMode: 'default' }
+  }
+
+  return {
+    permissionMode: 'bypassPermissions',
+    allowDangerouslySkipPermissions: true,
+  }
+}
+
 export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): ClaudeAgentPort {
   const { model: defaultModel, claudeCodePath } = config
 
@@ -209,14 +224,14 @@ export function createClaudeAgentAdapter(config: ClaudeAgentAdapterConfig): Clau
 
     const abortController = new AbortController()
     let capturedSessionId: string | null = null
+    const permissionOptions = mapPermissionMode(options.permissionMode)
 
     // Build SDK options
     const sdkOptions: Options = {
       model: options.model || defaultModel,
       cwd: options.cwd,
       settingSources: ['user', 'project'],
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
+      ...permissionOptions,
       maxThinkingTokens: options.maxThinkingTokens,
       systemPrompt: options.systemPrompt,
       abortController,

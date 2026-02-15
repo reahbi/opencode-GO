@@ -136,6 +136,7 @@ export function createPromptFlow(deps: PromptFlowDeps) {
         images: opts?.images,
         maxThinkingTokens: thinkingTokens,
         maxBudgetUsd: deps.config.maxBudgetUsd ?? undefined,
+        permissionMode: state.settings.permissionMode,
         systemPrompt,
       })
 

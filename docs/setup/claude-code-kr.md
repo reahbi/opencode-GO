@@ -55,7 +55,17 @@ Bot ← Agent SDK query() 임베드 (같은 프로세스)
 - Claude Agent SDK의 `query()` 함수는 실시간 스트리밍을 위한 `AsyncGenerator`를 반환합니다
 - 세션은 JSON 파일로 로컬 관리됩니다 (서버 API 불필요)
 - 요약은 Claude CLI 서브프로세스로 생성됩니다 (`claude -p`)
-- Permission 모드는 `bypassPermissions`로 설정됩니다 — AI가 도구를 프롬프트 없이 실행합니다
+
+### 권한 모드
+
+Claude-Go는 세 가지 권한 모드를 지원합니다:
+
+- `plan`: 도구 실행 전 계획 우선 흐름
+- `ask`: 승인 프롬프트에 SDK 기본 동작 사용
+- `bypass`: 권한 확인을 건너뛰고 도구 실행
+
+텔레그램에서 `/plan`, `/ask`, `/bypass` 또는 `/settings`로 런타임 전환할 수 있습니다.
+`ask` 모드의 fallback/release-gate 동작은 Claude Code SDK 런타임 정책을 따릅니다. Claude-Go가 `ask` 모드에 텔레그램 커스텀 승인 게이트를 추가하는 것은 아닙니다.
 
 ## 동작 확인
 

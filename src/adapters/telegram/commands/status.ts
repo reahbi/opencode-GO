@@ -26,6 +26,7 @@ export function statusCommand(state: StateStore, instanceName?: string, tunnel?:
       `📁 Project: <code>${escapeHtml(dir)}</code>`,
       `💬 Session: <code>${escapeHtml(sid)}</code>`,
       `🤖 Agent: ${escapeHtml(agent)}`,
+      `🛡️ Permission mode: <code>${escapeHtml(chatState.settings.permissionMode)}</code>`,
       `💰 Session cost: ${cost}`,
       `📋 Pending interactions: ${chatState.pendingInteractions.length}`,
     ]

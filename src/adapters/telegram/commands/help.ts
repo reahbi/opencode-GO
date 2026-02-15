@@ -23,6 +23,9 @@ export function helpCommand(instanceName?: string) {
 
 <b>Agent</b>
 /agents — Select AI agent
+/plan — Permission mode: plan first
+/ask — Permission mode: ask before tools
+/bypass — Permission mode: bypass checks
 
 <b>Settings</b>
 /settings — Bot settings (summary, output, etc.)

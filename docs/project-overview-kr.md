@@ -27,7 +27,8 @@ Agent SDK의 `query()` AsyncGenerator 기반으로 AI 응답을 실시간 수신
 AI가 질문을 할 때(AskUserQuestion 도구 감지), Telegram 인라인 키보드로 즉시 응답 가능하다.
 - **질문 응답**: 선택지 버튼, 직접 입력, 멀티셀렉트(체크박스 UI) 지원
 - **TTL**: 10분 경과 시 만료
-- **권한**: `bypassPermissions` 모드 — 파일 수정 권한 프롬프트 없음
+- **권한 모드**: `plan` / `ask` / `bypass` 전환 지원 (`/plan`, `/ask`, `/bypass`, `/settings`)
+- **ask 정책**: 승인 프롬프트와 release-gate는 Claude Code SDK 런타임 기본 정책을 따르며, 별도 텔레그램 커스텀 승인 플로우는 없음
 
 ### 2.3 스마트 전달 (Smart Delivery)
 응답 길이에 따라 자동으로 전달 방식을 결정한다:
@@ -266,6 +267,9 @@ main.ts   → Composition Root (DI 조립)
 | `/status` | 현재 상태 확인 |
 | `/git` | Git 상태, diff, log |
 | `/agents` | AI 에이전트 선택 |
+| `/plan` | 권한 모드를 `plan`으로 전환 |
+| `/ask` | 권한 모드를 `ask`로 전환 |
+| `/bypass` | 권한 모드를 `bypass`로 전환 |
 | `/makeagent` | 커스텀 에이전트 생성 마법사 |
 | `/settings` | 봇 설정 |
 | `/groupsettings` | 그룹 공유 설정 |

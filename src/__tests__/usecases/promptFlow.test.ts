@@ -178,6 +178,21 @@ describe('promptFlow', () => {
     expect(claude.runQuery).toHaveBeenCalled()
   })
 
+  it('passes permission mode from chat settings into query options', async () => {
+    state = createMockStateStore(buildChatState({
+      activeProjectDirectory: directory,
+      activeSessionId: sessionId,
+      settings: buildUserSettings({ permissionMode: 'plan' }),
+    }))
+    const flow = createPromptFlow({ claude, output, state, watcher, config: { maxThinkingTokens: 0, maxBudgetUsd: null } })
+
+    await flow.handleUserMessage(chatId, 'hello')
+
+    expect(claude.runQuery).toHaveBeenCalledWith(expect.objectContaining({
+      permissionMode: 'plan',
+    }))
+  })
+
   it('uses review mode prefix when enabled in settings', async () => {
     state = createMockStateStore(buildChatState({
       activeProjectDirectory: directory,

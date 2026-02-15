@@ -123,5 +123,5 @@ Every change must pass:
 - Single-process: No separate server. Bot embeds Claude Agent SDK directly.
 - State migration: `jsonStateStore.migrateState()` backfills missing fields.
 - Constants split: `shared/constants.ts` (general) and `app/policies/limits.ts` (policy-specific).
-- Permission mode: `bypassPermissions` — AI executes tools freely.
+- Permission mode runtime supports `plan` / `ask` / `bypass` (default remains `bypass` for compatibility).
 - Prefer minimal, focused changes over broad refactors unless requested.

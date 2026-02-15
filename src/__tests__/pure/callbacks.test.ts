@@ -19,4 +19,18 @@ describe('parseCallback', () => {
       value: 'anthropic/claude-haiku-4-5',
     })
   })
+
+  it('keeps settings callback parsing compatible for mode actions', () => {
+    expect(parseCallback('settings:review')).toEqual({
+      type: 'settings',
+      action: 'review',
+      value: undefined,
+    })
+
+    expect(parseCallback('settings:permmode:plan')).toEqual({
+      type: 'settings',
+      action: 'permmode',
+      value: 'plan',
+    })
+  })
 })

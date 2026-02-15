@@ -55,7 +55,17 @@ Bot ← Agent SDK query() embedded (same process)
 - The Claude Agent SDK's `query()` function returns an `AsyncGenerator` for real-time streaming
 - Sessions are managed locally via JSON files (no server API needed)
 - Summaries are generated using the Claude CLI as a subprocess (`claude -p`)
-- Permission mode is set to `bypassPermissions` — the AI executes tools without prompts
+
+### Permission Modes
+
+Claude-Go supports three permission modes:
+
+- `plan`: planning-first flow before tool execution
+- `ask`: SDK default prompt behavior for approvals
+- `bypass`: bypass permissions for full tool execution
+
+You can switch modes at runtime from Telegram using `/plan`, `/ask`, `/bypass`, or via `/settings`.
+`ask` mode fallback/release-gate behavior follows Claude Code SDK runtime policy. Claude-Go does not add a custom Telegram approval gate for `ask` mode.
 
 ## Verifying It Works
 

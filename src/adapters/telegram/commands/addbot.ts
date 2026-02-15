@@ -26,6 +26,36 @@ const MAX_TOKEN_ATTEMPTS = 3
 const wizards = new Map<number, AddBotWizardState>()
 
 /**
+ * Decode Claude Code project directory name to actual filesystem path.
+ * Claude Code encodes paths by replacing / with -, so we need to reverse this.
+ * Directory names may contain hyphens, so we test combinations to find the real path.
+ * Example: -home-nosky-code-office -> /home/nosky/code-office
+ */
+async function decodeClaudeProjectPath(encodedName: string): Promise<string> {
+  const withoutLeading = encodedName.slice(1) // Remove leading -
+  const parts = withoutLeading.split('-')
+
+  // Try all combinations where first N parts are path segments
+  // and remaining parts form the final directory name (may contain -)
+  // Start with longest path first (most likely to exist)
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const pathSegments = parts.slice(0, i)
+    const dirName = parts.slice(i).join('-')
+    const testPath = '/' + [...pathSegments, dirName].join('/')
+
+    try {
+      await fs.access(testPath)
+      return testPath
+    } catch {
+      // Path doesn't exist, try next combination
+    }
+  }
+
+  // Fallback: if no valid path found, return best guess (all - become /)
+  return '/' + withoutLeading.replace(/-/g, '/')
+}
+
+/**
  * Get recent projects from Claude Code's project directory
  * Returns array of absolute paths sorted by most recently used
  */
@@ -41,8 +71,9 @@ async function getClaudeCodeProjects(): Promise<string[]> {
         .map(async entry => {
           const fullPath = resolve(projectsDir, entry.name)
           const stats = await fs.stat(fullPath)
-          // Convert directory name back to path: -home-nosky-claude-go -> /home/nosky/claude-go
-          const projectPath = '/' + entry.name.slice(1).replace(/-/g, '/')
+          // Convert directory name back to path by testing combinations
+          // -home-nosky-code-office -> /home/nosky/code-office
+          const projectPath = await decodeClaudeProjectPath(entry.name)
           return { path: projectPath, mtime: stats.mtime.getTime() }
         })
     )

@@ -19,6 +19,7 @@ describe('domain/models', () => {
       expect(settings.outputMode).toBe('formatted')
       expect(settings.historyFormat).toBe('html')
       expect(settings.historyLimit).toBe(null)
+      expect(settings.permissionMode).toBe('bypass')
       expect(settings.userExpertise).toBe('developer')
     })
 
