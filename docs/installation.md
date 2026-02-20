@@ -28,7 +28,7 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 2. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
 3. Ask questions **one at a time**, explain each briefly, and verify before moving on.
 
-The user needs to provide **4 values**.
+The user needs to provide **3 values** (BOT_TOKEN, ALLOWED_USER_IDS, DEFAULT_PROJECT).
 
 ### Step 0: Confirm Environment (MANDATORY FIRST STEP)
 
@@ -119,74 +119,41 @@ Options (clickable):
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Step 4: Ask about server password
+### Step 4: Verify OpenCode Server
 
-**Present clickable options:**
+> **IMPORTANT: Do NOT kill or restart the OpenCode server.**
+> This step only **checks** if the server is reachable. Never run `kill` or `opencode serve` directly.
 
-> Would you like to set a password for the OpenCode server?
-> (A password prevents unauthorized access. Skip if only using locally.)
-
-Options (clickable):
-- **Yes, set a password** — User will provide password
-- **No, skip** — No password needed
-
-**If user selects "Yes"**, ask for the password and store it as `OPENCODE_SERVER_PASSWORD`.
-
-**If user selects "No"**, set `OPENCODE_SERVER_PASSWORD=` (empty).
-
-### Step 5: Start OpenCode Server
-
-**First, kill any existing server on port 4096, then start the new server based on the environment from Step 0:**
-
-**If user selected Windows:**
+**Check if the server is running:**
 ```bash
-# Kill existing server on port 4096 (both Windows and WSL)
-powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# Start Windows server (with password) — MUST use .bat wrapper:
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=<password>
-opencode serve --port 4096
-BATEOF
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-
-# Start Windows server (no password):
-powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4096/project
 ```
 
-> **Why .bat wrapper?** Windows PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable inside the same process that runs `opencode serve`.
+**Response `200`** → Server is running. Set `OPENCODE_SERVER_PASSWORD=` (empty). Proceed to Step 5.
 
-**If user selected WSL/Linux or macOS:**
+**Response `401`** → Server is running with a password. Ask the user for the current password, store it as `OPENCODE_SERVER_PASSWORD`, then verify:
 ```bash
-# Kill existing server on port 4096
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# Start server (with password):
-OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
-
-# Start server (no password):
-opencode serve --port 4096 &
-```
-
-Wait a few seconds for the server to start, then verify the connection:
-```bash
-# If password is set:
 curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
-curl -s http://127.0.0.1:4096/project
 ```
+If JSON response → proceed to Step 5. If still 401 → password is incorrect, ask user to check.
 
-- If the server responds with JSON → connection works, proceed to Step 6 with project selection.
-- If the server returns an error or is unreachable → ask the user to check if the server is running. Proceed to Step 6 with manual path input.
+**Connection refused / no response** → Server is not running. Tell the user to start it in a **separate terminal**:
 
-### Step 6: Ask for DEFAULT_PROJECT
+> The OpenCode server is not running. Please start it in a separate terminal:
+>
+> **WSL/Linux/macOS:** `opencode serve --port 4096 &`
+>
+> **Windows:** `powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"`
+>
+> After starting, let me know and I'll verify the connection.
 
-**If server responded in Step 5** — fetch the project list:
+Once the user confirms, re-run the curl check. If it responds, proceed to Step 5.
+
+### Step 5: Ask for DEFAULT_PROJECT
+
+**Fetch the project list from the server:**
 ```bash
-# If password is set:
+# If OPENCODE_SERVER_PASSWORD is set:
 curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
 
 # If no password:
@@ -221,7 +188,7 @@ Options (clickable):
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 7: Create .env and verify
+### Step 6: Create .env and verify
 
 Generate the `.env` file:
 ```bash
@@ -241,12 +208,20 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 8.
+- All checks passed → proceed to Step 7.
 - Some checks failed → read the failure messages and help the user resolve them. Common issues:
   - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
   - Project directory not found → verify the path exists
 
-### Step 8: Start the bot
+### Step 7: Start the bot
+
+> **If you are an AI agent running INSIDE OpenCode:**
+> `bun run start` is a long-running foreground process. Running it directly will block your session.
+> Instead, **tell the user** to start the bot manually in a separate terminal:
+> ```
+> cd opencode-go && bun run start
+> ```
+> Then skip to the "Troubleshooting" section below. Do NOT run `bun run start` yourself.
 
 ```bash
 bun run start

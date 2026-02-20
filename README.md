@@ -100,37 +100,22 @@ Check the `DEFAULT_PROJECT` path and port in your `.env` file, then start the Op
 
 **WSL/Linux/macOS:**
 ```bash
-# With password (recommended)
-OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
-
-# Without password
 opencode serve --port 4096 &
 ```
 
-**Windows** (requires .bat wrapper for password):
+**Windows:**
 ```bash
-# Create server.bat
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=your-password
-opencode serve --port 4096
-BATEOF
-
-# Start minimized
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 ```
-
-> [!NOTE]
-> **Why .bat for Windows?** PowerShell's `Start-Process` doesn't pass environment variables to child processes. The .bat file sets the variable in the same process that runs `opencode serve`.
 
 When the server starts successfully, you'll see:
 ```
 opencode server listening on http://127.0.0.1:4096
 ```
 
-Verify with password:
+Verify:
 ```bash
-curl -s -u opencode:your-password http://127.0.0.1:4096/project
+curl -s http://127.0.0.1:4096/project
 ```
 
 ### Step 2: Start OpenCode-Go Telegram Bot
@@ -403,8 +388,6 @@ Detailed usage: [Commands Guide](docs/commands.md)
 | `ALLOWED_USER_IDS` | ✅ | — | Allowed Telegram User IDs (comma-separated) |
 | `DEFAULT_PROJECT` | ✅ | — | Default project directory (absolute path) |
 | `OPENCODE_SERVER_URL` | | `http://127.0.0.1:4096` | OpenCode server URL |
-| `OPENCODE_SERVER_USERNAME` | | `opencode` | Server auth username |
-| `OPENCODE_SERVER_PASSWORD` | | — | Server auth password |
 | `INSTANCE_NAME` | | Project directory name | Instance identifier (logs/status display) |
 | `STATE_DIR` | | `data/` | State file storage path |
 | `BOT_ROLE` | | `standalone` | Bot role: `standalone`, `writer`, `reader` |

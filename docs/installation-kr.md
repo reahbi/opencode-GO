@@ -28,7 +28,7 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 2. **ALWAYS use clickable selection prompts** (not text input) when asking questions with predefined options.
 3. Ask questions **one at a time**, explain each briefly, and verify before moving on.
 
-The user needs to provide **4 values**.
+The user needs to provide **3 values** (BOT_TOKEN, ALLOWED_USER_IDS, DEFAULT_PROJECT).
 
 ### Step 0: Confirm Environment (환경 확인 - 필수 첫 단계)
 
@@ -119,77 +119,44 @@ Options (clickable):
 
 Store the value as `ALLOWED_USER_IDS`.
 
-### Step 4: Ask about server password
+### Step 4: OpenCode 서버 확인
 
-**클릭 가능한 선택지를 제공하세요:**
+> **중요: OpenCode 서버를 종료하거나 재시작하지 마세요.**
+> 이 단계에서는 서버 연결만 **확인**합니다. `kill`이나 `opencode serve`를 직접 실행하지 마세요.
 
-> OpenCode 서버에 비밀번호를 설정하시겠어요?
-> (로컬에서만 쓴다면 없어도 괜찮습니다)
-
-Options (clickable):
-- **설정할래요** — 비밀번호를 입력받음
-- **스킵** — 비밀번호 없이 진행
-
-**If user sets a password**, store it as `OPENCODE_SERVER_PASSWORD`.
-
-**If user skips**, set `OPENCODE_SERVER_PASSWORD=` (empty).
-
-### Step 5: Start OpenCode Server (서버 시작)
-
-**먼저 기존 4096 포트 서버를 종료하고, Step 0에서 선택한 환경에 따라 서버를 시작하세요:**
-
-**Windows를 선택한 경우:**
+**서버가 실행 중인지 확인:**
 ```bash
-# 기존 4096 포트 서버 종료 (Windows + WSL 모두)
-powershell.exe -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 4096 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# Windows 서버 시작 (비밀번호 있음) — 반드시 .bat 래퍼 사용:
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=<password>
-opencode serve --port 4096
-BATEOF
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
-
-# Windows 서버 시작 (비밀번호 없음):
-powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4096/project
 ```
 
-> **왜 .bat 래퍼가 필요한가?** Windows PowerShell의 `Start-Process`는 환경 변수를 자식 프로세스에 전달하지 않습니다. .bat 파일은 `opencode serve`를 실행하는 동일 프로세스 내에서 변수를 설정합니다.
+**응답 `200`** → 서버가 실행 중. `OPENCODE_SERVER_PASSWORD=` (빈 값)으로 설정. Step 5로 진행.
 
-**WSL/Linux 또는 macOS를 선택한 경우:**
+**응답 `401`** → 서버가 비밀번호 설정된 상태로 실행 중. 사용자에게 현재 비밀번호를 물어보고 `OPENCODE_SERVER_PASSWORD`에 저장한 뒤 검증:
 ```bash
-# 기존 4096 포트 서버 종료
-kill $(lsof -t -i:4096) 2>/dev/null || true
-
-# 서버 시작 (비밀번호 있음):
-OPENCODE_SERVER_PASSWORD=<password> opencode serve --port 4096 &
-
-# 서버 시작 (비밀번호 없음):
-opencode serve --port 4096 &
+curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
 ```
+JSON 응답이 오면 → Step 5로 진행. 401이면 → 비밀번호가 틀렸다고 안내.
 
-몇 초 기다린 후 서버 연결 확인:
+**연결 거부 / 응답 없음** → 서버가 실행 중이 아님. 사용자에게 **별도 터미널**에서 시작을 안내:
+
+> OpenCode 서버가 실행 중이 아닙니다. 별도 터미널에서 시작해주세요:
+>
+> **WSL/Linux/macOS:** `opencode serve --port 4096 &`
+>
+> **Windows:** `powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"`
+>
+> 시작 후 알려주시면 연결을 확인하겠습니다.
+
+사용자가 확인하면 curl 명령을 다시 실행. 응답이 오면 Step 5로 진행.
+
+### Step 5: Ask for DEFAULT_PROJECT
+
+**서버에서 프로젝트 목록을 가져옵니다:**
 ```bash
-# If password is set:
+# OPENCODE_SERVER_PASSWORD가 설정된 경우:
 curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
 
-# If no password:
-curl -s http://127.0.0.1:4096/project
-```
-
-- If the server responds with JSON → connection works, proceed to Step 6 with project selection.
-- If the server returns an error or is unreachable → ask the user to check if the server is running. Proceed to Step 6 with manual path input.
-
-### Step 6: Ask for DEFAULT_PROJECT
-
-**If server responded in Step 5** — fetch the project list:
-```bash
-# If password is set:
-curl -s -u opencode:<PASSWORD> http://127.0.0.1:4096/project
-
-# If no password:
+# 비밀번호 없는 경우:
 curl -s http://127.0.0.1:4096/project
 ```
 
@@ -221,7 +188,7 @@ Options (clickable):
 
 Store the chosen path as `DEFAULT_PROJECT`.
 
-### Step 7: Create .env and verify
+### Step 6: Create .env and verify
 
 Generate the `.env` file:
 ```bash
@@ -241,12 +208,20 @@ bun run doctor
 ```
 
 Check the output:
-- All checks passed → proceed to Step 8.
+- All checks passed → proceed to Step 7.
 - Some checks failed → read the failure messages and help the user resolve them. Common issues:
   - OpenCode server not running → tell user to run `opencode serve` (or `OPENCODE_SERVER_PASSWORD=<pw> opencode serve` if password was set)
   - Project directory not found → verify the path exists
 
-### Step 8: Start the bot
+### Step 7: Start the bot
+
+> **OpenCode 내부에서 실행 중인 AI 에이전트인 경우:**
+> `bun run start`는 포그라운드 장기 실행 프로세스입니다. 직접 실행하면 세션이 블로킹됩니다.
+> 대신, **사용자에게** 별도 터미널에서 봇을 수동 시작하라고 안내하세요:
+> ```
+> cd opencode-go && bun run start
+> ```
+> 그리고 아래 "Troubleshooting" 섹션으로 건너뛰세요. `bun run start`를 직접 실행하지 마세요.
 
 ```bash
 bun run start

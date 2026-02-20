@@ -101,37 +101,22 @@ OpenCode-Go는 **두 개의 독립된 프로세스**로 구성됩니다. 둘 다
 
 **WSL/Linux/macOS:**
 ```bash
-# 비밀번호 설정 (권장)
-OPENCODE_SERVER_PASSWORD=your-password opencode serve --port 4096 &
-
-# 비밀번호 없이
 opencode serve --port 4096 &
 ```
 
-**Windows** (.bat 래퍼 필요 — 비밀번호 사용 시):
+**Windows:**
 ```bash
-# server.bat 생성
-cat > server.bat << 'BATEOF'
-@echo off
-set OPENCODE_SERVER_PASSWORD=your-password
-opencode serve --port 4096
-BATEOF
-
-# 최소화 상태로 실행
-powershell.exe -Command "Start-Process '$(wslpath -w $(pwd)/server.bat)' -WindowStyle Minimized"
+powershell.exe -Command "Start-Process opencode -ArgumentList 'serve','--port','4096' -WindowStyle Hidden"
 ```
-
-> [!NOTE]
-> **왜 Windows에서 .bat 파일이 필요한가?** PowerShell의 `Start-Process`는 환경 변수를 자식 프로세스에 전달하지 않습니다. .bat 파일은 `opencode serve`를 실행하는 동일 프로세스 내에서 변수를 설정합니다.
 
 서버가 정상 시작되면 다음 메시지가 출력됩니다:
 ```
 opencode server listening on http://127.0.0.1:4096
 ```
 
-비밀번호를 설정한 경우 연결 확인:
+연결 확인:
 ```bash
-curl -s -u opencode:your-password http://127.0.0.1:4096/project
+curl -s http://127.0.0.1:4096/project
 ```
 
 ### 2단계: OpenCode-Go 텔레그램 봇 시작
@@ -403,8 +388,6 @@ DEFAULT_PROJECT=/path/to/your/project  # OpenCode가 작업할 프로젝트 경�
 | `ALLOWED_USER_IDS` | ✅ | — | 허용 Telegram User ID (쉼표 구분) |
 | `DEFAULT_PROJECT` | ✅ | — | 기본 프로젝트 디렉토리 (절대 경로) |
 | `OPENCODE_SERVER_URL` | | `http://127.0.0.1:4096` | OpenCode 서버 주소 |
-| `OPENCODE_SERVER_USERNAME` | | `opencode` | 서버 인증 사용자명 |
-| `OPENCODE_SERVER_PASSWORD` | | — | 서버 인증 비밀번호 |
 | `INSTANCE_NAME` | | 프로젝트 디렉토리명 | 인스턴스 식별자 (로그/상태 표시) |
 | `STATE_DIR` | | `data/` | 상태 파일 저장 경로 |
 | `BOT_ROLE` | | `standalone` | 봇 역할: `standalone`, `writer`, `reader` |
