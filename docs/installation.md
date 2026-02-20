@@ -30,6 +30,25 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 
 The user needs to provide **3 values** (BOT_TOKEN, ALLOWED_USER_IDS, DEFAULT_PROJECT).
 
+### CRITICAL REQUIRED INPUT GATE (DO NOT SKIP)
+
+Before creating `.env` or starting the bot, you MUST collect and validate all required values:
+1. `BOT_TOKEN` (collect this first among required values)
+2. `ALLOWED_USER_IDS`
+3. `DEFAULT_PROJECT`
+
+**Hard-stop rules:**
+- If any required value is missing, do NOT continue.
+- Ask only for missing values until all 3 are collected.
+- Verify `BOT_TOKEN` with Telegram `getMe` and continue only when response contains `"ok":true`.
+- If token verification fails, re-ask `BOT_TOKEN` and retry verification.
+- Do NOT generate `.env` and do NOT run `bun run start` until this gate is fully passed.
+
+**Completion checklist (must be all `yes`):**
+- `BOT_TOKEN verified`: yes
+- `ALLOWED_USER_IDS collected`: yes
+- `DEFAULT_PROJECT collected`: yes
+
 ### Step 0: Confirm Environment (MANDATORY FIRST STEP)
 
 **STOP. Present clickable options to the user:**
@@ -95,10 +114,8 @@ Options (clickable):
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getMe"
 ```
-- If response contains `"ok":true`, tell the user: `✓ Bot verified: @<username>`
-- If verification fails, tell the user the token seems invalid and ask them to check again.
-
-Store the token value as `BOT_TOKEN`.
+- If response contains `"ok":true`, tell the user: `✓ Bot verified: @<username>` and store token as `BOT_TOKEN`.
+- If verification fails, do NOT continue. Tell the user the token is invalid, ask for a new token, and repeat verification until success.
 
 ### Step 3: Ask for ALLOWED_USER_IDS
 
@@ -189,6 +206,14 @@ Options (clickable):
 Store the chosen path as `DEFAULT_PROJECT`.
 
 ### Step 6: Create .env and verify
+
+Before generating `.env`, confirm the gate status:
+
+- `BOT_TOKEN verified`: yes
+- `ALLOWED_USER_IDS collected`: yes
+- `DEFAULT_PROJECT collected`: yes
+
+If any item is `no`, stop and return to the missing step. Do not create `.env` yet.
 
 Generate the `.env` file:
 ```bash

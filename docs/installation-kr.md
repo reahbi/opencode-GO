@@ -30,6 +30,25 @@ You are helping the user install **OpenCode-Go** — a Telegram bot that remotel
 
 The user needs to provide **3 values** (BOT_TOKEN, ALLOWED_USER_IDS, DEFAULT_PROJECT).
 
+### CRITICAL REQUIRED INPUT GATE (절대 건너뛰지 마세요)
+
+`.env`를 만들거나 봇을 시작하기 전에, 아래 3개 값을 반드시 수집하고 검증해야 합니다:
+1. `BOT_TOKEN` (필수값 중 가장 먼저 수집)
+2. `ALLOWED_USER_IDS`
+3. `DEFAULT_PROJECT`
+
+**Hard-stop rules:**
+- 필수값이 하나라도 비어 있으면 절대 다음 단계로 진행하지 마세요.
+- 누락된 값만 다시 질문하고, 3개 모두 수집될 때까지 반복하세요.
+- `BOT_TOKEN`은 Telegram `getMe`로 검증하고, 응답에 `"ok":true`가 있을 때만 통과입니다.
+- 토큰 검증 실패 시 `BOT_TOKEN`을 다시 받아 재검증하세요.
+- 이 게이트를 통과하기 전에는 `.env` 생성과 `bun run start` 실행을 금지합니다.
+
+**완료 체크리스트 (모두 `yes`여야 함):**
+- `BOT_TOKEN verified`: yes
+- `ALLOWED_USER_IDS collected`: yes
+- `DEFAULT_PROJECT collected`: yes
+
 ### Step 0: Confirm Environment (환경 확인 - 필수 첫 단계)
 
 **멈추세요. 클릭 가능한 선택지를 제공하세요:**
@@ -95,10 +114,8 @@ Options (clickable):
 ```bash
 curl -s "https://api.telegram.org/bot<TOKEN>/getMe"
 ```
-- If response contains `"ok":true`, tell the user: `✓ 봇 확인됨: @<username>`
-- If verification fails, tell the user the token seems invalid and ask them to check again.
-
-Store the token value as `BOT_TOKEN`.
+- If response contains `"ok":true`, tell the user: `✓ 봇 확인됨: @<username>` and store token as `BOT_TOKEN`.
+- If verification fails, do NOT continue. 토큰이 유효하지 않다고 안내하고 새 토큰을 받아 성공할 때까지 검증을 반복하세요.
 
 ### Step 3: Ask for ALLOWED_USER_IDS
 
@@ -189,6 +206,14 @@ Options (clickable):
 Store the chosen path as `DEFAULT_PROJECT`.
 
 ### Step 6: Create .env and verify
+
+`.env` 생성 전에 게이트 상태를 먼저 확인하세요:
+
+- `BOT_TOKEN verified`: yes
+- `ALLOWED_USER_IDS collected`: yes
+- `DEFAULT_PROJECT collected`: yes
+
+하나라도 `no`면 중단하고 해당 단계로 돌아가 값을 채우세요. 이 상태에서는 `.env`를 생성하면 안 됩니다.
 
 Generate the `.env` file:
 ```bash
