@@ -26,6 +26,8 @@ import {
   modelSelectText, modelSelectKeyboard,
   outputSubText, outputSubKeyboard,
   historySubText, historySubKeyboard,
+  sessionFilterSubText, sessionFilterSubKeyboard,
+  projectSubText, projectSubKeyboard,
   voiceSubText, voiceSubKeyboard,
 } from './settings.js'
 import {
@@ -38,7 +40,7 @@ import {
 import { debateCommand } from './debate.js'
 import { reviewCommand } from './review.js'
 import { botsCommand } from './bots.js'
-import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, handleAddbotAgentCallback, handleAddbotRemoveCallback, startAddbotWizard } from './addbot.js'
+import { addbotCommand, handleAddbotToken, handleAddbotRoleCallback, handleAddbotProjectCallback, handleAddbotProjectText, handleAddbotStartCallback, cancelAddbotWizard, handleAddbotAgentCallback, handleAddbotRemoveCallback, startAddbotWizard, getClaudeCodeProjects } from './addbot.js'
 import {
   addhookbotCommand,
   startAddhookbotWizard,
@@ -152,6 +154,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         customAgentName,
         instanceName: instanceNameOverride,
         botRole: deps.botRole,
+        activeProject: chatState.activeProjectDirectory,
       }),
       keyboard: settingsMainKeyboard(),
     }
@@ -190,6 +193,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
   watcher = createSessionWatcher({
     state, output, summary,
     onQuestionAsked: (cid, e, uid, threadId) => interactiveFlow.handleQuestionEvent(cid, e, uid, undefined, threadId),
+    onPlanApprovalRequested: (cid, e, uid, directory, threadId) => interactiveFlow.handlePlanApprovalEvent(cid, e, uid, directory, threadId),
     isDebateActive: deps.debateFlow ? (chatId) => deps.debateFlow!.isActive(chatId) : undefined,
     onQueueDrain: async (chatId, messages, threadId) => {
       const scopeKey = getQueueScopeKey(chatId, threadId)
@@ -217,10 +221,43 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     state,
     output,
     botRole: deps.botRole,
-    onAnswersSubmitted: async (chatId, formattedAnswers, threadId) => {
+    onAnswersSubmitted: async (chatId, formattedAnswers, _context, threadId) => {
       const scopeKey = getQueueScopeKey(chatId, threadId)
       await queue.enqueue(scopeKey, () =>
         promptFlow.handleUserMessage(chatId, formattedAnswers, { threadId, fromQueueDrain: false })
+      )
+    },
+    onPlanApproved: async (chatId, options, threadId) => {
+      // Plan approved: bypass mode already set by interactiveFlow
+      if (options.clearContext) {
+        // Clear context = create new session (matches UI message and local Claude CLI behavior)
+        try {
+          await sessionCommands.abortSession(chatId, threadId)
+          watcher?.stop(chatId, threadId)
+
+          // Create new session for plan implementation
+          await sessionCommands.createSession(chatId, 'Plan Implementation', threadId)
+
+          await output.sendText(chatId, '🔄 New session created for plan implementation.')
+        } catch (err) {
+          logger.warn('bot', `Failed to create new session after plan approval: ${err instanceof Error ? err.message : 'unknown'}`)
+        }
+      }
+
+      // Auto-send approval response to Claude (as if user typed "approved")
+      const scopeKey = getQueueScopeKey(chatId, threadId)
+      await queue.enqueue(scopeKey, () =>
+        promptFlow.handleUserMessage(chatId, 'Approved. Please implement the plan.', { threadId, fromQueueDrain: false })
+      )
+    },
+    onPlanRejected: async (chatId, threadId) => {
+      // Plan rejected: stay in plan mode, send rejection response to SDK
+      await output.sendText(chatId, '💬 You can continue refining the plan or provide new instructions.')
+
+      // Send rejection message to SDK so it knows the plan was rejected
+      const scopeKey = getQueueScopeKey(chatId, threadId)
+      await queue.enqueue(scopeKey, () =>
+        promptFlow.handleUserMessage(chatId, 'I reviewed the plan and want you to revise it. Please improve the plan based on my feedback.', { threadId, fromQueueDrain: false })
       )
     }
   })
@@ -387,6 +424,12 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       case 'question_reset':
         await interactiveFlow.handleQuestionReset(chatId, parsed.interactionId, threadId)
         break
+      case 'plan_approve':
+        await interactiveFlow.handlePlanApprove(chatId, parsed.interactionId, parsed.clearContext, threadId)
+        break
+      case 'plan_reject':
+        await interactiveFlow.handlePlanReject(chatId, parsed.interactionId, threadId)
+        break
       case 'agent': {
         let models: Awaited<ReturnType<ClaudeAgentPort['getSupportedModels']>>
         try {
@@ -507,6 +550,43 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           case 'sub_history':
             await ctx.editMessageText(historySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: historySubKeyboard() })
             break
+          case 'sub_session_filter':
+            await ctx.editMessageText(sessionFilterSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: sessionFilterSubKeyboard(chatState.settings) })
+            break
+          case 'sub_project': {
+            const projects = await getClaudeCodeProjects()
+            await ctx.editMessageText(
+              projectSubText(projects, chatState.activeProjectDirectory),
+              { parse_mode: 'HTML', reply_markup: projectSubKeyboard(projects, chatState.activeProjectDirectory) },
+            )
+            break
+          }
+          case 'project': {
+            const projects = await getClaudeCodeProjects()
+            const idx = parseInt(parsed.value ?? '', 10)
+            if (Number.isFinite(idx) && idx >= 0 && idx < projects.length) {
+              chatState.activeProjectDirectory = projects[idx]
+              chatState.activeSessionId = null
+              chatState.pendingInteractions = []
+              chatState.awaitingInput = null
+              chatState.awaitingInteractionId = null
+              await state.saveChatState(chatId, chatState, threadId)
+            }
+            await ctx.editMessageText(
+              projectSubText(projects, chatState.activeProjectDirectory),
+              { parse_mode: 'HTML', reply_markup: projectSubKeyboard(projects, chatState.activeProjectDirectory) },
+            )
+            break
+          }
+          case 'sessionfilter': {
+            const filter = parsed.value as 'all' | 'bot' | 'local'
+            if (filter === 'all' || filter === 'bot' || filter === 'local') {
+              chatState.settings.sessionListFilter = filter
+              await state.saveChatState(chatId, chatState, threadId)
+            }
+            await ctx.editMessageText(sessionFilterSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: sessionFilterSubKeyboard(chatState.settings) })
+            break
+          }
           case 'review': {
             const current = resolveReviewMode(chatState.settings, deps.botRole)
             chatState.settings.reviewMode = !current
@@ -1063,7 +1143,9 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
       // Check if this is a valid input for the current wizard step
       const isValidInput = (
         (chatState.awaitingInput === 'addbot_token' && text.includes(':')) ||
+        (chatState.awaitingInput === 'addhookbot_token' && text.includes(':')) ||
         (chatState.awaitingInput === 'addbot_project' && text.startsWith('/')) ||
+        (chatState.awaitingInput === 'addhookbot_chatid' && (text.trim().toLowerCase() === 'default' || !isNaN(Number(text.trim())))) ||
         (chatState.awaitingInput === 'threshold' && !isNaN(Number(text.trim()))) ||
         (chatState.awaitingInput === 'histlimit' && (!isNaN(Number(text.trim())) || text.trim().toLowerCase() === 'all')) ||
         (chatState.awaitingInput === 'debaterounds' && !isNaN(Number(text.trim()))) ||

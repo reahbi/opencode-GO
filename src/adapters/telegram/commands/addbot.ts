@@ -31,7 +31,7 @@ const wizards = new Map<number, AddBotWizardState>()
  * Directory names may contain hyphens, so we test combinations to find the real path.
  * Example: -home-nosky-code-office -> /home/nosky/code-office
  */
-async function decodeClaudeProjectPath(encodedName: string): Promise<string> {
+export async function decodeClaudeProjectPath(encodedName: string): Promise<string> {
   const withoutLeading = encodedName.slice(1) // Remove leading -
   const parts = withoutLeading.split('-')
 
@@ -59,7 +59,7 @@ async function decodeClaudeProjectPath(encodedName: string): Promise<string> {
  * Get recent projects from Claude Code's project directory
  * Returns array of absolute paths sorted by most recently used
  */
-async function getClaudeCodeProjects(): Promise<string[]> {
+export async function getClaudeCodeProjects(): Promise<string[]> {
   try {
     const projectsDir = resolve(homedir(), '.claude', 'projects')
     const entries = await fs.readdir(projectsDir, { withFileTypes: true })
@@ -67,7 +67,7 @@ async function getClaudeCodeProjects(): Promise<string[]> {
     // Get directories with their modification times
     const dirs = await Promise.all(
       entries
-        .filter(entry => entry.isDirectory())
+        .filter(entry => entry.isDirectory() && !entry.name.includes('--worktrees-'))
         .map(async entry => {
           const fullPath = resolve(projectsDir, entry.name)
           const stats = await fs.stat(fullPath)
@@ -406,6 +406,15 @@ async function appendToEcosystemConfig(wizard: AddBotWizardState): Promise<boole
     if (insertPos === -1) return false
 
     content = content.slice(0, insertPos) + entry + '\n\n' + content.slice(insertPos)
+
+    // Validate syntax before writing — prevent corrupt ecosystem configs
+    try {
+      new Function(content)
+    } catch {
+      logger.warn('bot', 'appendToEcosystemConfig: generated invalid JS, aborting write')
+      return false
+    }
+
     await fs.writeFile(configPath, content, 'utf-8')
     return true
   } catch {
@@ -605,6 +614,15 @@ async function removeFromEcosystemConfig(instanceName: string): Promise<boolean>
     while (blockEnd < content.length && content[blockEnd] === '\n') blockEnd++
 
     content = content.slice(0, blockStart) + content.slice(blockEnd)
+
+    // Validate syntax before writing — prevent corrupt ecosystem configs
+    try {
+      new Function(content)
+    } catch {
+      logger.warn('bot', 'removeFromEcosystemConfig: generated invalid JS, aborting write')
+      return false
+    }
+
     await fs.writeFile(configPath, content, 'utf-8')
     return true
   } catch {

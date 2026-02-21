@@ -21,6 +21,7 @@ export function settingsMainText(
     customAgentName?: string | null
     instanceName?: string
     botRole?: string
+    activeProject?: string | null
   },
 ): string {
   const header = opts.instanceName
@@ -38,6 +39,7 @@ export function settingsMainText(
   const outputFmt = s.outputMode === 'formatted' ? 'Fmt' : 'Raw'
   const histFmt = s.historyFormat === 'html' ? 'HTML' : 'MD'
   const histLimit = s.historyLimit ? `${s.historyLimit}` : 'All'
+  const sessionFilter = s.sessionListFilter === 'all' ? 'All' : s.sessionListFilter === 'bot' ? 'Bot' : 'Local'
   const voiceStatus = s.voiceMode ? '✅' : 'OFF'
   const voiceAuto = s.voiceAutoMode ? '🔄' : ''
   const voiceLang = s.voiceLanguage === 'ko' ? '🇰🇷' : '🇺🇸'
@@ -51,6 +53,8 @@ export function settingsMainText(
     `<b>🎭 Custom Agent:</b> ${customAgent || 'None'}`,
     `<b>📊 Summary:</b> ${summaryStatus} · ${formatExpertise(s.userExpertise)} · Model: ${summaryModel}`,
     `<b>📝 Output:</b> ${outputFmt} · <b>📜 History:</b> ${histFmt}/${histLimit}`,
+    `<b>📋 Session Filter:</b> ${sessionFilter}`,
+    `<b>📂 Project:</b> ${opts.activeProject ? opts.activeProject.split('/').pop() : 'Not set'}`,
     `<b>🔊 Voice:</b> ${voiceStatus} ${voiceAuto} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
   ].join('\n')
 }
@@ -64,6 +68,9 @@ export function settingsMainKeyboard(): InlineKeyboard {
     .row()
     .text('📝 Output', 'settings:sub_output')
     .text('📜 History Export', 'settings:sub_history')
+    .row()
+    .text('📋 Session Filter', 'settings:sub_session_filter')
+    .text('📂 Project', 'settings:sub_project')
     .row()
     .text('🔊 Voice', 'settings:sub_voice')
 }
@@ -259,6 +266,44 @@ export function historySubKeyboard(): InlineKeyboard {
     .text('◀️ Back', 'settings:back')
 }
 
+// ── Session Filter Submenu ──
+
+export function sessionFilterSubText(s: UserSettings): string {
+  let filterLabel: string
+  switch (s.sessionListFilter) {
+    case 'all':
+      filterLabel = 'All sessions ✅'
+      break
+    case 'bot':
+      filterLabel = 'Bot sessions only'
+      break
+    case 'local':
+      filterLabel = 'Local sessions only'
+      break
+  }
+  return [
+    '<b>📋 Session List Filter</b>',
+    '',
+    `Current: ${filterLabel}`,
+    '',
+    'Choose which sessions to show in /list:',
+    '• All — Show all sessions',
+    '• Bot — Only sessions created via Telegram',
+    '• Local — Only sessions discovered from CLI',
+  ].join('\n')
+}
+
+export function sessionFilterSubKeyboard(s: UserSettings): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(s.sessionListFilter === 'all' ? '✅ All sessions' : 'All sessions', 'settings:sessionfilter:all')
+    .row()
+    .text(s.sessionListFilter === 'bot' ? '✅ Bot only' : 'Bot only', 'settings:sessionfilter:bot')
+    .row()
+    .text(s.sessionListFilter === 'local' ? '✅ Local only' : 'Local only', 'settings:sessionfilter:local')
+    .row()
+    .text('◀️ Back', 'settings:back')
+}
+
 function formatSpeed(speed: number): string {
   if (speed === 1.0) return '1.0x (기본)'
   return `${speed}x`
@@ -337,6 +382,35 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
   return kb
 }
 
+// ── Project Submenu ──
+
+export function projectSubText(projects: string[], currentProject: string | null): string {
+  const lines = [
+    '<b>📂 Project</b>',
+    '',
+    `Current: <code>${currentProject || 'Not set'}</code>`,
+    '',
+  ]
+  if (projects.length === 0) {
+    lines.push('No projects found in ~/.claude/projects/')
+  } else {
+    lines.push(`${projects.length} project(s) found:`)
+  }
+  return lines.join('\n')
+}
+
+export function projectSubKeyboard(projects: string[], currentProject: string | null): InlineKeyboard {
+  const kb = new InlineKeyboard()
+  for (let i = 0; i < projects.length; i++) {
+    const dirName = projects[i].split('/').pop() || projects[i]
+    const isActive = projects[i] === currentProject
+    const label = isActive ? `✅ ${dirName}` : dirName
+    kb.text(label, `settings:project:${i}`).row()
+  }
+  kb.text('◀️ Back', 'settings:back')
+  return kb
+}
+
 // ── Command ──
 
 export function settingsCommand(
@@ -365,6 +439,7 @@ export function settingsCommand(
           : null,
         instanceName: isGroup ? deps?.instanceName : undefined,
         botRole: deps?.botRole,
+        activeProject: chatState.activeProjectDirectory,
       }),
       { parse_mode: 'HTML', reply_markup: settingsMainKeyboard() },
     )
