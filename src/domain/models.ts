@@ -63,6 +63,7 @@ export interface QueuedMessage {
 export interface UserSettings {
   summaryMode: boolean
   summaryModel: { providerID: string; modelID: string } | null
+  voiceModel: { providerID: string; modelID: string } | null
   summaryThreshold: number
   outputMode: 'formatted' | 'raw'
   historyFormat: 'md' | 'html'
@@ -120,6 +121,7 @@ export function createDefaultUserSettings(): UserSettings {
   return {
     summaryMode: true,
     summaryModel: { providerID: 'google', modelID: 'antigravity-gemini-3-flash' },
+    voiceModel: null,
     summaryThreshold: 3000,
     outputMode: 'formatted',
     historyFormat: 'html',

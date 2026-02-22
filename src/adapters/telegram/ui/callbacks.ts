@@ -11,6 +11,7 @@ export type ParsedCallback =
   | { type: 'agent'; agentName: string }
   | { type: 'settings'; action: string; value?: string }
   | { type: 'selectmodel'; value: string }
+  | { type: 'selectvoicemodel'; value: string }
   | { type: 'listpage'; page: number }
   | { type: 'listsel'; sessionId: string }
   | { type: 'history'; sessionId: string }
@@ -27,6 +28,7 @@ export type ParsedCallback =
   | { type: 'makeagent_cancel' }
   | { type: 'settings_custom_agent'; agentId: string }
   | { type: 'settings_remove_agent' }
+  | { type: 'settings_project'; index: number }
   | { type: 'debate_accept'; debateId: string }
   | { type: 'debate_reject'; debateId: string }
   | { type: 'groupsettings'; action: string; value?: string }
@@ -67,6 +69,12 @@ export function parseCallback(data: string): ParsedCallback {
     const value = data.slice(3)
     if (!value) return { type: 'unknown', raw: data }
     return { type: 'selectmodel', value }
+  }
+
+  if (data.startsWith('vm:')) {
+    const value = data.slice(3)
+    if (!value) return { type: 'unknown', raw: data }
+    return { type: 'selectvoicemodel', value }
   }
 
   if (data.startsWith('settings:')) {
@@ -156,6 +164,12 @@ export function parseCallback(data: string): ParsedCallback {
     const agentName = data.slice(3)
     if (!agentName) return { type: 'unknown', raw: data }
     return { type: 'settings_agent', agentName }
+  }
+
+  if (data.startsWith('sp:')) {
+    const index = parseInt(data.slice(3), 10)
+    if (!Number.isFinite(index) || index < 0) return { type: 'unknown', raw: data }
+    return { type: 'settings_project', index }
   }
 
   if (data.startsWith('addbot:')) {

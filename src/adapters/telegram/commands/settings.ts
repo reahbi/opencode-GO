@@ -4,6 +4,7 @@ import type { StateStore } from '../../../domain/ports/StateStore.js'
 import type { OpenCodePort } from '../../../domain/ports/OpenCodePort.js'
 import type { CustomAgent, UserSettings } from '../../../domain/models.js'
 import type { CustomAgentPort } from '../../../domain/ports/CustomAgentPort.js'
+import { escapeHtml } from '../../../shared/formatResponse.js'
 
 export function resolveReviewMode(settings: UserSettings, botRole?: string): boolean {
   if (settings.reviewMode !== undefined) return settings.reviewMode
@@ -21,12 +22,14 @@ export function settingsMainText(
     customAgentName?: string | null
     instanceName?: string
     botRole?: string
+    activeProject?: string | null
   },
 ): string {
   const header = opts.instanceName
     ? `<b>⚙️ Settings</b> <i>(${opts.instanceName})</i>`
     : '<b>⚙️ Settings</b>'
 
+  const project = opts.activeProject || 'Not set'
   const server = opts.healthy ? '🟢 Online' : '🔴 Offline'
   const session = opts.hasSession ? 'active' : 'None'
   const agent = opts.activeAgent || 'default'
@@ -41,22 +44,28 @@ export function settingsMainText(
   const voiceStatus = s.voiceMode ? '✅' : 'OFF'
   const voiceAuto = s.voiceAutoMode ? '🔄' : ''
   const voiceLang = s.voiceLanguage === 'ko' ? '🇰🇷' : '🇺🇸'
+  const voiceModelLabel = s.voiceModel
+    ? s.voiceModel.modelID.split('/').pop()
+    : null
 
   return [
     header,
     '',
+    `📂 Project: <b>${project}</b>`,
     `${server} · Session: ${session}`,
     '',
     `<b>🤖 Agent:</b> ${agent} · Review: ${review}`,
     `<b>🎭 Custom Agent:</b> ${customAgent || 'None'}`,
     `<b>📊 Summary:</b> ${summaryStatus} · ${formatExpertise(s.userExpertise)} · Model: ${summaryModel}`,
     `<b>📝 Output:</b> ${outputFmt} · <b>📜 History:</b> ${histFmt}/${histLimit}`,
-    `<b>🔊 Voice:</b> ${voiceStatus} ${voiceAuto} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x`,
+    `<b>🔊 Voice:</b> ${voiceStatus} ${voiceAuto} ${voiceLang} · ${s.voiceSummaryLength}자 · ${s.voiceSpeed}x${voiceModelLabel ? ` · 🎙${voiceModelLabel}` : ''}`,
   ].join('\n')
 }
 
 export function settingsMainKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
+    .text('📂 Project', 'settings:sub_project')
+    .row()
     .text('🤖 Agent & Mode', 'settings:sub_agent')
     .text('📊 Summary', 'settings:sub_summary')
     .row()
@@ -68,6 +77,49 @@ export function settingsMainKeyboard(): InlineKeyboard {
     .text('🔊 Voice', 'settings:sub_voice')
 }
 
+// ── Project Submenu ──
+
+export interface SettingsProject {
+  worktree: string
+  name?: string
+}
+
+export function projectSubText(
+  projects: SettingsProject[],
+  activeDirectory: string | null,
+): string {
+  const current = projects.find(p => p.worktree === activeDirectory)
+  const displayName = current
+    ? (current.name || current.worktree.split('/').pop() || current.worktree)
+    : 'Not set'
+  const lines = [
+    '<b>📂 Project</b>',
+    '',
+    `Current: <b>${displayName}</b>`,
+  ]
+  if (current) {
+    lines.push(`Directory: <code>${current.worktree}</code>`)
+  }
+  lines.push('', 'Select a project:')
+  return lines.join('\n')
+}
+
+export function projectSubKeyboard(
+  projects: SettingsProject[],
+  activeDirectory: string | null,
+): InlineKeyboard {
+  const kb = new InlineKeyboard()
+  for (let i = 0; i < projects.length; i++) {
+    const p = projects[i]
+    const isActive = p.worktree === activeDirectory
+    const name = p.name || p.worktree.split('/').pop() || p.worktree
+    const label = isActive ? `✅ ${name}` : name
+    kb.text(label, `sp:${i}`).row()
+  }
+  kb.text('◀️ Back', 'settings:back')
+  return kb
+}
+
 // ── Agent & Mode Submenu ──
 
 export function agentSubText(
@@ -77,17 +129,19 @@ export function agentSubText(
   botRole?: string,
 ): string {
   const review = resolveReviewMode(settings, botRole) ? 'ON 🔒' : 'OFF'
+  const currentAgentLabel = escapeHtml(currentAgent || 'Not set')
   const lines = [
     '<b>🤖 Agent & Mode</b>',
     '',
-    `Agent: <code>${currentAgent || 'Not set'}</code>`,
+    `Agent: <code>${currentAgentLabel}</code>`,
     `Review Mode: ${review}`,
+    `Available: ${agents.length}`,
     '',
   ]
-  for (const a of agents) {
-    const prefix = a.name === currentAgent ? '▸ ' : '  '
-    const desc = a.description ? ` — ${a.description}` : ''
-    lines.push(`${prefix}<b>${a.name}</b>${desc}`)
+  if (agents.length === 0) {
+    lines.push('No agents available for this project.')
+  } else {
+    lines.push('Select an agent from the buttons below.')
   }
   return lines.join('\n')
 }
@@ -97,10 +151,11 @@ export function agentSubKeyboard(
   currentAgent: string | null,
 ): InlineKeyboard {
   const kb = new InlineKeyboard()
-  for (const a of agents) {
+  for (let i = 0; i < agents.length; i++) {
+    const a = agents[i]
     const isActive = a.name === currentAgent
     const label = isActive ? `✅ ${a.name}` : a.name
-    kb.text(label, `sa:${a.name}`).row()
+    kb.text(label, `settings:agent:${i}`).row()
   }
   kb.text('🔒 Toggle Review Mode', 'settings:review')
   kb.row()
@@ -243,11 +298,20 @@ export function voiceSubText(s: UserSettings): string {
   const speed = formatSpeed(s.voiceSpeed)
   const gender = s.voiceGender === 'female' ? '여성 👩' : '남성 👨'
 
+  let modelLine: string
+  if (s.voiceModel) {
+    modelLine = `Model: <code>${s.voiceModel.modelID}</code> (${s.voiceModel.providerID})`
+  } else {
+    const fallback = s.summaryModel ? `${s.summaryModel.modelID}` : 'not set'
+    modelLine = `Model: <code>${fallback}</code> (summary)`
+  }
+
   return [
     '<b>🔊 Voice</b>',
     '',
     `Status: ${status}`,
     `Auto: ${s.voiceAutoMode ? 'ON 🔄' : 'OFF'}`,
+    modelLine,
     `Language: ${lang}`,
     `Length: ${length}`,
     `Speed: ${speed}`,
@@ -260,7 +324,8 @@ export function voiceSubKeyboard(s: UserSettings): InlineKeyboard {
   const kb = new InlineKeyboard()
 
   kb.text(s.voiceMode ? '🔇 OFF' : '🔊 ON', 'settings:voice_toggle').row()
-  kb.text(s.voiceAutoMode ? '🔄 Auto OFF' : '🔄 Auto ON', 'settings:voice_auto').row()
+  kb.text(s.voiceAutoMode ? '🔄 Auto OFF' : '🔄 Auto ON', 'settings:voice_auto')
+  kb.text('🎙 Select Model', 'settings:voice_model').row()
 
   kb.text(s.voiceLanguage === 'ko' ? '✅ 한국어' : '한국어', 'settings:voice_lang:ko')
   kb.text(s.voiceLanguage === 'en' ? '✅ English' : 'English', 'settings:voice_lang:en')
@@ -318,6 +383,7 @@ export function settingsCommand(
           : null,
         instanceName: isGroup ? deps?.instanceName : undefined,
         botRole: deps?.botRole,
+        activeProject: chatState.activeProjectDirectory?.split('/').pop() ?? null,
       }),
       { parse_mode: 'HTML', reply_markup: settingsMainKeyboard() },
     )

@@ -23,6 +23,7 @@ import {
   outputSubText, outputSubKeyboard,
   historySubText, historySubKeyboard,
   voiceSubText, voiceSubKeyboard,
+  projectSubText, projectSubKeyboard,
 } from './settings.js'
 import {
   groupSettingsCommand,
@@ -71,42 +72,15 @@ import { createSessionWatcher } from '../../../app/usecases/sessionWatcher.js'
 import { createSummaryService } from '../../opencode/summaryService.js'
 import type { VoiceFlow } from '../../../app/usecases/voiceFlow.js'
 import { parseCallback } from '../ui/callbacks.js'
-import type { ModelInfo } from '../../../domain/ports/OpenCodePort.js'
 import { escapeHtml } from '../../../shared/formatResponse.js'
 import { logger } from '../../../shared/logger.js'
 import { LIMITS } from '../../../app/policies/limits.js'
+import { isSummaryCandidate, sortSummaryModels, groupModelsByProvider, sortModelsNewestFirst } from '../../../app/policies/summaryModelPolicy.js'
 
 function stripBotMention(text: string, botUsername: string): string {
   if (!botUsername) return text
   const pattern = new RegExp(`@${botUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'gi')
   return text.replace(pattern, '').trim()
-}
-
-const EXCLUDE_MODEL = /embed|tts|audio|image|live/i
-const OLD_MODEL = /1\.5-|20240|3-opus|3-sonnet-2024/i
-const DATED_PREVIEW = /preview-\d{2}-\d{2}|\d{8}$/i
-const LIGHTWEIGHT = /\bflash\b|\blite\b|\bhaiku\b|\bmini\b|\bnano\b/i
-
-function isSummaryCandidate(m: ModelInfo): boolean {
-  const id = m.modelID
-  if (EXCLUDE_MODEL.test(id)) return false
-  if (OLD_MODEL.test(id)) return false
-  if (DATED_PREVIEW.test(id)) return false
-  if (LIGHTWEIGHT.test(id)) return true
-  if (m.providerID === 'opencode') return true
-  if (m.providerID === 'antigravity') return true
-  return false
-}
-
-function sortSummaryModels(models: ModelInfo[]): ModelInfo[] {
-  return [...models].sort((a, b) => {
-    const aIsAntigravity = a.providerID === 'antigravity'
-    const bIsAntigravity = b.providerID === 'antigravity'
-    if (aIsAntigravity && !bIsAntigravity) return -1
-    if (!aIsAntigravity && bIsAntigravity) return 1
-    if (a.providerID !== b.providerID) return a.providerID.localeCompare(b.providerID)
-    return a.name.localeCompare(b.name)
-  })
 }
 
 interface RegisterCommandsDeps {
@@ -132,11 +106,41 @@ interface RegisterCommandsDeps {
 
 export function registerCommands(deps: RegisterCommandsDeps): void {
   const { bot, openCode, state, output, queue } = deps
+  type ChatStateValue = Awaited<ReturnType<StateStore['getChatState']>>
 
   async function getCustomAgentName(customAgentId: string | null | undefined): Promise<string | null> {
     if (!customAgentId || !deps.customAgents) return null
     const agent = await deps.customAgents.get(customAgentId)
     return agent?.name ?? null
+  }
+
+  async function fetchSettingsProjects(): Promise<import('./settings.js').SettingsProject[]> {
+    if (!deps.serverUrl) return []
+    try {
+      const headers: Record<string, string> = {}
+      if (deps.serverPassword) {
+        headers['Authorization'] = `Basic ${Buffer.from(`${deps.serverUsername ?? 'opencode'}:${deps.serverPassword}`).toString('base64')}`
+      }
+      const res = await fetch(`${deps.serverUrl}/project`, {
+        headers,
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!res.ok) return []
+      const projects = await res.json() as import('./settings.js').SettingsProject[]
+      return projects.filter(p => p.worktree !== '/')
+    } catch {
+      return []
+    }
+  }
+
+  function resolveProjectName(
+    projects: import('./settings.js').SettingsProject[],
+    directory: string | null,
+  ): string | null {
+    if (!directory) return null
+    const found = projects.find(p => p.worktree === directory)
+    if (found) return found.name || found.worktree.split('/').pop() || found.worktree
+    return directory.split('/').pop() || null
   }
 
   async function renderSettingsMain(
@@ -145,6 +149,8 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     instanceNameOverride?: string,
   ): Promise<{ text: string; keyboard: ReturnType<typeof settingsMainKeyboard> }> {
     const customAgentName = await getCustomAgentName(chatState.customAgentId)
+    const projects = await fetchSettingsProjects()
+    const activeProjectName = resolveProjectName(projects, chatState.activeProjectDirectory)
     return {
       text: settingsMainText(chatState.settings, {
         healthy,
@@ -153,6 +159,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         customAgentName,
         instanceName: instanceNameOverride,
         botRole: deps.botRole,
+        activeProject: activeProjectName,
       }),
       keyboard: settingsMainKeyboard(),
     }
@@ -174,6 +181,58 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
     } catch (err) {
       logger.warn('registry', `Failed to update agent in registry: ${err instanceof Error ? err.message : 'unknown'}`)
     }
+  }
+
+  async function loadAgentsWithRecovery(chatId: number, chatState: ChatStateValue) {
+    const seen = new Set<string>()
+    const directories: string[] = []
+
+    const pushDirectory = (directory: string | null | undefined) => {
+      const normalized = directory?.trim()
+      if (!normalized || seen.has(normalized)) return
+      seen.add(normalized)
+      directories.push(normalized)
+    }
+
+    pushDirectory(chatState.activeProjectDirectory)
+    const projects = await fetchSettingsProjects()
+    for (const project of projects) {
+      pushDirectory(project.worktree)
+    }
+
+    if (directories.length === 0) {
+      throw new Error('No project directory configured for agent listing')
+    }
+
+    let lastError: unknown = null
+
+    for (const directory of directories) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const agents = await openCode.listAgents(directory)
+          if (directory !== chatState.activeProjectDirectory) {
+            chatState.activeProjectDirectory = directory
+            chatState.activeSessionId = null
+            chatState.pendingInteractions = []
+            chatState.awaitingInput = null
+            chatState.awaitingInteractionId = null
+            await state.saveChatState(chatId, chatState)
+          }
+          return agents
+        } catch (error) {
+          lastError = error
+          logger.warn(
+            'bot',
+            `listAgents failed for ${directory} (attempt ${attempt + 1}/2): ${error instanceof Error ? error.message : 'unknown'}`,
+          )
+          if (attempt === 0) {
+            await new Promise(resolve => setTimeout(resolve, 400))
+          }
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Failed to load agents for all project directories')
   }
 
   const summary = createSummaryService(openCode)
@@ -373,7 +432,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         await state.saveChatState(chatId, chatState)
         await updateRegistryAgent(parsed.agentName)
         try {
-          const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
+          const agents = await loadAgentsWithRecovery(chatId, chatState)
           await ctx.editMessageText(
             agentSubText(agents, parsed.agentName, chatState.settings, deps.botRole),
             { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, parsed.agentName) },
@@ -414,24 +473,83 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
         )
         break
       }
+      case 'settings_project': {
+        const projects = await fetchSettingsProjects()
+        const selected = projects[parsed.index]
+        if (!selected) break
+        const chatState = await state.getChatState(chatId)
+        chatState.activeProjectDirectory = selected.worktree
+        chatState.activeSessionId = null
+        chatState.pendingInteractions = []
+        chatState.awaitingInput = null
+        chatState.awaitingInteractionId = null
+        await state.saveChatState(chatId, chatState)
+        await ctx.editMessageText(
+          projectSubText(projects, chatState.activeProjectDirectory),
+          { parse_mode: 'HTML', reply_markup: projectSubKeyboard(projects, chatState.activeProjectDirectory) },
+        )
+        break
+      }
       case 'settings': {
         const chatState = await state.getChatState(chatId)
         switch (parsed.action) {
           case 'sub_agent': {
             try {
-              const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
+              const agents = await loadAgentsWithRecovery(chatId, chatState)
               await ctx.editMessageText(
                 agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
                 { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
               )
-            } catch {
-              await ctx.editMessageText('Failed to load agents.', { parse_mode: 'HTML' })
+            } catch (error) {
+              logger.warn('bot', `Failed to load /settings agent submenu: ${error instanceof Error ? error.message : 'unknown'}`)
+              try {
+                await ctx.editMessageText('Failed to load agents. Check /status and project settings, then retry.', { parse_mode: 'HTML' })
+              } catch {
+                await output.sendText(chatId, 'Failed to load agents. Check /status and project settings, then retry.')
+              }
+            }
+            break
+          }
+          case 'agent': {
+            const index = parseInt(parsed.value ?? '', 10)
+            if (!Number.isFinite(index) || index < 0) break
+
+            try {
+              const agents = await loadAgentsWithRecovery(chatId, chatState)
+              const selected = agents[index]
+              if (!selected?.name) {
+                await ctx.answerCallbackQuery({ text: 'Agent not found or outdated menu.' }).catch(() => {})
+                break
+              }
+
+              chatState.activeAgent = selected.name
+              await state.saveChatState(chatId, chatState)
+              await updateRegistryAgent(selected.name)
+              await ctx.editMessageText(
+                agentSubText(agents, selected.name, chatState.settings, deps.botRole),
+                { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, selected.name) },
+              )
+            } catch (error) {
+              logger.warn('bot', `Failed to switch agent from /settings: ${error instanceof Error ? error.message : 'unknown'}`)
+              try {
+                await ctx.editMessageText('Failed to switch agent. Check /status and project settings, then retry.', { parse_mode: 'HTML' })
+              } catch {
+                await output.sendText(chatId, 'Failed to switch agent. Check /status and project settings, then retry.')
+              }
             }
             break
           }
           case 'sub_summary':
             await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             break
+          case 'sub_project': {
+            const projects = await fetchSettingsProjects()
+            await ctx.editMessageText(
+              projectSubText(projects, chatState.activeProjectDirectory),
+              { parse_mode: 'HTML', reply_markup: projectSubKeyboard(projects, chatState.activeProjectDirectory) },
+            )
+            break
+          }
           case 'sub_custom_agent': {
             if (!deps.customAgents) {
               await ctx.editMessageText('Custom agent storage is not configured.', { parse_mode: 'HTML' })
@@ -458,7 +576,7 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             chatState.settings.reviewMode = !current
             await state.saveChatState(chatId, chatState)
             try {
-              const agents = await openCode.listAgents(chatState.activeProjectDirectory || '')
+              const agents = await loadAgentsWithRecovery(chatId, chatState)
               await ctx.editMessageText(
                 agentSubText(agents, chatState.activeAgent, chatState.settings, deps.botRole),
                 { parse_mode: 'HTML', reply_markup: agentSubKeyboard(agents, chatState.activeAgent) },
@@ -510,15 +628,79 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
             try {
               const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
               const summaryModels = sortSummaryModels(allModels.filter(isSummaryCandidate))
+              const groups = groupModelsByProvider(summaryModels)
               const kb = new InlineKeyboard()
-              for (const m of summaryModels) {
-                kb.text(`${m.name} (${m.providerID})`, `sm:${m.providerID}/${m.modelID}`).row()
+              for (const g of groups) {
+                kb.text(`${g.providerID} (${g.models.length})`, `settings:smp:${g.providerID}`).row()
               }
               kb.text('◀️ Back', 'settings:sub_summary')
-              await ctx.editMessageText('🤖 Select summary model:', { parse_mode: 'HTML', reply_markup: kb })
+              await ctx.editMessageText('🤖 Select provider:', { parse_mode: 'HTML', reply_markup: kb })
             } catch {
               await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
             }
+            break
+          }
+          case 'smp': {
+            const providerID = parsed.value ?? ''
+            try {
+              const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
+              const summaryModels = sortSummaryModels(allModels.filter(isSummaryCandidate))
+              const providerModels = sortModelsNewestFirst(summaryModels.filter(m => m.providerID === providerID))
+              const kb = new InlineKeyboard()
+              const current = chatState.settings.summaryModel
+              for (const m of providerModels) {
+                const isActive = current?.providerID === m.providerID && current?.modelID === m.modelID
+                const label = isActive ? `✅ ${m.name}` : m.name
+                kb.text(label, `sm:${m.providerID}/${m.modelID}`).row()
+              }
+              kb.text('◀️ Back', 'settings:model')
+              await ctx.editMessageText(`🤖 <b>${escapeHtml(providerID)}</b> models:`, { parse_mode: 'HTML', reply_markup: kb })
+            } catch {
+              await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
+            }
+            break
+          }
+          case 'voice_model': {
+            try {
+              const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
+              const summaryModels = sortSummaryModels(allModels.filter(isSummaryCandidate))
+              const groups = groupModelsByProvider(summaryModels)
+              const kb = new InlineKeyboard()
+              kb.text('🧹 Use Summary Model', 'settings:voice_model_reset').row()
+              for (const g of groups) {
+                kb.text(`${g.providerID} (${g.models.length})`, `settings:vmp:${g.providerID}`).row()
+              }
+              kb.text('◀️ Back', 'settings:sub_voice')
+              await ctx.editMessageText('🎙 Select voice model provider:', { parse_mode: 'HTML', reply_markup: kb })
+            } catch {
+              await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            }
+            break
+          }
+          case 'vmp': {
+            const providerID = parsed.value ?? ''
+            try {
+              const allModels = await openCode.listModels(chatState.activeProjectDirectory || '')
+              const summaryModels = sortSummaryModels(allModels.filter(isSummaryCandidate))
+              const providerModels = sortModelsNewestFirst(summaryModels.filter(m => m.providerID === providerID))
+              const kb = new InlineKeyboard()
+              const current = chatState.settings.voiceModel
+              for (const m of providerModels) {
+                const isActive = current?.providerID === m.providerID && current?.modelID === m.modelID
+                const label = isActive ? `✅ ${m.name}` : m.name
+                kb.text(label, `vm:${m.providerID}/${m.modelID}`).row()
+              }
+              kb.text('◀️ Back', 'settings:voice_model')
+              await ctx.editMessageText(`🎙 <b>${escapeHtml(providerID)}</b> models:`, { parse_mode: 'HTML', reply_markup: kb })
+            } catch {
+              await ctx.editMessageText('Failed to load models.', { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
+            }
+            break
+          }
+          case 'voice_model_reset': {
+            chatState.settings.voiceModel = null
+            await state.saveChatState(chatId, chatState)
+            await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
             break
           }
 
@@ -830,6 +1012,19 @@ export function registerCommands(deps: RegisterCommandsDeps): void {
           await state.saveChatState(chatId, chatState)
         }
         await ctx.editMessageText(summarySubText(chatState.settings), { parse_mode: 'HTML', reply_markup: summarySubKeyboard(chatState.settings) })
+        break
+      }
+      case 'selectvoicemodel': {
+        const chatState = await state.getChatState(chatId)
+        const slashIdx = parsed.value.indexOf('/')
+        if (slashIdx > 0) {
+          chatState.settings.voiceModel = {
+            providerID: parsed.value.slice(0, slashIdx),
+            modelID: parsed.value.slice(slashIdx + 1),
+          }
+          await state.saveChatState(chatId, chatState)
+        }
+        await ctx.editMessageText(voiceSubText(chatState.settings), { parse_mode: 'HTML', reply_markup: voiceSubKeyboard(chatState.settings) })
         break
       }
       case 'tunnel': {

@@ -7,6 +7,10 @@ import { logger } from '../../shared/logger.js'
 import { escapeHtml } from '../../shared/formatResponse.js'
 import { LIMITS } from '../policies/limits.js'
 
+function resolveVoiceModel(settings: UserSettings): { providerID: string; modelID: string } | null {
+  return settings.voiceModel ?? settings.summaryModel
+}
+
 interface VoiceFlowDeps {
   summary: SummaryPort
   tts: TtsPort
@@ -44,7 +48,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       return
     }
 
-    if (!settings.summaryModel) {
+    if (!resolveVoiceModel(settings)) {
       await deps.output.sendText(chatId, '❌ 요약 모델이 설정되지 않았습니다. /settings에서 Summary 모델을 선택해주세요.')
       return
     }
@@ -71,8 +75,8 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       const chatState = await deps.state.getChatState(chatId)
       const { settings } = chatState
 
-      if (!settings.summaryModel) {
-        logger.warn('voice', `Auto-voice skipped for chat ${chatId}: summary model not configured`)
+      if (!resolveVoiceModel(settings)) {
+        logger.warn('voice', `Auto-voice skipped for chat ${chatId}: voice/summary model not configured`)
         return
       }
 
@@ -94,7 +98,7 @@ export function createVoiceFlow(deps: VoiceFlowDeps): VoiceFlow {
       const voiceSummary = await deps.summary.summarizeForVoice(
         directory,
         content,
-        settings.summaryModel!,
+        resolveVoiceModel(settings)!,
         settings.voiceSummaryLength,
         settings.voiceLanguage,
         LIMITS.VOICE_SUMMARY_HARD_CAP,
